@@ -42,16 +42,33 @@
 - [x] 3.2 Counts update live as requests stream in — `onBatch`, plus `refresh()` after the
       correlation flush, which is when trace ids actually land in the ring
 - [x] 3.3 Tab hover tooltip: `N of M requests on this page produced no span.`, and the
-      undeterminable sentence in its place when tier 2 is off
+      undeterminable sentence in its place when tier 2 is off.
+      **Was implemented and unreachable.** Two `tooltip()` calls had accumulated on this tab —
+      one for the live reading, one for the static explanation — and the first ran before the
+      tab was appended to the tab row. `tooltip()` opens with `trigger.replaceWith(anchor)`,
+      which does nothing to a parentless node, so that anchor and its bubble were left detached
+      from the document with two live bindings still writing the count into them. Merged into
+      one tooltip: the reading leads, the explanation follows.
+      The first explanation written for this — nested anchors, losing a `pointerenter` race —
+      was wrong, and a probe said so: both the broken and the fixed panel have exactly one
+      `.tip-anchor`, because the dead one was never inserted at all.
 
 ## 4. Verification
 - [x] 4.1 `tests/unit/coverage.test.ts` (16) and `tests/unit/untraced-view.test.ts` (10) pass
 - [x] 4.2 Rendered against the fixture in Chromium: headline `186 of 308`, 50 cards,
       `136 more not listed.`, causes `subresource` / `transport-xhr` / `not-propagated` /
       `third-party`, badge `186`, no horizontal overflow
-- [ ] 4.3 **Not done.** No Playwright spec for this view. What is browser-verified above was
-      verified by hand and is not guarded against regression; the two states most worth a spec
-      are the undeterminable headline with `?sw=off` and the badge-before-first-open path.
+- [x] 4.3 `tests/perf/untraced-view.spec.ts`, 4 tests, all passing: `initiatorType` really does
+      separate the parser's fetches from the application's on a live page (`/app.css` is a
+      `subresource`, the `/api/resource` calls are not); `?sw=off` reaches the undeterminable
+      headline with no cards and a hidden badge; the badge is correct before the tab has ever
+      been opened, and agrees with the headline once it is; the tab has exactly one tooltip and
+      it leads with the count.
+      Two things the browser settled that no unit test could:
+      (a) the worker only controls from the *second* load, so a first-visit reading is
+      undeterminable and correctly so — the first version of this spec timed out waiting for a
+      badge that was right to be absent;
+      (b) task 3.3's tooltip was dead. See 3.3.
 
 ## 5. Naming
 - [x] 5.1 The view's root class is `coverage`, not `untraced`. `pill.css:101` already defines

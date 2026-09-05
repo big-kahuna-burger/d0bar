@@ -4,7 +4,7 @@
       "/Users/bkb/.n/bin/node",
       "/Users/bkb/d/dash0/d0bar/node_modules/@playwright/test/cli.js",
       "test",
-      "tests/perf/ab.spec.ts"
+      "tests/perf/untraced-view.spec.ts"
     ],
     "configFile": "/Users/bkb/d/dash0/d0bar/playwright.config.ts",
     "rootDir": "/Users/bkb/d/dash0/d0bar/tests/perf",
@@ -71,13 +71,13 @@
   },
   "suites": [
     {
-      "title": "ab.spec.ts",
-      "file": "ab.spec.ts",
+      "title": "untraced-view.spec.ts",
+      "file": "untraced-view.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [
         {
-          "title": "the toolbar does not perturb what it measures",
+          "title": "classifies a live page's own subresources as subresources, not as gaps",
           "ok": true,
           "tags": [],
           "tests": [
@@ -92,16 +92,12 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 131795,
+                  "duration": 3905,
                   "errors": [],
-                  "stdout": [
-                    {
-                      "text": "observer-effect deltas (on − off): { inpP95: \u001b[33m0\u001b[39m, tbtP95: \u001b[33m0\u001b[39m, cls: \u001b[33m0\u001b[39m, longTasks: \u001b[33m0\u001b[39m, lcpP95: \u001b[33m-8\u001b[39m }\n"
-                    }
-                  ],
+                  "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-05T20:21:59.471Z",
+                  "startTime": "2026-09-05T20:34:40.684Z",
                   "annotations": [],
                   "attachments": []
                 }
@@ -109,9 +105,111 @@
               "status": "expected"
             }
           ],
-          "id": "ed7c3e94c10bae6141c8-337082dcb60c2144e2bb",
-          "file": "ab.spec.ts",
-          "line": 72,
+          "id": "81e6ec2d6b3b1c992459-80841585b8de18867852",
+          "file": "untraced-view.spec.ts",
+          "line": 79,
+          "column": 1
+        },
+        {
+          "title": "states that coverage is unknown with no worker, rather than reporting zero gaps",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 600000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1761,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-05T20:34:44.789Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "81e6ec2d6b3b1c992459-0741ac8d4bc7cc7ca195",
+          "file": "untraced-view.spec.ts",
+          "line": 121,
+          "column": 1
+        },
+        {
+          "title": "has the badge right before the tab has ever been opened",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 600000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3790,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-05T20:34:46.555Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "81e6ec2d6b3b1c992459-8e07338191450c7f8502",
+          "file": "untraced-view.spec.ts",
+          "line": 154,
+          "column": 1
+        },
+        {
+          "title": "gives the tab one tooltip, carrying the current count",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 600000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 4436,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-05T20:34:50.350Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "81e6ec2d6b3b1c992459-8472eb13aaaf68b511a3",
+          "file": "untraced-view.spec.ts",
+          "line": 197,
           "column": 1
         }
       ]
@@ -119,9 +217,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-09-05T20:21:59.186Z",
-    "duration": 132185.248,
-    "expected": 1,
+    "startTime": "2026-09-05T20:34:40.353Z",
+    "duration": 14463.765,
+    "expected": 4,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0

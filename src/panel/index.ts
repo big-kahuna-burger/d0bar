@@ -154,6 +154,10 @@ function tooltip(
   return anchor;
 }
 
+/** The half of the untraced tab's tooltip that does not change — what the tab is for. */
+const UNTRACED_TAB_NOTE =
+  "Requests that left this page with no trace context, which is usually why a trace has a hole in it. Detecting one needs tier 2 or 4; with neither, this counts nothing rather than claiming zero.";
+
 export function openPanel(options: PanelOptions): PanelHandle {
   const { root, onClose } = options;
   /**
@@ -236,10 +240,6 @@ export function openPanel(options: PanelOptions): PanelHandle {
       bindings.add(bindHidden(badge, () => !showUntracedBadge()));
     }
 
-    if (item.id === "untraced") {
-      /* Attached after the badge, so the anchor wraps the whole tab including its count. */
-      tooltip(bindings, button, "tab-untraced", "below", { body: () => untracedTooltip() });
-    }
 
     bindings.add(bindAttr(button, "aria-selected", () => tab() === item.id));
     bindings.add(bindClass(button, "on", () => tab() === item.id));
@@ -247,8 +247,27 @@ export function openPanel(options: PanelOptions): PanelHandle {
     tabs.appendChild(button);
 
     if (item.id === "untraced") {
+      /* Attached after the badge and after the tab is in the DOM, so the anchor wraps the
+         whole tab including its count.
+
+         One tooltip, not two. The merge left this tab with a `tooltip()` call for the live
+         reading and a second for the static explanation, and the first one was silently dead:
+         it ran before `tabs.appendChild(button)`, so `trigger.replaceWith(anchor)` had no
+         parent to replace into and did nothing. The anchor adopted the button, the append then
+         moved the button straight back out, and the anchor — with its bubble and two live
+         bindings still writing the count into it — was left detached from the document. The
+         copy existed, updated correctly and could not be reached by any pointer.
+
+         That is why the ordering here is load-bearing rather than incidental: `tooltip()`
+         assumes its trigger is already parented. Verified against the browser (the probe that
+         settled it found one anchor, not the two the first explanation of this bug predicted)
+         and guarded by `tests/perf/untraced-view.spec.ts`.
+
+         The reading leads and the explanation follows, because the number is what the reader
+         hovered for. Bound rather than set, so it is the current count and not the one from
+         when the panel opened. */
       tooltip(bindings, button, "untraced", "below", {
-        body: "Requests that left this page with no trace context, which is usually why a trace has a hole in it. Detecting one needs tier 2 or 4; with neither, this counts nothing rather than claiming zero.",
+        body: () => `${untracedTooltip()} ${UNTRACED_TAB_NOTE}`,
       });
     }
   }
