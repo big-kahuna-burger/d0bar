@@ -99,12 +99,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1737,
+                      "duration": 1754,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:53:26.956Z",
+                      "startTime": "2026-09-05T18:45:55.776Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -133,12 +133,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3380,
+                      "duration": 3575,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:53:28.779Z",
+                      "startTime": "2026-09-05T18:45:57.616Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -167,12 +167,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 12593,
+                      "duration": 12998,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:53:32.165Z",
+                      "startTime": "2026-09-05T18:46:01.197Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -209,12 +209,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1765,
+                      "duration": 1734,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:53:44.764Z",
+                      "startTime": "2026-09-05T18:46:14.203Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -243,12 +243,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1747,
+                      "duration": 1736,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:53:46.535Z",
+                      "startTime": "2026-09-05T18:46:15.945Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -271,7 +271,7 @@
           "specs": [
             {
               "title": "appending does not move the viewport or drop the selection",
-              "ok": true,
+              "ok": false,
               "tags": [],
               "tests": [
                 {
@@ -284,23 +284,53 @@
                     {
                       "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2389,
-                      "errors": [],
+                      "status": "failed",
+                      "duration": 2431,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m630\u001b[39m\nReceived: \u001b[31m840\u001b[39m",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m630\u001b[39m\nReceived: \u001b[31m840\u001b[39m\n    at /Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:239:29",
+                        "location": {
+                          "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
+                          "column": 29,
+                          "line": 239
+                        },
+                        "snippet": "  237 |        the user a different set of requests than the one they were reading. */\n  238 |     expect(label).not.toBeNull();\n> 239 |     expect(after.scrollTop).toBe(before.scrollTop - 10 * 21);\n      |                             ^\n  240 |   });\n  241 | });\n  242 |"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
+                            "column": 29,
+                            "line": 239
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m630\u001b[39m\nReceived: \u001b[31m840\u001b[39m\n\n  237 |        the user a different set of requests than the one they were reading. */\n  238 |     expect(label).not.toBeNull();\n> 239 |     expect(after.scrollTop).toBe(before.scrollTop - 10 * 21);\n      |                             ^\n  240 |   });\n  241 | });\n  242 |\n    at /Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:239:29"
+                        }
+                      ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:53:48.287Z",
+                      "startTime": "2026-09-05T18:46:17.687Z",
                       "annotations": [],
-                      "attachments": []
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/Users/bkb/d/dash0/d0bar/test-results/requests-view-streaming-ap-f2976-wport-or-drop-the-selection-chromium/error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
+                        "column": 29,
+                        "line": 239
+                      }
                     }
                   ],
-                  "status": "expected"
+                  "status": "unexpected"
                 }
               ],
               "id": "602c609c3fd960fe26e3-7ea6abe80c7290447b37",
               "file": "requests-view.spec.ts",
-              "line": 191,
+              "line": 185,
               "column": 3
             }
           ]
@@ -308,12 +338,12 @@
         {
           "title": "keyboard",
           "file": "requests-view.spec.ts",
-          "line": 259,
+          "line": 243,
           "column": 6,
           "specs": [
             {
               "title": "gives the list one tab stop and opens a row with Enter",
-              "ok": true,
+              "ok": false,
               "tags": [],
               "tests": [
                 {
@@ -324,30 +354,52 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 0,
+                      "workerIndex": 1,
                       "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1756,
-                      "errors": [],
+                      "status": "timedOut",
+                      "duration": 600040,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 600000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 600000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 600000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "location": {
+                            "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
+                            "column": 14,
+                            "line": 40
+                          },
+                          "message": "Error: page.waitForFunction: Test timeout of 600000ms exceeded.\n\n  38 |   await page.waitForFunction(() => window.__d0root !== undefined);\n  39 |   await page.locator(\"d0-bar\").click();\n> 40 |   await page.waitForFunction(() => window.__d0root!.querySelector(\".panel\") !== null);\n     |              ^\n  41 |   await page.waitForFunction(() => window.__d0root!.querySelector(\".row\") !== null, undefined, {\n  42 |     timeout: 15_000,\n  43 |   });\n    at openPanel (/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:40:14)\n    at /Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:245:5"
+                        }
+                      ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:53:50.683Z",
+                      "startTime": "2026-09-05T18:46:20.334Z",
                       "annotations": [],
-                      "attachments": []
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/Users/bkb/d/dash0/d0bar/test-results/requests-view-keyboard-giv-484ec--and-opens-a-row-with-Enter-chromium/error-context.md"
+                        }
+                      ]
                     }
                   ],
-                  "status": "expected"
+                  "status": "unexpected"
                 }
               ],
               "id": "602c609c3fd960fe26e3-4a79315d0f6f73413892",
               "file": "requests-view.spec.ts",
-              "line": 260,
+              "line": 244,
               "column": 3
             },
             {
               "title": "names every row for a screen reader",
-              "ok": true,
+              "ok": false,
               "tags": [],
               "tests": [
                 {
@@ -358,25 +410,55 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 0,
+                      "workerIndex": 2,
                       "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1739,
-                      "errors": [],
+                      "status": "failed",
+                      "duration": 1092,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8732/?d0bar=on\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:8732/?d0bar=on\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8732/?d0bar=on\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:8732/?d0bar=on\", waiting until \"load\"\u001b[22m\n\n    at openPanel (/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:36:14)\n    at /Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:287:11",
+                        "location": {
+                          "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
+                          "column": 14,
+                          "line": 36
+                        },
+                        "snippet": "  34 |\n  35 | async function openPanel(page: import(\"@playwright/test\").Page, query = \"?d0bar=on\") {\n> 36 |   await page.goto(`/${query}`, { waitUntil: \"load\" });\n     |              ^\n  37 |   await page.evaluate(() => window.__fixtureReady);\n  38 |   await page.waitForFunction(() => window.__d0root !== undefined);\n  39 |   await page.locator(\"d0-bar\").click();"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
+                            "column": 14,
+                            "line": 36
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8732/?d0bar=on\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:8732/?d0bar=on\", waiting until \"load\"\u001b[22m\n\n\n  34 |\n  35 | async function openPanel(page: import(\"@playwright/test\").Page, query = \"?d0bar=on\") {\n> 36 |   await page.goto(`/${query}`, { waitUntil: \"load\" });\n     |              ^\n  37 |   await page.evaluate(() => window.__fixtureReady);\n  38 |   await page.waitForFunction(() => window.__d0root !== undefined);\n  39 |   await page.locator(\"d0-bar\").click();\n    at openPanel (/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:36:14)\n    at /Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:287:11"
+                        }
+                      ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:53:52.446Z",
+                      "startTime": "2026-09-05T18:56:20.681Z",
                       "annotations": [],
-                      "attachments": []
+                      "attachments": [
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/Users/bkb/d/dash0/d0bar/test-results/requests-view-keyboard-names-every-row-for-a-screen-reader-chromium/error-context.md"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
+                        "column": 14,
+                        "line": 36
+                      }
                     }
                   ],
-                  "status": "expected"
+                  "status": "unexpected"
                 }
               ],
               "id": "602c609c3fd960fe26e3-6ca2d8499bf7e5e31c4a",
               "file": "requests-view.spec.ts",
-              "line": 286,
+              "line": 270,
               "column": 3
             }
           ]
@@ -386,11 +468,11 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-09-05T18:53:26.624Z",
-    "duration": 27594.454999999998,
-    "expected": 8,
+    "startTime": "2026-09-05T18:45:55.488Z",
+    "duration": 626391.807,
+    "expected": 5,
     "skipped": 0,
-    "unexpected": 0,
+    "unexpected": 3,
     "flaky": 0
   }
 }
