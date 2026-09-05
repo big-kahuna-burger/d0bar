@@ -1,6 +1,15 @@
 # pasted-token
 
-## ADDED Requirements
+## Purpose
+
+Gives the panel a credential for the Dash0 API by asking the developer to paste an auth token,
+holding it in the service worker rather than the page, and sending it only to the API origin of
+the region they selected. It exists because Dash0's sign-in flow refuses browser requests from
+any origin but its own app, so a toolbar cannot obtain a token on the developer's behalf — and
+because every custody guarantee a browser can actually offer here is narrower than it first
+appears, this capability is as much about stating the limits truthfully as about the mechanism.
+
+## Requirements
 
 ### Requirement: The token is never returned to the page
 No message from the worker SHALL carry the token, and the worker SHALL expose no operation that
@@ -66,10 +75,6 @@ table — never an origin supplied by the page.
 - **THEN** the region control offers only that environment's regions, a region selected in the
   other environment is not carried across, and the non-production environment is presented as a
   warning that names the failure it causes — a rejection indistinguishable from a revoked token
-
-#### Scenario: An environment with one region
-- **WHEN** the selected environment carries exactly one region
-- **THEN** the region is stated rather than offered as a control that cannot be operated
 
 #### Scenario: Selecting a region
 - **WHEN** the user picks a region and connects

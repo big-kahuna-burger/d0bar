@@ -61,10 +61,15 @@
       the label says "EU (Ireland)", and what a developer checks against their tenant is the URL
 - [x] 2b.6a A dev/prod toggle above it, `prod` default. Two buttons rather than a third
       `<select>`: there are exactly two environments and both should stay visible. The region
-      control is rebuilt from the toggle, and `dev` — carrying one region — states its region
-      instead of rendering a one-option `<select>` nobody can operate. The dev note is styled as
+      control is rebuilt from the toggle. The dev note is styled as
       a warning because it is one: a production token is rejected there and the rejection is
       indistinguishable from a revoked token
+- [x] 2b.6b The single-region branch was written, then **removed**, and the spec scenario for it
+      withdrawn with it. It was correct while the table carried one dev region; correcting the
+      table against `dash0-configuration` gave dev two, which made the branch a path nothing can
+      reach. Shipping an unexercised branch and specifying behaviour nothing performs are the
+      same mistake in two places, so both went. If an environment ever carries one region again,
+      it renders a one-option `<select>` — cosmetic, not incorrect
 - [x] 2b.7 `window.D0BAR_REGION` preselects both the toggle and the picker for debugging. A preselection only: it
       names an id the worker still resolves, so an unknown value falls back to the default
       rather than adding a destination. Fixture gate: `?region=<id>`
