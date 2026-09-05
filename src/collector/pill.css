@@ -90,6 +90,61 @@
   gap: 5px;
 }
 
+/* The activity dot.
+   
+   Purple at rest, one blink to yellow per batch of requests, settling back through the
+   midpoint of the two. It is the only thing on the pill that says "the page is still doing
+   something" without waiting 500ms for the counter text to change by one.
+
+   The whole animation is CSS. The alternative — driving colour from JS — would put a style
+   write per frame on the host's main thread, and this dot is 5px on a page whose INP d0bar
+   exists to report honestly. The restart is a WAAPI `currentTime = 0`, never a
+   remove-class/read-offsetWidth/add-class reflow: a forced synchronous layout is exactly the
+   host-page work this file must not cause. */
+.pulse {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--d0-cta);
+}
+
+/* Added on the first fire and never removed — the restart is `Animation.currentTime`, so the
+   class is a one-way switch rather than a per-fire toggle. */
+.pulse.firing {
+  animation: d0-fire 620ms ease-out;
+}
+
+@keyframes d0-fire {
+  /* Fast in, slow out: the blink is the event, the settle is the acknowledgement. The mid
+     stop is derived from the two tokens rather than written as a third hex value, so a host
+     that overrides `--cta-bg` gets a midpoint that still belongs to its own palette. */
+  0% {
+    background: var(--d0-cta);
+  }
+  10% {
+    background: var(--d0-warning);
+  }
+  32% {
+    background: var(--d0-warning);
+  }
+  66% {
+    background: color-mix(in oklab, var(--d0-cta) 50%, var(--d0-warning));
+  }
+  100% {
+    background: var(--d0-cta);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No animation at all, which also makes the JS restart a no-op: `getAnimations()` returns
+     nothing, so the fire path costs one empty loop. The dot stays purple and the request
+     count still moves — the information was never in the blink. */
+  .pulse.firing {
+    animation: none;
+  }
+}
+
 .dot {
   width: 5px;
   height: 5px;

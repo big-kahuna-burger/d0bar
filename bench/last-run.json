@@ -4,7 +4,7 @@
       "/Users/bkb/.n/bin/node",
       "/Users/bkb/d/dash0/d0bar/node_modules/@playwright/test/cli.js",
       "test",
-      "tests/perf/otel.spec.ts"
+      "tests/perf/ab.spec.ts"
     ],
     "configFile": "/Users/bkb/d/dash0/d0bar/playwright.config.ts",
     "rootDir": "/Users/bkb/d/dash0/d0bar/tests/perf",
@@ -71,172 +71,57 @@
   },
   "suites": [
     {
-      "title": "otel.spec.ts",
-      "file": "otel.spec.ts",
+      "title": "ab.spec.ts",
+      "file": "ab.spec.ts",
       "column": 0,
       "line": 0,
-      "specs": [],
-      "suites": [
+      "specs": [
         {
-          "title": "with a real SDK installed",
-          "file": "otel.spec.ts",
-          "line": 63,
-          "column": 6,
-          "specs": [
+          "title": "the toolbar does not perturb what it measures",
+          "ok": true,
+          "tags": [],
+          "tests": [
             {
-              "title": "reports tier 4 live, owned by the host",
-              "ok": true,
-              "tags": [],
-              "tests": [
+              "timeout": 600000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
                 {
-                  "timeout": 600000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 131795,
+                  "errors": [],
+                  "stdout": [
                     {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 786,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-09-05T19:58:45.001Z",
-                      "annotations": [],
-                      "attachments": []
+                      "text": "observer-effect deltas (on − off): { inpP95: \u001b[33m0\u001b[39m, tbtP95: \u001b[33m0\u001b[39m, cls: \u001b[33m0\u001b[39m, longTasks: \u001b[33m0\u001b[39m, lcpP95: \u001b[33m-8\u001b[39m }\n"
                     }
                   ],
-                  "status": "expected"
-                }
-              ],
-              "id": "2db8b5f5416cc995a965-b65621af8d5f5b698e69",
-              "file": "otel.spec.ts",
-              "line": 64,
-              "column": 3
-            },
-            {
-              "title": "adopts the spans, giving traced rows a trace id the worker never supplied",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 600000,
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-05T20:21:59.471Z",
                   "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 663,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-09-05T19:58:45.985Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
+                  "attachments": []
                 }
               ],
-              "id": "2db8b5f5416cc995a965-b9fb2f2624b01c7c1647",
-              "file": "otel.spec.ts",
-              "line": 77,
-              "column": 3
-            },
-            {
-              "title": "leaves fetch unpatched on a page that has an SDK",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 600000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 583,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-09-05T19:58:46.653Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "2db8b5f5416cc995a965-d0e61d7cca4701d86197",
-              "file": "otel.spec.ts",
-              "line": 103,
-              "column": 3
+              "status": "expected"
             }
-          ]
-        },
-        {
-          "title": "without an SDK",
-          "file": "otel.spec.ts",
-          "line": 116,
-          "column": 6,
-          "specs": [
-            {
-              "title": "reports tier 4 off with the ordinary reason, not as a failure",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 600000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1755,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-09-05T19:58:47.245Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "2db8b5f5416cc995a965-4308786008489b43027e",
-              "file": "otel.spec.ts",
-              "line": 117,
-              "column": 3
-            }
-          ]
+          ],
+          "id": "ed7c3e94c10bae6141c8-337082dcb60c2144e2bb",
+          "file": "ab.spec.ts",
+          "line": 72,
+          "column": 1
         }
       ]
     }
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-09-05T19:58:44.438Z",
-    "duration": 4588.408,
-    "expected": 4,
+    "startTime": "2026-09-05T20:21:59.186Z",
+    "duration": 132185.248,
+    "expected": 1,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0

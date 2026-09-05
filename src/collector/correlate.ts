@@ -27,6 +27,13 @@ export interface FlushResult {
   unjoined: FetchRecord[];
   /** How many joins were flagged ambiguous. */
   lowConfidence: number;
+  /**
+   * Ring indices the worker produced a record for, whether or not it carried a traceparent.
+   *
+   * The untraced view's input: a request the worker read and found bare is a different
+   * finding from one the worker never saw, and without this the two are indistinguishable.
+   */
+  seen: Set<number>;
   /** True when the worker stopped logging (quota) and the log is therefore incomplete. */
   logDegraded: boolean;
   tier2: Tier2State;
@@ -134,7 +141,9 @@ export async function flushCorrelation(options: {
   let lowConfidence = 0;
   /* Trace ids tier 2 supplied, by ring index — the input to the conflict check below. */
   const tier2Ids = new Map<number, string>();
+  const seen = new Set<number>();
   for (const [index, correlation] of result.matched) {
+    seen.add(index);
     /* A record with no traceparent still carries tier 2's method, which tier 1 never has.
        Only a real trace id earns a context handle and the `F_HAS_SPAN` flag. */
     const hasSpan = correlation.traceId !== "";
@@ -204,6 +213,7 @@ export async function flushCorrelation(options: {
     lowConfidence,
     logDegraded: loggingDegraded(),
     tier2,
+    seen,
     adopted,
     spansUnjoined: spanResult.unjoined.length,
     traceConflicts,

@@ -5,6 +5,7 @@ import { flushCorrelation } from "../collector/correlate";
 import { resolveTiers } from "./tier";
 import { requestsView } from "./views/requests";
 import { traceView } from "./views/trace";
+import { untracedView } from "./views/untraced";
 import { vitalsView } from "./views/vitals";
 import type { OtelState, Tier1Access, Tier2State } from "../shared/stage2";
 import {
@@ -23,6 +24,7 @@ import {
   tip,
   unhoverTip,
   untracedCount,
+  untracedTooltip,
   view,
   type Tab,
 } from "./shell";
@@ -114,7 +116,7 @@ function tooltip(
   trigger: HTMLElement,
   id: string,
   side: "above" | "below",
-  content: { title?: string; body: string },
+  content: { title?: string; body: string | (() => string) },
   align?: "end",
 ): HTMLElement {
   const anchor = el("span", "tip-anchor");
@@ -130,7 +132,16 @@ function tooltip(
     strong.textContent = content.title;
     bubble.append(strong, document.createTextNode(" "));
   }
-  bubble.appendChild(document.createTextNode(content.body));
+  if (typeof content.body === "string") {
+    bubble.appendChild(document.createTextNode(content.body));
+  } else {
+    /* Bound rather than set, for copy that is a reading: the untraced tab's number changes as
+       requests stream in, and a bubble showing the count from the moment the panel opened
+       would be a stale measurement presented as a current one. */
+    const text = document.createTextNode("");
+    bubble.appendChild(text);
+    bindings.add(bindText(text, content.body));
+  }
   anchor.appendChild(bubble);
 
   bindings.add(bindHidden(bubble, () => tip() !== id));
@@ -145,6 +156,15 @@ function tooltip(
 
 export function openPanel(options: PanelOptions): PanelHandle {
   const { root, onClose } = options;
+  /**
+   * Ring indices the service worker produced a record for, filled by the correlation flush.
+   *
+   * Empty until then, and empty forever when tier 2 is off — which is why the untraced view
+   * asks whether coverage is determinable before it reads this at all. A `Set` rather than a
+   * flag on the record: this is stage 2's knowledge about stage 1's ring, and writing it back
+   * into the ring would spend a bit on something only one tab reads.
+   */
+  let workerSaw: ReadonlySet<number> = new Set();
   /* Before anything renders: the footer must never paint a stale `off` and then correct
      itself, because the corrected state is the one the user is least likely to be looking
      at when it changes. */
@@ -216,6 +236,11 @@ export function openPanel(options: PanelOptions): PanelHandle {
       bindings.add(bindHidden(badge, () => !showUntracedBadge()));
     }
 
+    if (item.id === "untraced") {
+      /* Attached after the badge, so the anchor wraps the whole tab including its count. */
+      tooltip(bindings, button, "tab-untraced", "below", { body: () => untracedTooltip() });
+    }
+
     bindings.add(bindAttr(button, "aria-selected", () => tab() === item.id));
     bindings.add(bindClass(button, "on", () => tab() === item.id));
     bindings.add(on(button, "click", () => selectTab(item.id)));
@@ -271,6 +296,17 @@ export function openPanel(options: PanelOptions): PanelHandle {
    * request carries a traceparent at all and the surface never gets that far: every
    * selection resolves to the no-span state.
    */
+  /* Mounted once and hidden, like the other two. It also owns the untraced badge, which has
+     to be right before anyone opens the tab — so this view exists and counts from the moment
+     the panel does, whether or not it is ever looked at. */
+  const untraced = untracedView({
+    tier1: options.tier1,
+    origin: location.origin,
+    seen: () => workerSaw,
+  });
+  const showUntraced = () => tab() === "untraced" && view() === "list";
+  bindings.add(bindHidden(untraced.el, () => !showUntraced()));
+
   const trace = traceView({ tier1: options.tier1, tier2: () => tier2() });
   bindings.add(bindHidden(trace.el, () => view() !== "trace"));
 
@@ -288,16 +324,13 @@ export function openPanel(options: PanelOptions): PanelHandle {
   const emptyText = document.createTextNode("");
   empty.appendChild(emptyText);
   bindings.add(
-    bindHidden(empty, () => showRequests() || showVitals() || view() === "trace"),
+    bindHidden(empty, () => showRequests() || showVitals() || showUntraced() || view() === "trace"),
   );
-  bindings.add(
-    bindText(emptyText, () => {
-      const which = tab();
-      if (which === "untraced") return "The untraced view lands with add-untraced-view.";
-      return "";
-    }),
-  );
-  body.append(requests.el, vitals.el, trace.el, empty);
+  /* Every tab is built now, so there is nothing left for this node to say. Kept rather than
+     deleted: it is the slot a future tab lands in, and an empty body with no element at all
+     is a layout that has never been rendered. */
+  bindings.add(bindText(emptyText, () => ""));
+  body.append(requests.el, vitals.el, untraced.el, trace.el, empty);
 
   /* Repaint on the way back in. While hidden the view drops every batch on the floor by
      design, so returning from another tab has to catch up in one go — the next request
@@ -306,6 +339,7 @@ export function openPanel(options: PanelOptions): PanelHandle {
     effect(() => {
       if (showRequests()) requests.refresh();
       if (showVitals()) vitals.refresh();
+      if (showUntraced()) untraced.refresh();
     }),
   );
 
@@ -490,7 +524,10 @@ export function openPanel(options: PanelOptions): PanelHandle {
   })
     .then((result) => {
       tier2.set(result.tier2);
-      untracedCount.set(result.unjoined.length);
+      /* Which ring records the worker produced a record for. The untraced view needs it to
+         tell a request the worker watched go out bare from one it never saw at all — two
+         different findings that would otherwise both read as "no trace id". */
+      workerSaw = result.seen;
       /* Repaint, because the flush wrote into the ring behind the list's back.
      
          The rows were painted from records that had no trace id yet — the join is
@@ -499,6 +536,10 @@ export function openPanel(options: PanelOptions): PanelHandle {
          may never come. Tier 2's chips had the same latent bug and it was invisible because
          a busy fixture always produced another batch. */
       requests.refresh();
+      /* The same repaint, for the same reason: the flush wrote trace ids into the ring, and
+         a coverage count taken before it would report every request as a gap. This also
+         updates the badge while the tab is not showing. */
+      untraced.refresh();
     })
     .catch(() => {
       /* `flushCorrelation` is written not to reject; this is the belt to that braces. A
@@ -519,6 +560,7 @@ export function openPanel(options: PanelOptions): PanelHandle {
       bindings.dispose();
       requests.destroy();
       vitals.destroy();
+      untraced.destroy();
       trace.destroy();
       panel.remove();
       root.adoptedStyleSheets = root.adoptedStyleSheets.filter((s) => s !== sheet);

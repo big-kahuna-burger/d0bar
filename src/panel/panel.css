@@ -1242,3 +1242,138 @@
   border-color: var(--d0-hover-stroke);
   color: var(--d0-text-intense);
 }
+
+/* ══ add-untraced-view ═══════════════════════════════════════════════════════
+   The coverage tab: a headline, one card per gap, and the note explaining why
+   only the worker can see any of it.
+
+   Prefixed `coverage-`, not `untraced-`, and that is not a naming preference.
+   The pill's stylesheet already defines `.untraced` for its badge, and both
+   sheets are adopted on the *same* shadow root — so a view root called
+   `untraced` inherits `height: 22px; display: flex` from the pill and renders
+   as a 22px strip with its cards laid out in a row, overflowing the panel.
+   Seen in Chromium before it was renamed. Two stylesheets, one root, one flat
+   namespace: any new panel class has to be checked against pill.css.
+
+   The `kind` attribute on the headline is the colour contract, and it is an
+   attribute for the same reason the vitals tone is: `undeterminable` must not
+   be able to pick up the clean green by omission. Three states, three colours,
+   every one of them stated.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.coverage {
+  padding: 14px;
+}
+
+.coverage-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.coverage-count {
+  font-family: var(--d0-font-mono);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  color: var(--d0-text-intense);
+}
+
+.coverage-count[data-kind="gaps"] {
+  color: var(--d0-warning-inline);
+}
+
+.coverage-count[data-kind="clean"] {
+  color: var(--d0-healthy);
+}
+
+/* Not a measurement at all. Sized down and coloured as absent, so it cannot be
+   mistaken for a count of zero. */
+.coverage-count[data-kind="undeterminable"] {
+  color: var(--d0-text-subtle);
+  font-size: 13px;
+}
+
+.coverage-detail {
+  font-size: 11px;
+  color: var(--d0-text);
+  line-height: 1.4;
+  flex: 1 1 200px;
+}
+
+.coverage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ucard {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: start;
+  padding: 8px 10px;
+  border: 1px solid var(--d0-lvl2-stroke);
+  border-radius: 8px;
+  background: var(--d0-lvl2-bg);
+  cursor: pointer;
+  /* Cards never affect each other's geometry, so a card changing recalculates style inside
+     itself and invalidates nothing above it. */
+  contain: layout style;
+}
+
+.ucard:hover,
+.ucard:focus-visible {
+  background: var(--d0-hover-bg);
+}
+
+.udot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: 5px;
+  background: var(--d0-warning-inline);
+}
+
+/* A third-party gap is not the host's to fix, so it is not coloured as a warning
+   against them. */
+.ucard[data-cause="third-party"] .udot,
+.ucard[data-cause="unknown"] .udot {
+  background: var(--d0-text-subtle);
+}
+
+.uurl {
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+  color: var(--d0-text-intense);
+  overflow-wrap: anywhere;
+}
+
+.ucause {
+  font-size: 11px;
+  color: var(--d0-text-subtle);
+  line-height: 1.4;
+  margin-top: 3px;
+}
+
+.ucause-label {
+  font-family: var(--d0-font-mono);
+  color: var(--d0-text);
+}
+
+.coverage-trunc {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--d0-text-subtle);
+}
+
+.coverage-note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--d0-stroke);
+  border-radius: 8px;
+  background: var(--d0-hover-bg);
+  font-size: 11px;
+  color: var(--d0-text);
+  line-height: 1.5;
+}

@@ -176,6 +176,15 @@ export const perturbation = computed<Perturbation>(() => {
 
 /** The untraced badge is hidden at zero but the tab is retained, per the handoff. */
 export const untracedCount = signal(0);
+/**
+ * The untraced tab's hover copy, written by the view from the same reading the badge and the
+ * headline come from.
+ *
+ * A string rather than the numbers, so there is exactly one place that decides how a coverage
+ * reading is worded — including the case where it cannot be worded as a count at all, because
+ * tier 2 is off and there is nothing to compare.
+ */
+export const untracedTooltip = signal("");
 export const showUntracedBadge = computed(() => untracedCount() > 0);
 
 /**

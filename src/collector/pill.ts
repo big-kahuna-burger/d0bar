@@ -57,6 +57,7 @@ export interface PillHandle {
 
 interface PillNodes {
   count: Text;
+  pulse: HTMLElement;
   dot: HTMLElement;
   vitalWrap: HTMLElement;
   vitalText: Text;
@@ -79,6 +80,9 @@ function build(root: ShadowRoot, onActivate: () => void): PillNodes {
   count.className = "count";
   const countText = document.createTextNode("0 req");
   count.appendChild(countText);
+
+  const pulse = document.createElement("i");
+  pulse.className = "pulse";
 
   const sep = document.createElement("span");
   sep.className = "sep";
@@ -104,11 +108,12 @@ function build(root: ShadowRoot, onActivate: () => void): PillNodes {
   const droppedText = document.createTextNode("");
   dropped.appendChild(droppedText);
 
-  button.append(mark, count, sep, vitalWrap, untraced, dropped);
+  button.append(mark, pulse, count, sep, vitalWrap, untraced, dropped);
   root.appendChild(button);
 
   return {
     count: countText,
+    pulse,
     dot,
     vitalWrap,
     vitalText: vitalTextNode,
@@ -116,6 +121,26 @@ function build(root: ShadowRoot, onActivate: () => void): PillNodes {
     dropped,
     droppedText,
   };
+}
+
+/**
+ * Blinks the activity dot.
+ *
+ * Restarting a running animation rather than toggling a class: `currentTime = 0` needs no
+ * style recalculation and cannot force a layout, and a fresh batch arriving mid-settle should
+ * restart the blink rather than be swallowed by it or stack a second animation on top.
+ *
+ * Reduced motion is handled in CSS, which makes this a loop over an empty list rather than a
+ * media query read on every tick.
+ */
+function fire(pulse: HTMLElement): void {
+  pulse.classList.add("firing");
+  const running = pulse.getAnimations();
+  for (let i = 0; i < running.length; i += 1) {
+    const animation = running[i] as Animation;
+    animation.currentTime = 0;
+    animation.play();
+  }
 }
 
 /**
@@ -141,6 +166,9 @@ export function mountPill(onActivate: () => void): PillHandle {
     const count = size();
     if (count !== shownCount) {
       nodes.count.nodeValue = `${count} req`;
+      /* Not on the first paint: `shownCount` starts at -1, and a pill that blinks the moment
+         it mounts is reporting its own arrival as page activity. */
+      if (shownCount >= 0) fire(nodes.pulse);
       shownCount = count;
     }
 
