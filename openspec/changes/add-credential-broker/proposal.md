@@ -19,11 +19,16 @@ actor with event queueing handles it in-tab, and `navigator.locks` handles it ac
 - New capability: `credential-broker`
 - New: `src/auth/`, `src/sw/broker.ts`
 - Depends on: `add-sw-correlator` (the worker), `add-trace-view` (the caller)
-- **Verified**: the CORS preflight passes — `access-control-allow-origin: *` with `Authorization`
-  allowed, on the data API and on `/oauth/{register,token,revoke}`. The authorization server is
-  real: RFC 8414 discovery, dynamic registration, PKCE S256, public client. See design.md.
-- **Still blocked**: dynamic registration of arbitrary origins (§1.3) needs a `POST` that creates
-  a client record in Dash0 production, so it has not been run.
+- **Verified, and it changes the change.** The authorization server is real — RFC 8414 discovery,
+  dynamic registration, PKCE S256, public client. The data API is reachable from a customer
+  origin with a bearer. But `/oauth/register` and `/oauth/token` are **origin-allowlisted**: a
+  `POST` carrying `Origin: https://shop.example.com` returns `403` with an empty body, on dev and
+  on production, while the same request with no `Origin` succeeds. Production permits only
+  `https://app.dash0.com`; `http://localhost` is refused there too.
+  The CORS preflight advertises `access-control-allow-origin: *` and does not reflect this.
+- **So the browser OAuth flow cannot run from a customer origin, which is d0bar's whole
+  deployment target.** §1.4 fires: §2, §4 and §5 are held rather than built. §3 (worker custody)
+  survives and is shared by every remaining option. See design.md for the three ways forward.
 - **Revised by the measurement**: `scopes_supported` is `["*"]` — the scope narrowing this change
   specified cannot be built, and the credential in custody is full-privilege rather than
   read-scoped. There is also no region-independent issuer, which the design did not account for.

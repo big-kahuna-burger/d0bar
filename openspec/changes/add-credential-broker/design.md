@@ -58,7 +58,7 @@ A `.well-known/oauth-protected-resource` document (RFC 9728) is served too, nami
 issuer. DCR + PKCE + `none` + protected-resource metadata is the MCP authorization profile;
 this server was in all likelihood stood up for Dash0's MCP integration. That is not an
 objection, but it does mean **its behaviour toward a browser origin is untested by its own
-first consumer**, which is why §1.3 stays unchecked below.
+first consumer** — and that turned out to be the whole story. See §1.3.
 
 ### The scope narrowing in this design cannot be built
 
@@ -82,6 +82,9 @@ raises the stakes of this change rather than lowering them.
 
 ### CORS permits the whole flow from any origin — §1.1 and §1.2, verified
 
+Read this section together with §1.3 below, which is the other half of it. The preflight permits
+everything; the request behind it does not. Neither half is the answer on its own.
+
 Deployed values, not `config.go` defaults, read from `api.eu-west-1.aws.dash0.com`:
 
 ```
@@ -96,10 +99,14 @@ GET /api/spans?limit=1  Origin: https://shop.example.com  →  401
   {"error":{"code":401,"message":"unauthorized. no Authorization header in HTTP request"}}
 ```
 
-`/oauth/register`, `/oauth/token` and `/oauth/revoke` return the identical preflight. So the
-data API *and* the three programmatic OAuth endpoints are all reachable from an arbitrary
-customer origin with a bearer header. This was the assumption most likely to force an
-architecture change, and it holds.
+`/oauth/register`, `/oauth/token` and `/oauth/revoke` return the identical preflight.
+
+For the **data API** this is the whole answer, and it holds: `GET /api/spans` from
+`https://shop.example.com` reaches the application and answers `401` for want of a bearer, with
+CORS headers on the response. A customer-origin page with a token can read telemetry.
+
+For the **OAuth endpoints** the preflight is not the answer, and reading it as one is the
+mistake this document made for the first hour of checking. See §1.3.
 
 Two riders, both load-bearing:
 
@@ -108,6 +115,57 @@ Two riders, both load-bearing:
   a constraint rather than a preference.
 - `/oauth/authorize` answers `405` to `OPTIONS` and `GET`-only. Correct — it is a top-level
   navigation into a popup, not a fetch — but it means the popup, not CORS, is the mechanism.
+
+### The OAuth endpoints are origin-allowlisted, and the preflight does not say so — §1.3
+
+This is the one that fires §1.4. The preflight advertises `access-control-allow-origin: *`; the
+**actual** request is then rejected on `Origin` by something behind it. A browser sails through
+the preflight and fails the real POST with an opaque `403`, no CORS headers and an empty body —
+which reaches page JavaScript as an indistinguishable network error.
+
+`POST /oauth/token` with a deliberately invalid grant, varying only the `Origin` header. `400`
+means the request reached validation, i.e. the origin was permitted; `403` means it was stopped
+before that.
+
+| `Origin` | production | dev |
+| --- | --- | --- |
+| *(absent — a non-browser client)* | `400` | `400` |
+| `https://app.dash0.com` / `https://app.dash0-dev.com` | `400` | `400` |
+| `http://localhost:8732` | **`403`** | `400` |
+| `http://127.0.0.1:8732` | **`403`** | — |
+| `https://shop.example.com` | **`403`** | **`403`** |
+
+`POST /oauth/register` behaves identically. Registration itself is open — with no `Origin` header
+it returned `201` and a `client_id` for redirect URIs on both `http://localhost:8732` and
+`https://shop.example.com`, so the *server* has no objection to arbitrary redirect origins. The
+registration is saved at `dev-client.json`. Only the browser is refused.
+
+**So the browser OAuth flow is reachable from exactly one origin in production: Dash0's own
+app.** Not from a customer's site, which is d0bar's entire deployment target, and not from
+`localhost`, which would at least have supported local development. Dev additionally allows
+`localhost`, so anything built and tested only against dev would appear to work and fail in
+production.
+
+This is decisive against the architecture in this document. The worker cannot register a client,
+cannot exchange an authorization code, and cannot refresh, because all three are `POST`s from a
+customer origin. No amount of custody design changes it — custody is about where the token
+lives, and there is no token to hold.
+
+Three ways forward, none of them "build it as designed":
+
+1. **The pasted `auth_…` token** under *Alternatives* becomes the only architecture that works
+   today from a customer origin. `GET /api/spans` with a bearer already returns a CORS-permitted
+   `401` from `https://shop.example.com`, so the data plane is open even though the auth plane
+   is not.
+2. **Ask Dash0 to allowlist customer origins** on `/oauth/{register,token,revoke}`. This is a
+   product decision about whether a browser on an arbitrary origin may hold a full-privilege
+   credential, and given `scopes_supported: ["*"]` the honest answer may well be no.
+3. **Move the exchange out of the browser**, which means a d0bar backend — and a standalone
+   same-origin bundle with no backend is the premise of the whole project.
+
+Note what the preflight cost here. `access-control-allow-origin: *` on these endpoints is
+misleading: it advertises access that the next layer refuses. Whatever is decided, that
+disagreement is worth reporting to whoever owns the control plane.
 
 ### There is no region-independent issuer
 
@@ -167,10 +225,13 @@ the grant is unrestricted is the kind of quiet inaccuracy this project does not 
 
 ## Redirect URI
 
-Dynamic registration means registering the customer's own origin. **Unverified.** Confirming it
-requires a `POST /oauth/register`, which creates a client record in Dash0's production control
-plane — a write to a live external system, not a read — so it is not something to run
-unannounced. See §1.3.
+Dynamic registration accepts arbitrary https origins and `http://localhost:<port>` — verified by
+registering both against dev. Two riders:
+
+- There is no wildcard. `http://localhost:*` is not a registerable value; every redirect URI is
+  exact, so every developer port needs its own registration.
+- It is moot for the browser path. Registration is refused from a customer origin, so the client
+  that can be registered is one no browser on that origin can use. See §1.3 above.
 
 ## Alternatives
 

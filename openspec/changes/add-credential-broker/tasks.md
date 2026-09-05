@@ -11,14 +11,23 @@
       `credentials: 'include'` is illegal, so the bearer must always be a header; and
       `/oauth/authorize` is `GET`-only (`405` to `OPTIONS`), so the popup is the mechanism there,
       not CORS.
-- [ ] 1.3 **Not done, and not runnable unannounced.** Confirming dynamic registration of arbitrary
-      https origins and `http://localhost:*` needs a `POST /oauth/register`, which creates a
-      client record in Dash0's production control plane. That is a write to a live external
-      system. Needs a decision before it runs.
-- [x] 1.4 Nothing failed, but two things were found that revise the architecture anyway, both
-      recorded in design.md: `scopes_supported` is `["*"]`, so the scope narrowing this change
-      specifies cannot be built; and there is no region-independent issuer, so discovery needs a
-      region the design never mentions.
+- [x] 1.3 Registered against **dev**, on the user's instruction. The server accepts arbitrary
+      redirect origins: `201` with a `client_id` for both `http://localhost:8732/...` and
+      `https://shop.example.com/...`. Saved at `dev-client.json`; the `registration_access_token`
+      it returned is a credential and is in the gitignored `.dash0-dev-client.local.json`.
+      **But it only succeeds with no `Origin` header.** The identical POST carrying
+      `Origin: https://shop.example.com` returns `403`, empty body, no CORS headers — on both
+      `/oauth/register` and `/oauth/token`, on dev and on production. Production additionally
+      refuses `http://localhost`. The permitted browser origin is Dash0's own app and nothing
+      else. Table in design.md.
+      Also: there is no wildcard redirect URI, so `http://localhost:*` is not registerable —
+      every port needs its own registration.
+- [x] 1.4 **Fired.** The browser OAuth flow cannot run from a customer origin, which is d0bar's
+      deployment target, so §2 and §4 are not buildable as specified — not a custody problem, a
+      no-token problem. Two further findings recorded in design.md: `scopes_supported` is `["*"]`,
+      so the scope narrowing cannot be built either; and there is no region-independent issuer.
+      Per this task, stop rather than build on it. §2, §4 and §5 are held pending the decision in
+      design.md; §3 (worker custody) survives intact and is shared by every option.
 
 ## 1b. What the measurement changed
 - [ ] 1b.1 `src/auth/discovery.ts` — fetch `/.well-known/oauth-authorization-server`, **not**

@@ -1,0 +1,22 @@
+{
+  "$comment": "Dynamic client registration probe, add-credential-broker task 1.3. Registered against the DEV environment on 2026-09-05. A public client (token_endpoint_auth_method: none) issues no client_secret, so client_id is not a credential. The registration_access_token that came back IS one and is NOT in this file - see .dash0-dev-client.local.json, which is gitignored.",
+  "environment": "dev",
+  "issuer": "https://api.eu-west-1.aws.dash0-dev.com",
+  "registered": {
+    "client_id": "dash0_cl_78b45433fec5c5baf7a80dd51ce0c07e",
+    "client_name": "d0bar (dev probe)",
+    "grant_types": [
+      "authorization_code",
+      "refresh_token"
+    ],
+    "redirect_uris": [
+      "http://localhost:8732/d0bar/callback",
+      "https://shop.example.com/d0bar/callback"
+    ],
+    "response_types": [
+      "code"
+    ],
+    "token_endpoint_auth_method": "none"
+  },
+  "finding": "Registration succeeded from a non-browser client (no Origin header). The same POST with Origin: https://shop.example.com returns 403 with an empty body. See design.md - the browser path is blocked by an origin allowlist that the CORS preflight does not reflect."
+}

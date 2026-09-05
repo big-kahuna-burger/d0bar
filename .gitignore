@@ -12,3 +12,6 @@ bench/fixtures/host/otel-sdk.js
 
 # Agent worktrees: whole checkouts of this repo, created by background agents.
 .claude/worktrees
+
+# Registration access token from the add-credential-broker DCR probe. A credential.
+.dash0-dev-client.local.json
