@@ -55,7 +55,12 @@
 - [ ] 2.8 Machine tests, no browser: popup closed, state mismatch, concurrent 401s, refresh rejected, PKCE failure
 - [ ] 2.9 Unit tests for PKCE derivation against published test vectors
 
-## 3. Worker custody
+## 3. Worker custody — **premise withdrawn**
+The custody guarantee this section is built on does not exist: a service worker cannot keep a
+secret from its own page, because IndexedDB is per-origin and the page opens the same database.
+See design.md, and `add-pasted-token` for the corrected design. Tasks 3.1–3.6 are left as
+written rather than rewritten in place, so that what was believed stays legible.
+
 - [ ] 3.1 `src/sw/broker.ts` — token store in the worker's IndexedDB; never exposed over `postMessage`
 - [ ] 3.2 Page receives an opaque session handle only
 - [ ] 3.3 Worker attaches the bearer to d0bar's own API calls, matched against an allowlist of d0bar endpoints

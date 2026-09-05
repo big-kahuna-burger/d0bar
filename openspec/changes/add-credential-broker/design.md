@@ -186,15 +186,28 @@ valid document whose issuer is hard-wired to **eu-west-1**. A US organisation th
 from the apex domain gets a working discovery document for the wrong region, and the failure
 surfaces much later as an authorization error. Do not use it.
 
-## Custody
+## Custody — **the table below is withdrawn**
 
-| Holder | Holds | Readable by host page |
+| Holder | Holds | ~~Readable by host page~~ |
 | --- | --- | --- |
 | Page JS | an opaque session handle | yes, and useless alone |
-| Service worker IndexedDB | access token, refresh token, PKCE verifier | **no** |
+| Service worker IndexedDB | access token, refresh token, PKCE verifier | ~~**no**~~ — **false** |
 
-The page asks the worker to make a call; the worker attaches the bearer. A host page that reads
-everything d0bar puts in the page realm still cannot obtain a credential.
+Kept rather than deleted, because it was believed and acted on and the correction is the useful
+part. **A service worker cannot keep a secret from its own page.** IndexedDB is keyed by origin,
+not by realm; the page opens the same database the worker wrote. `src/sw/protocol.ts` says so in
+its own words, and tier 2 *depends* on it — the worker writes the request log and the page reads
+it back. No probe was needed to find this out; it was already written down in this repo.
+
+The property generalises to every same-origin store, so there is no repair that keeps the table
+true. The only holder the page genuinely cannot reach is the worker's global scope, which does
+not survive the worker being terminated.
+
+What follows from it: the sentence below this table — "a host page that reads everything d0bar
+puts in the page realm still cannot obtain a credential" — was wrong for the persisted case, and
+the claim that §3 survived the §1.3 finding intact was wrong with it. `add-pasted-token` carries
+the corrected design: custody is a choice the user makes with the cost stated, and the token's
+own restrictions are the security boundary rather than where it is stored.
 
 When the worker is unavailable, there is no safe degradation for token custody. The correct
 behaviour is to refuse to authenticate and say why — not to fall back to `localStorage`, which

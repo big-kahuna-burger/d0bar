@@ -49,11 +49,15 @@
 - [ ] 5.3 Record both in design.md
 
 ## 5b. Unbudgeted growth
-- [ ] 5b.1 The worker went 3.99 kB → 8.22 kB raw, 1.39 → 2.53 kB gzip, and **nothing gates it**:
+- [x] 5b.1 Budget added — `dist/d0bar-sw.js` at 3 kB gzip, in both `.size-limit.json` and
+      `bench/budget.json` with the rationale. Measured 2.07 kB by size-limit, which re-minifies
+      with esbuild and is the number gated; vite's terser pass reports 2.53 kB for the same
+      artifact. Both are recorded, because quoting one of them alone is how the next person
+      concludes the budget moved when it did not. The worker went 3.99 kB → 8.22 kB raw, 1.39 → 2.53 kB gzip, and **nothing gates it**:
       `.size-limit.json` covers the two stage-1 artifacts and the panel, not the worker. That is
       not a licence — it is a missing budget, and it should be added rather than left as the one
       bundle that can grow unobserved. Registered post-settle, so it is not on the critical path,
-      which is why this is a gap and not a regression
+      which is why this was a gap and not a regression
 
 ## 6. UI
 - [ ] 6.1 `src/panel/views/connect/` — paste field, custody choice, required restrictions,
@@ -63,5 +67,7 @@
 - [ ] 6.4 Features needing the API are unavailable with a reason while unconnected
 
 ## 7. Withdraw the false claim
-- [ ] 7.1 `add-credential-broker` design.md — mark the custody table's "readable by host page:
-      no" as withdrawn, with the reason and the evidence, rather than deleting it
+- [x] 7.1 Withdrawn in all three places it was claimed, and kept rather than deleted so the
+      correction stays legible: the custody table in design.md, the §3 heading in tasks.md, and
+      the proposal's "the page's JavaScript never holds the token". Also withdrawn: the claim
+      made during the §1.3 write-up that §3 survived the OAuth finding intact. It did not.

@@ -113,6 +113,14 @@
       "earlierRaisedBy": "add-requests-view",
       "earlierRaisedRationale": "The panel gained the view it exists for. Measured before raising, and split before deciding: of the 10.79 kB gzip vite reports for the artifact, 4.40 kB is the inlined stylesheet and 6.39 kB is code (size-limit's 9.83 kB is the same bundle re-minified by esbuild, which is the number gated). add-requests-view accounts for roughly 1.2 kB of the stylesheet \u2014 the shared column template, the trace chip, the four status tones and the waterfall's segment rules, including the hatched treatment that makes an unmeasured bar look unmeasured \u2014 and roughly 0.6 kB of code across the virtualizer, the row builder, the geometry and the formatters. None of it is deferrable: a requests tab that loads its own view on tab entry would put a fetch in front of the first thing a user clicks. Verified in the same measurement that no stage-1 code followed it across: `deliveryType` and `renderBlockingStatus` appear zero times in the panel bundle. Stage 2 is fetched at background priority after settle and is never on the critical path, which is why its budget can move where stage 1's cannot.",
       "rationale": "Raised because the panel gained a data path it did not have: the tier 1 <-> tier 2 join, the IndexedDB read of the worker's log, and tier resolution with its copy. Measured before raising rather than assumed - the four tiers' explanatory strings alone are 1,395 B gzipped against a 335 B overage, so the limit moved for content the panel exists to show, not for code that could be trimmed. The same measurement confirmed the worker-only log paths tree-shake out: `openCursor` and `readwrite` appear zero times in the panel bundle. Stage 2 is fetched at background priority after settle and is never on the critical path, which is why its budget can move where stage 1's cannot."
+    },
+    {
+      "artifact": "dist/d0bar-sw.js",
+      "limit": "3 kB gzip",
+      "previousLimit": null,
+      "lastMeasured": "2.07 kB (size-limit/esbuild, the gated number); vite reports 2.53 kB for the same artifact",
+      "addedBy": "add-pasted-token",
+      "rationale": "Newly budgeted, not newly grown \u2014 the worker had no threshold at all until now, which made it the one bundle that could grow unobserved, and it had just gone 1.39 -> 2.53 kB gzip (3.99 -> 8.22 kB raw, as vite reports it) when the token broker landed. Two numbers because there are two minifiers: size-limit re-minifies with esbuild and gates 2.07 kB, vite's own terser pass reports 2.53 kB. The gate is the esbuild number, same as for the panel. Registered after settle, so this is not the stage-1 kind of constraint; it is here so that the next increment is a decision rather than a surprise."
     }
   ]
 }
