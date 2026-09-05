@@ -4,6 +4,7 @@ import panelCss from "./panel.css?inline";
 import { flushCorrelation } from "../collector/correlate";
 import { resolveTiers } from "./tier";
 import { requestsView } from "./views/requests";
+import { vitalsView } from "./views/vitals";
 import type { Tier1Access, Tier2State } from "../shared/stage2";
 import {
   escape as shellEscape,
@@ -247,20 +248,26 @@ export function openPanel(options: PanelOptions): PanelHandle {
   const showRequests = () => tab() === "requests" && view() === "list";
   bindings.add(bindHidden(requests.el, () => !showRequests()));
 
+  /* Mounted once and hidden, like the requests view. Cheaper than rebuilding four cards on
+     every tab switch, and it keeps the view subscribed so a return to the tab paints the
+     current reading rather than the one it was left on. */
+  const vitals = vitalsView({ tier1: options.tier1 });
+  const showVitals = () => tab() === "vitals" && view() === "list";
+  bindings.add(bindHidden(vitals.el, () => !showVitals()));
+
   const empty = el("div", "empty");
   const emptyText = document.createTextNode("");
   empty.appendChild(emptyText);
-  bindings.add(bindHidden(empty, showRequests));
+  bindings.add(bindHidden(empty, () => showRequests() || showVitals()));
   bindings.add(
     bindText(emptyText, () => {
       if (view() === "trace") return "The trace view lands with add-trace-view.";
       const which = tab();
-      if (which === "vitals") return "The vitals view lands with add-vitals-view.";
       if (which === "untraced") return "The untraced view lands with add-untraced-view.";
       return "";
     }),
   );
-  body.append(requests.el, empty);
+  body.append(requests.el, vitals.el, empty);
 
   /* Repaint on the way back in. While hidden the view drops every batch on the floor by
      design, so returning from another tab has to catch up in one go — the next request
@@ -268,6 +275,7 @@ export function openPanel(options: PanelOptions): PanelHandle {
   bindings.add(
     effect(() => {
       if (showRequests()) requests.refresh();
+      if (showVitals()) vitals.refresh();
     }),
   );
 
@@ -472,6 +480,7 @@ export function openPanel(options: PanelOptions): PanelHandle {
     destroy() {
       bindings.dispose();
       requests.destroy();
+      vitals.destroy();
       panel.remove();
       root.adoptedStyleSheets = root.adoptedStyleSheets.filter((s) => s !== sheet);
     },

@@ -5,13 +5,14 @@ import {
   onVisibility,
   whenSettled,
 } from "./phase";
-import { activeEntryTypes, onResourceBatch, startObserving } from "./observe";
+import { activeEntryTypes, onResourceBatch, onVitalsBatch, startObserving } from "./observe";
 import { definePill, mountPill } from "./pill";
 import { scheduleMode } from "../shared/schedule";
 import { internStats } from "../shared/intern";
 import { correlate, read, scratch, size, stats } from "./ring";
 import { loadStage2, prefetchStage2, type PanelHandle } from "../shared/stage2";
 import { installShortcut } from "./shortcut";
+import { snapshot as vitalsSnapshot } from "./vitals";
 import { startTier2, tier2State, type SwConfig, type Tier2State } from "./sw";
 
 /**
@@ -147,6 +148,15 @@ export function init(config: D0barConfig): D0barHandle {
             onBatch: onResourceBatch,
             onVisibility,
             visible: isVisible,
+            /* Composed here rather than inside `snapshot()`: which entry types this browser
+               accepted is `observe.ts`'s knowledge, and the vitals module has no business
+               knowing whether its own observers were ever registered. */
+            vitals() {
+              const reading = vitalsSnapshot();
+              reading.entryTypes = activeEntryTypes();
+              return reading;
+            },
+            onVitals: onVitalsBatch,
           },
           onClose() {
             panelOpen = false;

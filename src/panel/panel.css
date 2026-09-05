@@ -805,3 +805,103 @@
 [hidden] {
   display: none !important;
 }
+
+/* ── vitals view ────────────────────────────────────────────────────────────────
+   add-vitals-view. Four cards on one row, and the provenance note beneath them.
+
+   The tone attribute is the whole colour contract, and `unknown` is the reason it is an
+   attribute at all: a value the browser never reported must not be able to pick up the
+   healthy green by omission, so every tone is stated — including the two that are
+   deliberately not threshold colours. */
+
+.vitals {
+  padding: 14px;
+}
+
+.vitals-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+/* Four 1fr cards stop being readable below about 560px — the same width at which the
+   waterfall column is dropped, so the panel has one narrow layout rather than two. */
+@container d0panel (max-width: 560px) {
+  .vitals-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.vcard {
+  background: var(--d0-lvl2-bg);
+  border: 1px solid var(--d0-lvl2-stroke);
+  border-radius: 8px;
+  padding: 10px 12px;
+  /* Cards never affect each other's geometry, so a value changing recalculates style inside
+     its own card and invalidates nothing above it. */
+  contain: layout style;
+}
+
+.vname {
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-text-subtle);
+}
+
+.vvalue {
+  font-family: var(--d0-font-mono);
+  font-size: 20px;
+  margin-top: 4px;
+  /* Tabular figures, so a value ticking upward does not shuffle the digits beside it. */
+  font-variant-numeric: tabular-nums;
+  color: var(--d0-text-intense);
+}
+
+.vvalue[data-tone="healthy"] {
+  color: var(--d0-healthy);
+}
+
+.vvalue[data-tone="warning"] {
+  color: var(--d0-warning-inline);
+}
+
+.vvalue[data-tone="error"] {
+  color: var(--d0-error);
+}
+
+/* A frame count has no good/poor threshold, so it takes the neutral intense text rather
+   than being coloured as though it did. */
+.vvalue[data-tone="neutral"] {
+  color: var(--d0-text-intense);
+}
+
+/* Not a number at all — `unsupported`, or `not reported`. Sized down so it does not read as
+   a measurement, and coloured as absent rather than as anything. */
+.vvalue[data-tone="unknown"] {
+  color: var(--d0-text-subtle);
+  font-size: 13px;
+}
+
+.vattr {
+  font-size: 11px;
+  color: var(--d0-text-subtle);
+  margin-top: 3px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.vnote {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--d0-stroke);
+  border-radius: 8px;
+  background: var(--d0-hover-bg);
+  font-size: 11px;
+  color: var(--d0-text);
+  line-height: 1.5;
+}
+
+.vnote-api {
+  font-family: var(--d0-font-mono);
+  color: var(--d0-text-intense);
+}

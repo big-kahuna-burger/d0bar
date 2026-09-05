@@ -82,6 +82,24 @@ function fakeRing(): FakeRing {
       };
     },
     visible: () => visible,
+    /* The requests view reads neither, but the boundary is one interface. Stubbed as an
+       empty reading rather than cast away, so a field added to `VitalsReading` fails here
+       instead of being silently absent. */
+    vitals: () => ({
+      lcp: -1,
+      cls: 0,
+      inp: -1,
+      ttfb: -1,
+      loafCount: 0,
+      loafLongest: 0,
+      lcpElement: "",
+      clsSource: "",
+      inpTarget: "",
+      inpTargetIsScored: false,
+      loafScript: "",
+      entryTypes: [],
+    }),
+    onVitals: () => () => {},
   };
 }
 
