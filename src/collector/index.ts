@@ -9,11 +9,13 @@ import { activeEntryTypes, onResourceBatch, onVitalsBatch, startObserving } from
 import { definePill, mountPill } from "./pill";
 import { scheduleMode } from "../shared/schedule";
 import { internStats } from "../shared/intern";
-import { correlate, read, scratch, size, stats } from "./ring";
+import { adoptSpan, correlate, flagConflict, read, scratch, size, stats } from "./ring";
+import { readSpan, spanCount, spanScratch } from "./otel-sink";
 import { loadStage2, prefetchStage2, type PanelHandle } from "../shared/stage2";
 import { installShortcut } from "./shortcut";
 import { snapshot as vitalsSnapshot } from "./vitals";
 import { startTier2, tier2State, type SwConfig, type Tier2State } from "./sw";
+import { detectOtel, otelState, type OtelState } from "./otel";
 
 /**
  * Stage 1 — the only part of the toolbar on a host page's critical path.
@@ -61,6 +63,8 @@ export interface Diagnostics {
   entryTypes: readonly string[];
   /** Whether tier 2 is live, and if not, why not. */
   tier2: Tier2State;
+  /** Whether tier 4 is live, who owns the attachment, and if it is off, why. */
+  otel: OtelState;
   requests: number;
   dropped: number;
   interned: number;
@@ -76,6 +80,7 @@ const inert: D0barHandle = {
       phase: "collecting",
       entryTypes: [],
       tier2: { kind: "off", reason: "not-registered" },
+      otel: { kind: "off", reason: "no-sdk" },
       requests: 0,
       dropped: 0,
       interned: 0,
@@ -129,6 +134,9 @@ export function init(config: D0barConfig): D0barHandle {
           /* Read at open time, not at init: registration completes asynchronously after
              settle, so a value captured earlier would be `not-registered` forever. */
           tier2: tier2State(),
+          /* Read at open time for the same reason as tier 2: detection runs at settle, which
+             may not have happened when a host called `init()`. */
+          otel: otelState(),
           /* The ring stays here, in stage 1, and the panel is given a window onto it. */
           tier1: {
             entries() {
@@ -141,6 +149,37 @@ export function init(config: D0barConfig): D0barHandle {
               return list;
             },
             correlate,
+            adoptSpan: (index, contextId) => {
+              adoptSpan(index, contextId);
+            },
+            flagConflict: (index) => {
+              flagConflict(index);
+            },
+            spans() {
+              /* Projected, not handed over: the sink's storage is typed arrays in stage 1,
+                 and the join needs five strings per span. An empty array is the ordinary
+                 case — most pages have no OpenTelemetry SDK at all. */
+              const out = spanScratch();
+              const list: Array<{
+                url: string;
+                order: number;
+                traceId: string;
+                spanId: string;
+              }> = [];
+              for (let i = 0; i < spanCount(); i += 1) {
+                if (!readSpan(i, out)) continue;
+                list.push({
+                  url: out.url,
+                  /* Issue order within the flush. The sink is append-only, so its index is
+                     end order — which is the closest thing to issue order available, and the
+                     same approximation tier 2's `order` makes. */
+                  order: i,
+                  traceId: out.traceId,
+                  spanId: out.spanId,
+                });
+              }
+              return list;
+            },
             stats,
             /* `read` returns the scratch it filled, or undefined; the boundary wants a
                boolean so neither side has to agree on identity across the two bundles. */
@@ -198,6 +237,12 @@ export function init(config: D0barConfig): D0barHandle {
        supported state, not an error one, and the panel reads the outcome from
        `tier2State()` when it opens. */
     void startTier2(config.sw ?? {});
+    /* Tier 4, on the same settle boundary and for the same reason: reading the API global and
+       attaching a processor are derivations, and derivations do not run while the host's load
+       phase is being measured. Cheap on the overwhelming majority of pages — one symbol read
+       that finds nothing. Not awaited and not reported as an error: `no-sdk` is the ordinary
+       state, and the panel reads the outcome from `otelState()` when it opens. */
+    detectOtel();
   });
 
   live = {
@@ -219,6 +264,7 @@ export function init(config: D0barConfig): D0barHandle {
         phase: currentPhase(),
         entryTypes: activeEntryTypes(),
         tier2: tier2State(),
+        otel: otelState(),
         requests: size(),
         dropped: ring.dropped,
         interned: interned.size,

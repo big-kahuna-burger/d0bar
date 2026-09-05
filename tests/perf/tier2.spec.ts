@@ -243,7 +243,10 @@ test.describe("honest degradation", () => {
        monochrome display and a colour-blind reader all lose the dot. */
     expect(footer.tiers[1]).toMatchObject({ state: "off", label: "2 SW off" });
     expect(footer.tiers[2]?.state).toBe("planned");
-    expect(footer.tiers[3]?.state).toBe("planned");
+    /* Tier 4 is built now, so `off` rather than `planned` — this page has no OpenTelemetry
+       SDK, which is a state about the page, not about d0bar's backlog. Its own reasons are
+       asserted in `otel.spec.ts`. */
+    expect(footer.tiers[3]).toMatchObject({ state: "off", label: "4 OTel SDK off" });
 
     /* Degraded outranks the measurement: with no trace context there is no trace jump, and
        saying `Δ INP …` here would answer a question nobody can act on. */

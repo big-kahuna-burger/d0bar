@@ -143,3 +143,84 @@ describe("the load-phase moratorium", () => {
     expect(() => detectOtel(pageWith(attachable))).toThrow(/load phase/);
   });
 });
+
+describe("attachment", () => {
+  it("installs the sink into a provider that accepts one", () => {
+    const installed: unknown[] = [];
+    const provider = {
+      getTracer: () => ({}),
+      addSpanProcessor: (processor: unknown) => installed.push(processor),
+    };
+    expect(detectOtel(pageWith(provider))).toEqual({ kind: "live", owner: "d0bar" });
+
+    /* Attached, once, and with the read-only sink rather than anything that exports. */
+    expect(installed).toHaveLength(1);
+    const sink = installed[0] as Record<string, unknown>;
+    expect(typeof sink.onEnd).toBe("function");
+    expect(typeof sink.forceFlush).toBe("function");
+    expect(sink.export).toBeUndefined();
+  });
+
+  it("calls addSpanProcessor on the provider, not on the proxy", () => {
+    /* The proxy has no `addSpanProcessor` at all, so a call bound to the wrong receiver would
+       fail on a real SDK where it happens to work on a plain object literal. */
+    const seen: unknown[] = [];
+    const provider = {
+      getTracer: () => ({}),
+      addSpanProcessor(this: unknown) {
+        /* Pushed rather than assigned to a local: `no-this-alias` forbids the assignment, and
+           the receiver is what this test is about. */
+        seen.push(this);
+      },
+    };
+    detectOtel(pageWith(provider));
+    expect(seen).toEqual([provider]);
+  });
+
+  it("reports attach-failed, not live, when the provider throws on the call", () => {
+    /* A provider that has been shut down does exactly this. Reporting `live` here would put a
+       tier badge on a panel that will never receive a span. */
+    const provider = {
+      getTracer: () => ({}),
+      addSpanProcessor: () => {
+        throw new Error("provider has shut down");
+      },
+    };
+    expect(detectOtel(pageWith(provider))).toEqual({
+      kind: "off",
+      reason: "attach-failed",
+    });
+  });
+
+  it("patches nothing on a sealed provider", () => {
+    const provider = { getTracer: () => ({}) };
+    const before = Object.keys(provider);
+    expect(detectOtel(pageWith(provider))).toEqual({
+      kind: "off",
+      reason: "provider-sealed",
+    });
+    /* The 2.x default. Left exactly as it was found — no `_activeSpanProcessor`, no new key. */
+    expect(Object.keys(provider)).toEqual(before);
+  });
+});
+
+describe("the host-installed processor", () => {
+  it("makes tier 4 live with the host as owner", async () => {
+    const { otelSpanProcessor } = await import("../../src/collector/otel");
+    otelSpanProcessor();
+    expect(otelState()).toEqual({ kind: "live", owner: "host" });
+  });
+
+  it("returns the same processor every time it is asked", async () => {
+    const { otelSpanProcessor } = await import("../../src/collector/otel");
+    expect(otelSpanProcessor()).toBe(otelSpanProcessor());
+  });
+
+  it("is not demoted to sealed when detection runs afterwards", async () => {
+    /* A host who installed the processor has a provider that is sealed by construction, so
+       running the ladder against it would report a tier that is collecting spans as off. */
+    const { otelSpanProcessor } = await import("../../src/collector/otel");
+    otelSpanProcessor();
+    expect(detectOtel(pageWith(sealed))).toEqual({ kind: "live", owner: "host" });
+  });
+});

@@ -7,6 +7,7 @@ import {
   F_NO_PHASES,
   F_RENDER_BLOCKING,
   F_STATUS_UNKNOWN,
+  F_TRACE_CONFLICT,
   F_XHR,
 } from "../shared/flags";
 
@@ -237,6 +238,34 @@ export function correlate(
   if (fields.method) col.methodId[slot] = intern(fields.method);
   col.contextId[slot] = fields.contextId;
   if (fields.hasSpan) col.flags[slot] = (col.flags[slot] as number) | F_HAS_SPAN;
+  return true;
+}
+
+/**
+ * Writes tier 4's identity onto a record.
+ *
+ * Deliberately narrower than {@link correlate}: a `contextId` and the `F_HAS_SPAN` bit, and
+ * no parameter for anything else. Tier 4 knows a request's identity and nothing about its
+ * timing, size or status — every one of those is tier 1's, measured by the browser — so the
+ * signature is where that is enforced rather than a comment asking future callers not to.
+ */
+export function adoptSpan(index: number, contextId: number): boolean {
+  const count = size();
+  if (index < 0 || index >= count) return false;
+  const base = written < CAPACITY ? 0 : written - CAPACITY;
+  const slot = (base + index) & MASK;
+  col.contextId[slot] = contextId;
+  col.flags[slot] = (col.flags[slot] as number) | F_HAS_SPAN;
+  return true;
+}
+
+/** Sets `F_TRACE_CONFLICT`. See the flag's own note for why this is not a resolution. */
+export function flagConflict(index: number): boolean {
+  const count = size();
+  if (index < 0 || index >= count) return false;
+  const base = written < CAPACITY ? 0 : written - CAPACITY;
+  const slot = (base + index) & MASK;
+  col.flags[slot] = (col.flags[slot] as number) | F_TRACE_CONFLICT;
   return true;
 }
 

@@ -1,4 +1,5 @@
 import { assertSettled } from "./phase";
+import { createSpanSink, type ReadOnlySpanProcessor } from "./otel-sink";
 
 /**
  * Tier 4 — adopting the host's own OpenTelemetry spans.
@@ -47,7 +48,12 @@ export type OtelBlocked =
   | "no-provider"
   /* The provider cannot take a processor after construction, and the host has not installed
      d0bar's own. The 2.x default. */
-  | "provider-sealed";
+  | "provider-sealed"
+  /* The provider offered `addSpanProcessor` and then threw when it was called — a provider
+     that has already been shut down does this. Distinct from `provider-sealed` because the
+     remedy is different: a sealed provider needs the host to install `otelSpanProcessor()`,
+     and this one needs nothing, because the SDK it belongs to has stopped. */
+  | "attach-failed";
 
 let state: OtelState = { kind: "off", reason: "no-sdk" };
 
@@ -94,15 +100,56 @@ export interface SpanRecord {
 }
 
 /**
- * Reads the registered provider, or reports why there is none.
+ * The processor a host installs themselves.
+ *
+ * The analogue of `d0bar-sw-module`: where d0bar cannot reach in, the host reaches out. On
+ * the 2.x line — which is what a browser host installs today — a provider takes its
+ * processors at construction and exposes no supported way to add one afterwards, so this is
+ * the *primary* path, not a fallback for exotic setups:
+ *
+ * ```js
+ * import { WebTracerProvider } from "@opentelemetry/sdk-trace-web";
+ * const provider = new WebTracerProvider({ spanProcessors: [D0bar.otelSpanProcessor()] });
+ * provider.register();
+ * ```
+ *
+ * Calling this is what makes tier 4 live with owner `host`. It is idempotent — a host that
+ * calls it twice installs the same sink twice into their own provider, which double-counts
+ * nothing because both calls return the one processor.
+ */
+export function otelSpanProcessor(): ReadOnlySpanProcessor {
+  if (!sink) sink = createSpanSink();
+  /* A host who installed the processor has made tier 4 live by doing so, whatever the
+     provider's own shape says. Recorded here rather than inferred later: by the time the
+     panel asks, the provider is sealed and looks identical to one that refused us. */
+  state = { kind: "live", owner: "host" };
+  return sink;
+}
+
+/** The sink, created on first use. Absent on the overwhelming majority of pages. */
+let sink: ReadOnlySpanProcessor | undefined;
+
+/**
+ * Reads the registered provider, attaches the sink where that is supported, and reports why
+ * it could not where it is not.
  *
  * Never throws. A page with no SDK, a page whose SDK failed to register, and a page whose
  * provider is sealed are three different supported states, and the panel says which.
+ *
+ * Nothing is patched. The only mutation attempted is `addSpanProcessor`, which is the
+ * provider's own supported API for exactly this; a provider that does not offer it is left
+ * untouched and reported as sealed. Reaching into `_activeSpanProcessor` would work on the
+ * 2.x line and is the one thing this file exists to refuse.
  */
 export function detectOtel(scope: object = globalThis): OtelState {
   /* Detection is a derivation and a decision, so it is not permitted during the load phase —
      the same rule that governs everything except recording an entry. */
   assertSettled("OpenTelemetry detection");
+
+  /* A host who installed `otelSpanProcessor()` themselves is already live, and their provider
+     is sealed by construction — running the ladder below would demote them to
+     `provider-sealed` and report a tier that is collecting spans as off. */
+  if (state.kind === "live" && state.owner === "host") return state;
 
   const api = readApi(scope);
   if (!api) {
@@ -119,7 +166,19 @@ export function detectOtel(scope: object = globalThis): OtelState {
   /* Feature-tested on the unwrapped delegate, never inferred from a version. The symbol's
      `version` is the *API* package's, measured as 1.9.1 against both a 1.x and a 2.x SDK —
      branching on it would take the attachable path against a provider that is not. */
-  if (typeof (delegate as Attachable).addSpanProcessor === "function") {
+  const add = (delegate as Attachable).addSpanProcessor;
+  if (typeof add === "function") {
+    if (!sink) sink = createSpanSink();
+    try {
+      (add as (processor: ReadOnlySpanProcessor) => void).call(delegate, sink);
+    } catch {
+      /* Non-fatal, and reported rather than swallowed into a live state. The provider offered
+         the method and then refused the call — a shut-down provider does exactly this — so
+         d0bar is not attached, and saying "live" here would put a tier badge on a panel that
+         will never receive a span. */
+      state = { kind: "off", reason: "attach-failed" };
+      return state;
+    }
     state = { kind: "live", owner: "d0bar" };
     return state;
   }
@@ -175,4 +234,5 @@ function unwrap(provider: ProxyLike | undefined): unknown {
 /** Test seam. */
 export function resetOtel(): void {
   state = { kind: "off", reason: "no-sdk" };
+  sink = undefined;
 }

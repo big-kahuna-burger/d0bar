@@ -6,5 +6,9 @@ bench/last-budget.json
 test-results
 playwright-report
 
+# Bundled by scripts/build-otel-fixture.mjs on every perf run. A committed copy of someone
+# else's SDK is a stale copy waiting to happen.
+bench/fixtures/host/otel-sdk.js
+
 # Agent worktrees: whole checkouts of this repo, created by background agents.
 .claude/worktrees

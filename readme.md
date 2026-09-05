@@ -292,7 +292,7 @@ precisely because the set is a sum.
 | 3 · `Server-Timing`       | _where in the backend_ — the response carries the server's own phases                                   | one opaque wait bar instead of server-side segments                                       |
 | 4 · Host OTel SDK         | _the spans themselves_ — the host already builds them, so reading them beats reconstructing them        | the jump from a slow request to its trace is a search rather than a link                  |
 
-Tiers 3 and 4 are not wired to anything yet and render as `planned`.
+Tier 3 is not wired to anything yet and renders as `planned`.
 
 ## Tier 2 — the service worker
 
@@ -412,6 +412,59 @@ occasionally costs 40 ms is not free, and a mean hides exactly that.
 host page's critical path and is measured alone. Stage 2 is the panel, loaded on first open.
 
 ---
+
+## Tier 4 — adopting the host's OpenTelemetry spans
+
+**d0bar never installs an SDK.** An OpenTelemetry browser SDK patches `fetch` and
+`XMLHttpRequest`; that is a legitimate cost for a customer who chose it and an illegitimate one
+for a toolbar whose entire claim is that it does not move the numbers it reports. So tier 4
+reads a provider the host already registered, or says there is none.
+
+What it adds, on a page that has one:
+
+- a trace id for requests the service worker never saw — anything issued before the worker took
+  control, and everything on a page where tier 2 is off entirely;
+- a second, independent reading of the trace id on requests tier 2 _did_ see. Where the two
+  disagree, the record is flagged (`F_TRACE_CONFLICT`) and the disagreement is reported.
+  Neither wins: tier 2 read the header the browser actually sent, tier 4 read the span the SDK
+  intended to send, and a disagreement means one of the two joins matched the wrong pair.
+
+No OpenTelemetry package is a dependency of d0bar, and none is bundled. The API is read off its
+own registered global or it is absent, which is what makes this tier cost nothing on the
+overwhelming majority of pages — and the build **fails** if `@opentelemetry/` ever appears in a
+shipped artifact.
+
+### Turning it on
+
+On `@opentelemetry/sdk-trace-web` 2.x — what a browser host actually installs today — a
+provider takes its span processors at construction and offers no supported way to add one
+afterwards. Measured, not assumed: `addSpanProcessor` is `undefined` on the 2.x line. So the
+host installs d0bar's processor themselves:
+
+```js
+import { WebTracerProvider } from "@opentelemetry/sdk-trace-web";
+
+const provider = new WebTracerProvider({
+  spanProcessors: [D0bar.otelSpanProcessor()],
+});
+provider.register();
+```
+
+The processor **reads and never exports**: `onStart` is empty, `onEnd` copies five fields out
+and drops the span, and `forceFlush`/`shutdown` resolve immediately because nothing is
+buffered. There is no second exporter and no extra network.
+
+On a 1.x provider, which does expose `addSpanProcessor`, d0bar attaches itself at settle and
+the host does nothing. The one thing d0bar will not do on either line is reach into the
+provider's private `_activeSpanProcessor` — that is the monkey-patching this project exists to
+refuse, and it is why a sealed provider reports `provider-sealed` rather than quietly working.
+
+### What a span must carry
+
+A URL, in `url.full` or the older `http.url`. Spans with neither are counted and dropped, never
+matched by name — a host is free to name a span `GET /api/quote` for a request to a different
+origin, or to name three spans the same, so matching on it would be a plausible inference
+rather than an observation.
 
 ## License
 

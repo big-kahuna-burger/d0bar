@@ -1,0 +1,58 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Northwind Freight — OTel fixture</title>
+
+    <!--
+      A page with a real OpenTelemetry SDK, which is the only way to exercise tier 4's live
+      path. Deliberately a separate page from `index.html`: the observer-effect arms all run
+      against `/`, and an SDK on that page would put 100 kB of someone else's code inside
+      what the benchmark measures. Nothing here is loaded by any other spec.
+
+      Loaded synchronously and in this order, because the order is the thing under test:
+
+        1. d0bar, so `D0bar.otelSpanProcessor()` exists;
+        2. the bundled SDK;
+        3. registration, passing the processor at construction — the only path a 2.x
+           provider supports.
+
+      A processor installed after the first span would miss it, which is why a host has to do
+      this before their application code runs, and why the page does it here rather than in a
+      module that might be deferred.
+    -->
+    <script src="/dist/d0bar.iife.js" data-d0bar-enabled></script>
+    <script src="/otel-sdk.js"></script>
+    <script>
+      window.__otelProvider = OtelFixture.install();
+    </script>
+  </head>
+  <body>
+    <h1>OTel fixture</h1>
+    <p id="status">issuing traced requests…</p>
+
+    <script>
+      /*
+        Requests issued inside the host's own spans. `fetch` is called by the fixture, not by
+        an auto-instrumentation that patches it — a page that patched `fetch` could not be
+        used to demonstrate that d0bar does not.
+
+        One URL is requested twice on purpose: two spans on one URL in one flush is the
+        ambiguous case, and the join has to report it as ambiguous rather than pick.
+      */
+      (async function () {
+        await OtelFixture.tracedFetch("/api/resource?i=901&delay=5&status=200");
+        await OtelFixture.tracedFetch("/api/resource?i=902&delay=5&status=200");
+        await OtelFixture.tracedFetch("/api/resource?i=903&delay=5&status=200");
+
+        /* An untraced request, so the page has both kinds and a panel showing every row as
+           traced would be visibly wrong. */
+        await fetch("/api/resource?i=904&delay=5&status=200").then((r) => r.text());
+
+        document.getElementById("status").textContent = "done";
+        window.__otelDone = true;
+      })();
+    </script>
+  </body>
+</html>

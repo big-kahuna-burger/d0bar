@@ -4,7 +4,7 @@
       "/Users/bkb/.n/bin/node",
       "/Users/bkb/d/dash0/d0bar/node_modules/@playwright/test/cli.js",
       "test",
-      "tests/perf/non-perturbation.spec.ts"
+      "tests/perf/otel.spec.ts"
     ],
     "configFile": "/Users/bkb/d/dash0/d0bar/playwright.config.ts",
     "rootDir": "/Users/bkb/d/dash0/d0bar/tests/perf",
@@ -63,7 +63,7 @@
     "version": "1.62.1",
     "workers": 1,
     "webServer": {
-      "command": "node bench/fixtures/server.mjs",
+      "command": "node scripts/build-otel-fixture.mjs && node bench/fixtures/server.mjs",
       "url": "http://127.0.0.1:8732/health",
       "reuseExistingServer": false,
       "stdout": "ignore"
@@ -71,55 +71,20 @@
   },
   "suites": [
     {
-      "title": "non-perturbation.spec.ts",
-      "file": "non-perturbation.spec.ts",
+      "title": "otel.spec.ts",
+      "file": "otel.spec.ts",
       "column": 0,
       "line": 0,
-      "specs": [
-        {
-          "title": "reports a real cache hit through deliveryType",
-          "ok": true,
-          "tags": [],
-          "tests": [
-            {
-              "timeout": 600000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "chromium",
-              "projectName": "chromium",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 3307,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-09-05T19:30:11.825Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            }
-          ],
-          "id": "fedc85524d6fbb490aaa-1ee469b8e7ce16e8968f",
-          "file": "non-perturbation.spec.ts",
-          "line": 259,
-          "column": 1
-        }
-      ],
+      "specs": [],
       "suites": [
         {
-          "title": "with the toolbar enabled",
-          "file": "non-perturbation.spec.ts",
-          "line": 25,
+          "title": "with a real SDK installed",
+          "file": "otel.spec.ts",
+          "line": 63,
           "column": 6,
           "specs": [
             {
-              "title": "leaves fetch and XMLHttpRequest strictly unpatched",
+              "title": "reports tier 4 live, owned by the host",
               "ok": true,
               "tags": [],
               "tests": [
@@ -134,12 +99,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1675,
+                      "duration": 786,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T19:29:53.359Z",
+                      "startTime": "2026-09-05T19:58:45.001Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -147,13 +112,13 @@
                   "status": "expected"
                 }
               ],
-              "id": "fedc85524d6fbb490aaa-887e012e839215cfd84a",
-              "file": "non-perturbation.spec.ts",
-              "line": 31,
+              "id": "2db8b5f5416cc995a965-b65621af8d5f5b698e69",
+              "file": "otel.spec.ts",
+              "line": 64,
               "column": 3
             },
             {
-              "title": "adds no rule to the host document",
+              "title": "adopts the spans, giving traced rows a trace id the worker never supplied",
               "ok": true,
               "tags": [],
               "tests": [
@@ -168,12 +133,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1664,
+                      "duration": 663,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T19:29:55.124Z",
+                      "startTime": "2026-09-05T19:58:45.985Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -181,13 +146,13 @@
                   "status": "expected"
                 }
               ],
-              "id": "fedc85524d6fbb490aaa-f17e53d03043a2a4f999",
-              "file": "non-perturbation.spec.ts",
-              "line": 50,
+              "id": "2db8b5f5416cc995a965-b9fb2f2624b01c7c1647",
+              "file": "otel.spec.ts",
+              "line": 77,
               "column": 3
             },
             {
-              "title": "mounts exactly one element, and only after the load phase",
+              "title": "leaves fetch unpatched on a page that has an SDK",
               "ok": true,
               "tags": [],
               "tests": [
@@ -202,12 +167,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1671,
+                      "duration": 583,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T19:29:56.797Z",
+                      "startTime": "2026-09-05T19:58:46.653Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -215,55 +180,21 @@
                   "status": "expected"
                 }
               ],
-              "id": "fedc85524d6fbb490aaa-c5ba3a82d44b1a839e53",
-              "file": "non-perturbation.spec.ts",
-              "line": 66,
-              "column": 3
-            },
-            {
-              "title": "records nothing into the host page's own storage",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 600000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1666,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-09-05T19:29:58.478Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "fedc85524d6fbb490aaa-df151b9d0b48fd0761bd",
-              "file": "non-perturbation.spec.ts",
-              "line": 82,
+              "id": "2db8b5f5416cc995a965-d0e61d7cca4701d86197",
+              "file": "otel.spec.ts",
+              "line": 103,
               "column": 3
             }
           ]
         },
         {
-          "title": "with the toolbar present but not enabled",
-          "file": "non-perturbation.spec.ts",
-          "line": 93,
+          "title": "without an SDK",
+          "file": "otel.spec.ts",
+          "line": 116,
           "column": 6,
           "specs": [
             {
-              "title": "does nothing at all",
+              "title": "reports tier 4 off with the ordinary reason, not as a failure",
               "ok": true,
               "tags": [],
               "tests": [
@@ -278,12 +209,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1666,
+                      "duration": 1755,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T19:30:00.154Z",
+                      "startTime": "2026-09-05T19:58:47.245Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -291,119 +222,9 @@
                   "status": "expected"
                 }
               ],
-              "id": "fedc85524d6fbb490aaa-70c6f83efae5744a82f4",
-              "file": "non-perturbation.spec.ts",
-              "line": 94,
-              "column": 3
-            }
-          ]
-        },
-        {
-          "title": "host event surface",
-          "file": "non-perturbation.spec.ts",
-          "line": 153,
-          "column": 6,
-          "specs": [
-            {
-              "title": "adds exactly the shortcut listener, and nothing else",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 600000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 3342,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-09-05T19:30:01.826Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "fedc85524d6fbb490aaa-01503f1e907ea50cd516",
-              "file": "non-perturbation.spec.ts",
-              "line": 209,
-              "column": 3
-            },
-            {
-              "title": "adds no listener at all when the shortcut is disabled",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 600000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 3318,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-09-05T19:30:05.174Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "fedc85524d6fbb490aaa-df41b1bd3b7c9431cd58",
-              "file": "non-perturbation.spec.ts",
-              "line": 220,
-              "column": 3
-            },
-            {
-              "title": "adds none after teardown either",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 600000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 3321,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-09-05T19:30:08.497Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "fedc85524d6fbb490aaa-a1e5732e69aaa458b2e8",
-              "file": "non-perturbation.spec.ts",
-              "line": 233,
+              "id": "2db8b5f5416cc995a965-4308786008489b43027e",
+              "file": "otel.spec.ts",
+              "line": 117,
               "column": 3
             }
           ]
@@ -413,9 +234,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-09-05T19:29:53.065Z",
-    "duration": 22109.548,
-    "expected": 9,
+    "startTime": "2026-09-05T19:58:44.438Z",
+    "duration": 4588.408,
+    "expected": 4,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0

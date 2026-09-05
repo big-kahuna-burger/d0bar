@@ -85,6 +85,19 @@ function minifyLibOutput(options: () => MinifyOptions, expectedGlobal: string | 
         }
       }
 
+      /* Tier 4's central claim is that d0bar ships no OpenTelemetry code: it reads a provider
+         the host already registered, and a page without an SDK pays nothing. An ESLint rule
+         bans the import, but lint is not what ships — a transitive dependency, a type import
+         that stops being type-only, or a stray `require` would all land here with the rule
+         still green. Checked against the emitted bytes, which is the only place the claim is
+         actually true or false. Verified by hand this run: 0 occurrences in all artifacts. */
+      if (/@opentelemetry\//.test(result.code)) {
+        throw new Error(
+          "d0bar: the bundle contains `@opentelemetry/` — tier 4 adopts the host's SDK and " +
+            "must never ship one. Something imported an OpenTelemetry package.",
+        );
+      }
+
       return { code: result.code, map: null };
     },
   };

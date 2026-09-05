@@ -6,7 +6,7 @@ import { resolveTiers } from "./tier";
 import { requestsView } from "./views/requests";
 import { traceView } from "./views/trace";
 import { vitalsView } from "./views/vitals";
-import type { Tier1Access, Tier2State } from "../shared/stage2";
+import type { OtelState, Tier1Access, Tier2State } from "../shared/stage2";
 import {
   escape as shellEscape,
   open,
@@ -19,6 +19,7 @@ import {
   showUntracedBadge,
   tab,
   tier2,
+  otel,
   tip,
   unhoverTip,
   untracedCount,
@@ -46,6 +47,8 @@ export interface PanelOptions {
    * not cross the boundary on its own.
    */
   tier2: Tier2State;
+  /** Tier 4's state, resolved by stage 1. Passed for the same reason as `tier2`. */
+  otel: OtelState;
   /** The ring, owned by stage 1 — see `Tier1Access`. */
   tier1: Tier1Access;
 }
@@ -146,6 +149,7 @@ export function openPanel(options: PanelOptions): PanelHandle {
      itself, because the corrected state is the one the user is least likely to be looking
      at when it changes. */
   tier2.set(options.tier2);
+  otel.set(options.otel);
   const bindings = scope();
 
   /* Adopted alongside the pill's sheet rather than replacing it — the token prelude lives
@@ -341,7 +345,7 @@ export function openPanel(options: PanelOptions): PanelHandle {
   /* Resolved once per tier, then bound: `tier2Live` is a signal because the scope can be
      lost or gained after the panel has mounted — a host worker that claims the scope, or a
      registration that has not finished when the panel is opened early. */
-  const tiers = () => resolveTiers(tier2());
+  const tiers = () => resolveTiers(tier2(), otel());
 
   for (let i = 0; i < 4; i += 1) {
     const at = () => tiers()[i] as ReturnType<typeof resolveTiers>[number];
@@ -487,6 +491,14 @@ export function openPanel(options: PanelOptions): PanelHandle {
     .then((result) => {
       tier2.set(result.tier2);
       untracedCount.set(result.unjoined.length);
+      /* Repaint, because the flush wrote into the ring behind the list's back.
+     
+         The rows were painted from records that had no trace id yet — the join is
+         deliberately post-settle and asynchronous — and nothing else will repaint them: the
+         list refreshes on a resource batch, and on a page that has gone quiet the next batch
+         may never come. Tier 2's chips had the same latent bug and it was invisible because
+         a busy fixture always produced another batch. */
+      requests.refresh();
     })
     .catch(() => {
       /* `flushCorrelation` is written not to reject; this is the belt to that braces. A

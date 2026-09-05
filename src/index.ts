@@ -1,7 +1,20 @@
 import { init, destroy } from "./collector";
+import { otelSpanProcessor } from "./collector/otel";
 import type { D0barConfig, D0barHandle, Diagnostics } from "./collector";
 
-export { init, destroy };
+/**
+ * `otelSpanProcessor` is public because tier 4's primary path runs through the host.
+ *
+ * A `@opentelemetry/sdk-trace-web` 2.x provider takes its span processors at construction and
+ * offers no supported way to add one afterwards, so on the line browsers actually run, d0bar
+ * cannot attach itself. The host does it:
+ *
+ *   const provider = new WebTracerProvider({ spanProcessors: [D0bar.otelSpanProcessor()] });
+ *
+ * The processor reads and never exports — no second exporter, no extra network, and the span
+ * object is not retained past the callback.
+ */
+export { init, destroy, otelSpanProcessor };
 export type { D0barConfig, D0barHandle, Diagnostics };
 
 /**

@@ -1,5 +1,6 @@
 import { background } from "./schedule";
 import type { RequestRecord } from "./record";
+import type { SpanEntry } from "../collector/join";
 
 /**
  * The stage-2 boundary.
@@ -88,6 +89,15 @@ export interface PanelOptions {
    */
   tier2: Tier2State;
   /**
+   * Tier 4's state, resolved by stage 1 and handed over at open time.
+   *
+   * Crosses the boundary for exactly the reason `tier2` does, and the failure would be the
+   * same shape: `otel.ts` records the detection outcome in a module-level variable, so
+   * stage 2's copy of that module is a second one that has never run detection and reports
+   * `no-sdk` on a page whose provider d0bar is attached to.
+   */
+  otel: OtelState;
+  /**
    * Access to the request ring, which stage 1 owns.
    *
    * Handed over rather than imported, for the same reason as `tier2` and with a sharper
@@ -110,6 +120,30 @@ export interface Tier1Access {
     index: number,
     fields: { method: string; contextId: number; hasSpan: boolean },
   ): void;
+  /**
+   * The spans tier 4 has adopted, projected to what the join keys on.
+   *
+   * Handed across for the same reason as the ring: `otel-sink.ts` holds its spans in
+   * module-level typed arrays, so stage 2's copy of that module is a second, empty sink. An
+   * empty array here is the ordinary case — most pages have no OpenTelemetry SDK.
+   */
+  spans(): SpanEntry[];
+  /**
+   * Writes tier 4's identity onto a record tier 2 never matched.
+   *
+   * Identity only, and the type is what enforces it: there is no field here for a timing, a
+   * status or a size, so tier 4 cannot overwrite a number tier 1 measured. A record tier 2
+   * already gave a trace id keeps tier 2's — the header is what the backend received.
+   */
+  adoptSpan(index: number, contextId: number): void;
+  /**
+   * Marks a record where tier 2 and tier 4 disagree about the trace id.
+   *
+   * Sets `F_TRACE_CONFLICT` and nothing else. The disagreement is not resolved here or
+   * anywhere: one of the two joins matched the wrong pair, and picking a winner would print
+   * a wrong trace id with full confidence.
+   */
+  flagConflict(index: number): void;
   /**
    * Records currently retained, and how many were lost to overflow.
    *
@@ -192,6 +226,14 @@ export interface VitalsReading {
   /** Entry types this browser accepted. An absent type is a state to report, not an error. */
   entryTypes: readonly string[];
 }
+
+/** Mirrors `collector/otel.ts`. Duplicated deliberately — see the note on `PanelModule`. */
+export type OtelState =
+  | { kind: "live"; owner: "d0bar" | "host" }
+  | {
+      kind: "off";
+      reason: "no-sdk" | "no-provider" | "provider-sealed" | "attach-failed";
+    };
 
 /** Mirrors `collector/sw.ts`. Duplicated deliberately — see the note on `PanelModule`. */
 export type Tier2State =

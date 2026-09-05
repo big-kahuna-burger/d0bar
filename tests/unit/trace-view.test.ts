@@ -67,6 +67,11 @@ function fakeRing(records: RequestRecord[]): Tier1Access {
   return {
     entries: () => [],
     correlate: () => {},
+    /* Tier 4's side of the boundary. Not exercised here, but the boundary is one interface —
+       stubbed rather than cast away so a change to it fails in this file. */
+    spans: () => [],
+    adoptSpan: () => {},
+    flagConflict: () => {},
     stats: () => ({ written: records.length, dropped: 0, capacity: 64 }),
     read(index, out) {
       const record = records[index];

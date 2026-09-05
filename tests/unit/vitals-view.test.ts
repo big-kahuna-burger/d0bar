@@ -53,6 +53,11 @@ function fakeTier1(): FakeTier1 {
     reads: () => reads,
     entries: () => [],
     correlate: () => {},
+    /* Tier 4's side of the boundary. Not exercised here, but the boundary is one interface —
+       stubbed rather than cast away so a change to it fails in this file. */
+    spans: () => [],
+    adoptSpan: () => {},
+    flagConflict: () => {},
     stats: () => ({ written: 0, dropped: 0, capacity: 0 }),
     read: () => false,
     onBatch: () => () => {},

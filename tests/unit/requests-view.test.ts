@@ -62,6 +62,11 @@ function fakeRing(): FakeRing {
     },
     entries: () => [],
     correlate: () => {},
+    /* Tier 4's side of the boundary. Not exercised here, but the boundary is one interface —
+       stubbed rather than cast away so a change to it fails in this file. */
+    spans: () => [],
+    adoptSpan: () => {},
+    flagConflict: () => {},
     stats: () => ({ written, dropped, capacity: CAPACITY }),
     read(index, out) {
       const record = slots[index];

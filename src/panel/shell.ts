@@ -1,5 +1,6 @@
 import { computed, signal } from "spark-signals/signal";
 import type { Tier2State } from "../collector/sw";
+import type { OtelState } from "../shared/stage2";
 
 /**
  * Shell state.
@@ -136,6 +137,15 @@ export const inTrace = computed(() => view() === "trace");
 export const tier2 = signal<Tier2State>({ kind: "off", reason: "not-registered" });
 
 export const tier2Live = computed(() => tier2().kind === "live");
+
+/**
+ * Tier 4's state.
+ *
+ * A signal for the same reason `tier2` is one: detection runs at settle and a host can call
+ * `otelSpanProcessor()` at any point after that, so a value read once at mount would report
+ * `no-sdk` on a page that has since gone live.
+ */
+export const otel = signal<OtelState>({ kind: "off", reason: "no-sdk" });
 
 /**
  * The toolbar's own measured INP cost, in milliseconds, or `null` when nothing has measured

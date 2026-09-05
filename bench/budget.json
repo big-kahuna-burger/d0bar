@@ -86,16 +86,20 @@
   "bundleSize": [
     {
       "artifact": "dist/d0bar.js / dist/d0bar.iife.js",
-      "limit": "6.5 kB",
-      "lastMeasured": "6.66 kB ESM, 6.76 kB IIFE — OVER the 6.5 kB limit, and deliberately not raised",
-      "overrun": "add-vitals-view costs stage 1 about 410 B for vital attribution: `selectorOf` plus six module-level strings and the four capture sites. None of it can move to stage 2, because the selector has to be derived while the entry's element is still alive and the panel loads long after. The limit was left at 6.5 kB rather than raised, because stage 1 is the only bundle on a host page's critical path and is the number the product's central claim rests on. The fix on the table is the one already noted below: deferring the pill behind a post-settle dynamic import restores roughly 1.7 kB, which is four times the overrun and would leave real headroom instead of buying 400 B.",
+      "limit": "8 kB",
+      "previousLimit": "6.5 kB",
+      "lastMeasured": "7.51 kB ESM, 7.62 kB IIFE",
+      "raisedBy": "add-vitals-view and add-otel-adoption, on the user's explicit instruction",
+      "raisedRationale": "Raised on the user's explicit instruction, after being deliberately left alone twice. This is the number the product's central claim rests on, so what it now covers is recorded rather than absorbed. Two changes account for the 1.01 kB: add-vitals-view cost about 410 B for vital attribution (`selectorOf`, six module-level strings and the four capture sites), none of which can move to stage 2 because the selector has to be derived while the entry's element is still alive and the panel loads long after; add-otel-adoption cost about 850 B for tier 4's detection ladder, the span sink and the three new boundary methods. THE HONEST OBJECTION TO THE SECOND ONE: the sink is roughly 500 B of code that is dead on any page without an OpenTelemetry SDK, which is the overwhelming majority of them, and it is on the critical path because `otelSpanProcessor()` must be callable synchronously when a host constructs their provider — long before a dynamic import could resolve. The structural fix for the whole budget is still the one recorded below and still not taken: deferring the pill behind a post-settle dynamic import restores roughly 1.7 kB, which is more than both changes combined.",
       "rationale": "Stage 1 is the only bundle on a host page's critical path, so this is the number the product's central claim rests on. Unchanged by add-sw-correlator, which cost it 0.28 kB (5.49 -> 5.77) for worker registration alone; the join and the log read deliberately live in stage 2. Unchanged by add-requests-view, which cost it 0.48 kB (5.77 -> 6.25): the ring stays in stage 1 and the panel is given a window onto it, so the boundary gained `stats`, `read`, `onBatch`, `onVisibility` and `visible` — five object-literal keys that cannot be mangled — plus the resource-batch notifier in observe.ts and the visibility reader in phase.ts. The list, the virtualizer and every row's markup are stage 2. 0.25 kB of headroom remains; the next stage-1 addition needs a measurement before it is written, not after."
     },
     {
       "artifact": "dist/d0bar.panel.js",
-      "limit": "15.5 kB",
-      "previousLimit": "11.5 kB",
-      "lastMeasured": "15.04 kB",
+      "limit": "16.5 kB",
+      "previousLimit": "15.5 kB",
+      "lastMeasured": "15.70 kB",
+      "raisedAgainBy": "add-otel-adoption",
+      "raisedAgainRationale": "660 B for tier 4's panel side: the four `OTEL_BLOCKED_COPY` strings and the two live-tier explanations, which are the tab's honest-degradation ladder rather than trimmable prose, plus the tier 4 join and the conflict path. Stage 2 is fetched at background priority after settle and is never on the critical path, which is why its budget can move where stage 1's could not.",
       "raisedBy": "add-trace-view",
       "raisedRationale": "Raised after the trace view measured 3.54 kB over. Measured on this tree rather than taken from the agent's report, and split before raising: rebuilding with only the `add-trace-view` CSS section removed gives 14.31 kB, so the surface costs 0.73 kB of stylesheet and 3.19 kB of code. The code is a hand-rolled state machine and the span waterfall; XState was measured and rejected at 13.10 kB gzipped for the six imports the machine needs, which is larger than the entire panel. Stage 1 is byte-identical across this merge (6.66 kB ESM, 6.76 kB IIFE both before and after), so the trace view put nothing on the critical path. What this budget does NOT yet buy: the surface cannot reach its `found` state in a shipped build, because issuing the query needs a credential `add-credential-broker` supplies and that change is unbuilt. Roughly half the 3.19 kB is therefore paying for a screen no user can currently reach, and the honest options if this is unacceptable are to defer the trace view behind its own dynamic import or to hold it out of the bundle until the broker lands — not to trim the absence copy, which is the only part of it that runs today.",
       "previousRaisedBy": "add-vitals-view",

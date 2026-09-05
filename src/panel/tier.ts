@@ -1,4 +1,5 @@
 import type { Tier2Blocked, Tier2State } from "../collector/sw";
+import type { OtelState } from "../shared/stage2";
 
 /**
  * Tier state, resolved from real capability checks.
@@ -43,13 +44,41 @@ const TIER_2_LIVE_HOST =
   "The host page's own service worker imported d0bar's module, so tier 2 is live inside a worker d0bar does not own.";
 
 /**
+ * Copy for each way tier 4 can be unavailable.
+ *
+ * `no-sdk` is deliberately not written as a degradation. The overwhelming majority of pages
+ * have no OpenTelemetry SDK and are entitled to a toolbar that says so plainly instead of
+ * implying the host has misconfigured something — the tier is off because there is nothing
+ * to adopt, not because anything failed.
+ */
+const OTEL_BLOCKED_COPY: Record<
+  "no-sdk" | "no-provider" | "provider-sealed" | "attach-failed",
+  string
+> = {
+  "no-sdk":
+    "This page has no OpenTelemetry SDK registered, so there are no spans to adopt. That is the ordinary case and nothing is wrong: d0bar will never install an SDK to create some, because a browser SDK patches fetch and XMLHttpRequest and this toolbar does not.",
+  "no-provider":
+    "An OpenTelemetry API is registered but does not resolve to a tracer provider, so there is nothing to attach to.",
+  "provider-sealed":
+    "This page's tracer provider takes its span processors at construction and offers no supported way to add one afterwards, which is the default on the 2.x line. d0bar will not reach into its internals. To turn tier 4 on, pass D0bar.otelSpanProcessor() in the provider's spanProcessors array.",
+  "attach-failed":
+    "The tracer provider accepted a span processor and then rejected the call, which is what a provider that has already shut down does. Nothing was patched and nothing is collected.",
+};
+
+const TIER_4_LIVE_D0BAR =
+  "d0bar attached a read-only span processor to the host's own tracer provider. It records five fields per span and exports nothing — no second exporter, no extra network, and the span object is not retained.";
+
+const TIER_4_LIVE_HOST =
+  "The host installed d0bar's span processor into their own provider, so tier 4 is live inside an SDK d0bar does not own.";
+
+/**
  * Resolves all four tiers.
  *
  * Tier 1 is unconditional: `PerformanceObserver` is the timing spine and is never absent —
- * every other tier only ever adds to it. Tiers 3 and 4 are `planned` because nothing is
- * wired to them, which is a statement about this codebase rather than about the host.
+ * every other tier only ever adds to it. Tier 3 is `planned` because nothing is wired to it,
+ * which is a statement about this codebase rather than about the host.
  */
-export function resolveTiers(tier2: Tier2State): Tier[] {
+export function resolveTiers(tier2: Tier2State, otel: OtelState): Tier[] {
   return [
     {
       label: "1 PerformanceObserver",
@@ -76,12 +105,19 @@ export function resolveTiers(tier2: Tier2State): Tier[] {
       detail:
         "Would carry the server's own phases on the response, turning one opaque wait bar into server-side segments. Not built yet, so it supplies nothing.",
     },
-    {
-      label: "4 OTel SDK",
-      state: "planned",
-      detail:
-        "Would read the spans the host's OpenTelemetry SDK already builds, making the jump from a slow request to its trace a link rather than a search. Not built yet, so it supplies nothing.",
-    },
+    otel.kind === "live"
+      ? {
+          label: "4 OTel SDK",
+          state: "live",
+          detail: otel.owner === "d0bar" ? TIER_4_LIVE_D0BAR : TIER_4_LIVE_HOST,
+        }
+      : {
+          /* Like tier 2's, the label carries the state as well as the dot — a screenshot, a
+             monochrome display and a colour-blind reader all lose the dot. */
+          label: "4 OTel SDK off",
+          state: "off",
+          detail: OTEL_BLOCKED_COPY[otel.reason],
+        },
   ];
 }
 

@@ -23,6 +23,114 @@ import type { FetchRecord } from "../sw/protocol";
  * present its trace id as certain.
  */
 
+/**
+ * A record from a tier that keys on URL: tier 2's fetch observations and tier 4's spans are
+ * the same shape of input to the same matching problem, so they share the queue-building
+ * below rather than each growing their own copy of it.
+ */
+export interface UrlKeyed {
+  url: string;
+  /** Issue order within the flush. The only ordering both sides of a join agree on. */
+  order: number;
+}
+
+/**
+ * Builds the per-URL FIFOs.
+ *
+ * Shared by {@link join} and {@link joinSpans}. `overflowed` is separated rather than
+ * dropped: every URL past the intern table's capacity collapses onto the same id, so
+ * matching them would attach one request's identity to another's timings.
+ */
+function queuesByUrl<T extends UrlKeyed>(
+  records: readonly T[],
+): { queues: Map<number, T[]>; overflowed: T[]; ambiguous: Set<number> } {
+  const queues = new Map<number, T[]>();
+  const overflowed: T[] = [];
+
+  for (const record of records) {
+    const id = intern(record.url);
+    if (id === ABSENT) continue;
+    if (id === OVERFLOW) {
+      overflowed.push(record);
+      continue;
+    }
+    let queue = queues.get(id);
+    if (!queue) {
+      queue = [];
+      queues.set(id, queue);
+    }
+    queue.push(record);
+  }
+
+  /* A URL with more than one record in the same flush cannot be ordered with confidence:
+     issue order and completion order diverge exactly when requests overlap. Computed once
+     per URL rather than per pop. */
+  const ambiguous = new Set<number>();
+  for (const [id, queue] of queues) if (queue.length > 1) ambiguous.add(id);
+
+  return { queues, overflowed, ambiguous };
+}
+
+/** One adopted span, reduced to what the tier 4 join needs. */
+export interface SpanEntry extends UrlKeyed {
+  traceId: string;
+  spanId: string;
+}
+
+/** A span matched to a tier 1 entry. Identity only — tier 4 supplies nothing else. */
+export interface SpanCorrelation {
+  traceId: string;
+  spanId: string;
+  /** False when an identical URL had a sibling span in the same flush. */
+  confident: boolean;
+}
+
+export interface SpanJoinResult {
+  matched: Map<number, SpanCorrelation>;
+  /**
+   * Spans with no tier 1 counterpart. Retained and counted for the same reason tier 2's
+   * leftovers are: a span the page's resource timeline never saw is a real observation, and
+   * discarding it here would make tier 4 look like it found less than it did.
+   */
+  unjoined: SpanEntry[];
+}
+
+/**
+ * Correlates adopted spans against the ring.
+ *
+ * Deliberately a separate function from {@link join} rather than a generic one with a
+ * `kind` parameter: the two produce different results. Tier 2 supplies a method and a
+ * sampling decision that tier 1 never has; tier 4 supplies identity and nothing else, and
+ * the return type is what enforces that — there is no field here for a timing, a status or
+ * a size, so a later change cannot let tier 4 overwrite one by accident.
+ */
+export function joinSpans(
+  entries: readonly Tier1Entry[],
+  spans: readonly SpanEntry[],
+): SpanJoinResult {
+  const matched = new Map<number, SpanCorrelation>();
+  const { queues, overflowed, ambiguous } = queuesByUrl(spans);
+
+  const ordered = [...entries].sort((a, b) => a.startTime - b.startTime);
+  for (const entry of ordered) {
+    const id = intern(entry.url);
+    const queue = queues.get(id);
+    if (!queue || queue.length === 0) continue;
+    const span = queue.shift() as SpanEntry;
+    matched.set(entry.index, {
+      traceId: span.traceId,
+      spanId: span.spanId,
+      confident: !ambiguous.has(id),
+    });
+  }
+
+  const unjoined: SpanEntry[] = [...overflowed];
+  for (const queue of queues.values()) for (const left of queue) unjoined.push(left);
+  unjoined.sort((a, b) => a.order - b.order);
+
+  return { matched, unjoined };
+}
+
 /** A tier 2 record matched to a tier 1 entry, or left over. */
 export interface Correlation {
   traceId: string;
@@ -64,33 +172,9 @@ export function join(
 ): JoinResult {
   const matched = new Map<number, Correlation>();
 
-  /* Per-URL FIFOs, keyed on the interned id. `OVERFLOW` is a real risk on a page with
-     thousands of distinct URLs, and every overflowing URL collapses to the same id — so
-     those records are excluded from matching rather than joined against each other, which
-     would attach one request's trace id to another's timings. */
-  const queues = new Map<number, FetchRecord[]>();
-  const overflowed: FetchRecord[] = [];
-
-  for (const record of records) {
-    const id = intern(record.url);
-    if (id === ABSENT) continue;
-    if (id === OVERFLOW) {
-      overflowed.push(record);
-      continue;
-    }
-    let queue = queues.get(id);
-    if (!queue) {
-      queue = [];
-      queues.set(id, queue);
-    }
-    queue.push(record);
-  }
-
-  /* A URL with more than one record in the same flush cannot be ordered with confidence:
-     issue order and completion order diverge exactly when requests overlap. Computed once
-     per URL rather than per pop. */
-  const ambiguous = new Set<number>();
-  for (const [id, queue] of queues) if (queue.length > 1) ambiguous.add(id);
+  /* Per-URL FIFOs, keyed on the interned id — see `queuesByUrl`, which tier 4's join
+     shares. */
+  const { queues, overflowed, ambiguous } = queuesByUrl(records);
 
   /* Tier 1 entries in start order, so the FIFO pops line up with issue order as closely as
      the two sources allow. The ring is already in completion order, which is not the same. */

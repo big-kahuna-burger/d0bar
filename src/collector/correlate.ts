@@ -1,5 +1,5 @@
 import { intern } from "../shared/intern";
-import { join, type Tier1Entry } from "./join";
+import { join, joinSpans, type Tier1Entry } from "./join";
 import type { Tier2State } from "./sw";
 import type { Tier1Access } from "../shared/stage2";
 import { readAll, loggingDegraded } from "../sw/log";
@@ -30,6 +30,17 @@ export interface FlushResult {
   /** True when the worker stopped logging (quota) and the log is therefore incomplete. */
   logDegraded: boolean;
   tier2: Tier2State;
+  /** Ring records that gained a trace id from tier 4 that tier 2 had not supplied. */
+  adopted: number;
+  /** Adopted spans with no tier 1 counterpart. Counted, never discarded. */
+  spansUnjoined: number;
+  /**
+   * Records where tier 2 and tier 4 both supplied a trace id and the two disagree.
+   *
+   * Reported rather than resolved — see `F_TRACE_CONFLICT`. A non-zero count here means one
+   * of the two joins matched the wrong pair, and the panel must say so instead of choosing.
+   */
+  traceConflicts: number;
 }
 
 /**
@@ -121,6 +132,8 @@ export async function flushCorrelation(options: {
 
   let correlated = 0;
   let lowConfidence = 0;
+  /* Trace ids tier 2 supplied, by ring index — the input to the conflict check below. */
+  const tier2Ids = new Map<number, string>();
   for (const [index, correlation] of result.matched) {
     /* A record with no traceparent still carries tier 2's method, which tier 1 never has.
        Only a real trace id earns a context handle and the `F_HAS_SPAN` flag. */
@@ -135,9 +148,51 @@ export async function flushCorrelation(options: {
       : 0;
 
     options.tier1.correlate(index, { method: correlation.method, contextId, hasSpan });
+    if (hasSpan) tier2Ids.set(index, correlation.traceId);
     if (hasSpan) correlated += 1;
     if (!correlation.confident) lowConfidence += 1;
   }
+
+  /* Tier 4, joined against the same entries and written back second.
+     
+     Second rather than first, and additively rather than authoritatively: tier 2 read the
+     `traceparent` the browser actually put on the wire, which is the header the backend
+     received. Tier 4 read the span the host's SDK built, which is what the SDK *intended* to
+     send. Where both exist and agree there is nothing to do; where they disagree, the
+     disagreement is the finding. */
+  const spans = options.tier1.spans();
+  const spanResult = joinSpans(entries, spans);
+
+  let adopted = 0;
+  let traceConflicts = 0;
+  for (const [index, span] of spanResult.matched) {
+    const fromTier2 = tier2Ids.get(index);
+    if (fromTier2 !== undefined) {
+      if (fromTier2 !== span.traceId) {
+        traceConflicts += 1;
+        options.tier1.flagConflict(index);
+      }
+      /* Tier 2 already supplied an id for this record. Not overwritten either way: the
+         header is what the backend saw. */
+      continue;
+    }
+
+    /* A record the worker never saw — an SDK-instrumented request issued before the worker
+       took control, or one on a page where tier 2 is off entirely. Identity only: the
+       write-back's type has no field for a timing, a status or a size. */
+    const contextId = addContext({
+      traceId: span.traceId,
+      spanId: span.spanId,
+      /* The SDK's own sampling decision is not on the span shape this file reads, and
+         inventing one would put a `sampled` badge on a record where nothing said so. */
+      sampled: false,
+      confident: span.confident,
+    });
+    options.tier1.adoptSpan(index, contextId);
+    adopted += 1;
+  }
+
+  for (const left of spanResult.unjoined) intern(left.url);
 
   /* Interning the leftovers here rather than in the view: they are about to be rendered as
      rows, and the table is the same one the ring keys on. */
@@ -149,6 +204,9 @@ export async function flushCorrelation(options: {
     lowConfidence,
     logDegraded: loggingDegraded(),
     tier2,
+    adopted,
+    spansUnjoined: spanResult.unjoined.length,
+    traceConflicts,
   };
 }
 
