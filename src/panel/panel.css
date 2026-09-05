@@ -1377,3 +1377,282 @@
   color: var(--d0-text);
   line-height: 1.5;
 }
+
+/* ── add-pasted-token ──────────────────────────────────────────────────────────────────────
+   Prefixed `conn-`, like the coverage tab's `coverage-`. The pill's stylesheet and this one
+   are adopted on the same shadow root and share one flat class namespace, so a bare `.field`
+   or `.warn` here is a rule applied to whatever the pill happens to call that too. */
+
+.conn-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid var(--d0-stroke);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--d0-text-subtle);
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.conn-chip:hover {
+  border-color: var(--d0-hover-stroke);
+  color: var(--d0-text);
+}
+
+.conn-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex: none;
+  /* Unconnected is grey, not red. Not having a token is the normal state of the panel — the
+     requests, vitals and coverage tabs all work without one — and a red dot would report a
+     fault where there is a choice not yet made. */
+  background: var(--d0-text-subtle);
+}
+
+.conn-chip[data-on="true"] .conn-dot {
+  background: var(--d0-healthy);
+}
+
+.conn-chip[data-on="true"] {
+  color: var(--d0-text);
+}
+
+.conn {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* No `overflow` of its own, deliberately. `.body` is already a scroll container, and a
+     second one nested inside it gave the surface two independent offsets: opening Connect
+     inherited whatever the requests list had been scrolled to, which put the reader below
+     the title and the two disclosures. One scroller, and `focus()` scrolls it to the top. */
+}
+
+.conn-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--d0-text-intense);
+}
+
+.conn-intro,
+.conn-warn,
+.conn-state {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--d0-text);
+}
+
+.conn-sub {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--d0-text-subtle);
+}
+
+/* The requirements. A three-column grid rather than a default `dl`, so the setting, the value
+   it must have, and the reason line up and can be read down one column at a time. */
+.conn-req {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content max-content 1fr;
+  gap: 4px 10px;
+  align-items: baseline;
+  font-size: 11px;
+}
+
+.conn-req dt {
+  color: var(--d0-text-subtle);
+}
+
+.conn-req dd {
+  margin: 0;
+}
+
+.conn-req-value {
+  font-family: var(--d0-font-mono);
+  color: var(--d0-text-intense);
+}
+
+.conn-req-why {
+  color: var(--d0-text-subtle);
+}
+
+/* The admission that the list above is not a check. Bordered rather than italicised: it reads
+   as a form that validates, and this is the sentence saying it does not. */
+.conn-warn {
+  padding: 8px 10px;
+  border-left: 2px solid var(--d0-warning);
+  background: var(--d0-lvl2-bg);
+  color: var(--d0-text);
+}
+
+.conn-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.conn-field-label {
+  font-size: 10px;
+  color: var(--d0-text-subtle);
+}
+
+.conn-input {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--d0-lvl3-stroke);
+  border-radius: 6px;
+  background: var(--d0-lvl2-bg);
+  color: var(--d0-text-intense);
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+}
+
+.conn-input:focus-visible {
+  outline: 2px solid var(--d0-cta);
+  outline-offset: 1px;
+}
+
+/* Two buttons in one track, not a `<select>`: there are exactly two environments, the choice is
+   consequential, and both options being permanently visible is the point. */
+.conn-toggle {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--d0-lvl3-stroke);
+  border-radius: 7px;
+  background: var(--d0-lvl2-bg);
+  align-self: flex-start;
+}
+
+.conn-toggle-btn {
+  padding: 3px 12px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--d0-text-subtle);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.conn-toggle-btn[data-on="true"] {
+  background: var(--d0-lvl3-bg);
+  color: var(--d0-text-intense);
+}
+
+.conn-toggle-btn:focus-visible {
+  outline: 2px solid var(--d0-cta);
+  outline-offset: 1px;
+}
+
+.conn-envnote {
+  margin: 0;
+  color: var(--d0-text-subtle);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+/* The non-production environment is a warning, not a description. */
+.conn-envnote[data-warn="true"] {
+  color: var(--d0-warning);
+}
+
+.conn-select {
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--d0-lvl3-stroke);
+  border-radius: 6px;
+  background: var(--d0-lvl2-bg);
+  color: var(--d0-text-intense);
+  font-size: 11px;
+}
+
+.conn-select:focus-visible {
+  outline: 2px solid var(--d0-cta);
+  outline-offset: 1px;
+}
+
+.conn-origin {
+  margin: 0;
+  color: var(--d0-text-subtle);
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+}
+
+.conn-custody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conn-choice {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 8px;
+  align-items: start;
+  cursor: pointer;
+}
+
+.conn-choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.conn-choice-label {
+  font-size: 11px;
+  color: var(--d0-text-intense);
+}
+
+.conn-choice-detail {
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--d0-text-subtle);
+}
+
+.conn-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.conn-submit,
+.conn-drop,
+.conn-back {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--d0-lvl3-stroke);
+  background: var(--d0-lvl2-bg);
+  color: var(--d0-text);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.conn-submit {
+  border-color: transparent;
+  background: var(--d0-cta);
+  color: #fff;
+}
+
+.conn-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.conn-back {
+  margin-left: auto;
+}
+
+.conn-state {
+  color: var(--d0-text-subtle);
+}

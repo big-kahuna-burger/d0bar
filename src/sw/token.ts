@@ -1,3 +1,5 @@
+import type { TokenSource, TokenStatus } from "../shared/broker";
+import { DEFAULT_REGION, originFor } from "../shared/regions";
 import { openDb } from "./db";
 import { TOKEN_STORE } from "./protocol";
 
@@ -27,21 +29,15 @@ let held = "";
 /** Where the current token came from, for `status()`. Never inferred at read time. */
 let source: TokenSource = "none";
 
-export type TokenSource = "none" | "session" | "stored";
-
 /**
- * What the page is allowed to know.
+ * The region id the token was connected for.
  *
- * `hint` is the last four characters, for telling two pasted tokens apart in the UI. Dash0's
- * own `dash0.auth.token` span attribute records the last seven digits for exactly this purpose,
- * so the shape is theirs rather than invented here — four rather than seven because this one is
- * rendered next to a connect button and has no other job.
+ * Held next to the token because it is part of the credential's meaning: a token for one region
+ * is not a token for another, and sending it to the wrong one would leak it to an origin the
+ * user never chose. Stored as the *id*; the origin is derived from the compiled table on every
+ * read, so a persisted value cannot smuggle an origin in.
  */
-export interface TokenStatus {
-  connected: boolean;
-  source: TokenSource;
-  hint: string;
-}
+let region = DEFAULT_REGION;
 
 /** The last four characters, or `""`. Short tokens yield `""` rather than most of themselves. */
 function hintOf(token: string): string {
@@ -49,7 +45,19 @@ function hintOf(token: string): string {
 }
 
 export function status(): TokenStatus {
-  return { connected: held !== "", source, hint: hintOf(held) };
+  return {
+    connected: held !== "",
+    source,
+    hint: hintOf(held),
+    /* Resolved here, never stored. Whatever is on disk is an id, and an id that is no longer in
+       the table resolves to `""` — a refusal — rather than to a stale origin. */
+    apiOrigin: held === "" ? "" : originFor(region),
+  };
+}
+
+/** The API origin the current token may be sent to, or `""`. Internal to `query.ts`. */
+export function apiOrigin(): string {
+  return originFor(region);
 }
 
 /**
@@ -71,7 +79,17 @@ export function bearer(): string {
  * must *delete* the earlier copy, which means opening the store to do it. Leaving it would make
  * the safer choice the one that leaves a credential on disk.
  */
-export async function set(token: string, persist: boolean): Promise<TokenStatus> {
+export async function set(token: string, persist: boolean, regionId: string): Promise<TokenStatus> {
+  /* Refused rather than defaulted. Falling back to a region the user did not pick would send
+     their token somewhere they did not choose, which is the one mistake this argument exists to
+     prevent.
+
+     `clear()` rather than `status()`, and a test caught the difference: returning the current
+     status left an earlier connection live, so a refused region reported "not connected" while
+     the previous region's token was still being attached to queries. A refusal has to leave
+     nothing connected. */
+  if (originFor(regionId) === "") return clear();
+  region = regionId;
   held = token.trim();
   source = held === "" ? "none" : persist ? "stored" : "session";
 
@@ -81,7 +99,7 @@ export async function set(token: string, persist: boolean): Promise<TokenStatus>
   }
   /* Switching to session-only removes an earlier persisted copy. Otherwise choosing the safer
      mode would leave the less safe copy behind it, which is the opposite of what was asked. */
-  if (persist) await putStored(held);
+  if (persist) await putStored(held, region);
   else await removeStored();
 
   return status();
@@ -91,6 +109,7 @@ export async function set(token: string, persist: boolean): Promise<TokenStatus>
 export async function clear(): Promise<TokenStatus> {
   held = "";
   source = "none";
+  region = DEFAULT_REGION;
   await removeStored();
   return status();
 }
@@ -104,9 +123,14 @@ export async function clear(): Promise<TokenStatus> {
  */
 export async function restore(): Promise<TokenStatus> {
   if (held !== "") return status();
-  const stored = await readStored();
+  const stored = await readStored(KEY);
   if (stored !== "") {
+    const storedRegion = await readStored(REGION_KEY);
+    /* A persisted region that is no longer in the compiled table is not honoured — the token
+       stays unrestored rather than being pointed at a default the user never chose. */
+    if (originFor(storedRegion) === "") return status();
     held = stored;
+    region = storedRegion;
     source = "stored";
   }
   return status();
@@ -116,6 +140,7 @@ export async function restore(): Promise<TokenStatus> {
 export function resetMemory(): void {
   held = "";
   source = "none";
+  region = DEFAULT_REGION;
 }
 
 /* ── the persisted copy ───────────────────────────────────────────────────────────────────
@@ -124,6 +149,7 @@ export function resetMemory(): void {
    step with this one. */
 
 const KEY = "auth";
+const REGION_KEY = "region";
 
 /* Storage can be denied outright — a partitioned context, or a browser configured to block
    site data. `openDb()` resolves `undefined` rather than throwing, and every caller below
@@ -131,7 +157,7 @@ const KEY = "auth";
    mid-paste. */
 const open = openDb;
 
-async function putStored(token: string): Promise<void> {
+async function putStored(token: string, regionId: string): Promise<void> {
   const db = await open();
   if (!db) return;
   await new Promise<void>((resolve) => {
@@ -142,14 +168,16 @@ async function putStored(token: string): Promise<void> {
       resolve();
       return;
     }
-    tx.objectStore(TOKEN_STORE).put(token, KEY);
+    const store = tx.objectStore(TOKEN_STORE);
+    store.put(token, KEY);
+    store.put(regionId, REGION_KEY);
     tx.oncomplete = () => resolve();
     tx.onerror = () => resolve();
     tx.onabort = () => resolve();
   });
 }
 
-async function readStored(): Promise<string> {
+async function readStored(key: string): Promise<string> {
   const db = await open();
   if (!db) return "";
   const value = await new Promise<string>((resolve) => {
@@ -160,7 +188,7 @@ async function readStored(): Promise<string> {
       resolve("");
       return;
     }
-    const request = tx.objectStore(TOKEN_STORE).get(KEY);
+    const request = tx.objectStore(TOKEN_STORE).get(key);
     request.onsuccess = () => resolve(typeof request.result === "string" ? request.result : "");
     request.onerror = () => resolve("");
   });
@@ -180,7 +208,9 @@ async function removeStored(): Promise<void> {
       resolve();
       return;
     }
-    tx.objectStore(TOKEN_STORE).delete(KEY);
+    const store = tx.objectStore(TOKEN_STORE);
+    store.delete(KEY);
+    store.delete(REGION_KEY);
     tx.oncomplete = () => resolve();
     tx.onerror = () => resolve();
     tx.onabort = () => resolve();

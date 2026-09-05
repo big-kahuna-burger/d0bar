@@ -1,5 +1,6 @@
-import { query, type QueryOutcome } from "./query";
-import { clear, restore, set, type TokenStatus } from "./token";
+import type { BrokerReply, BrokerRequest } from "../shared/broker";
+import { query } from "./query";
+import { clear, restore, set } from "./token";
 
 /**
  * The worker's message surface.
@@ -20,19 +21,13 @@ import { clear, restore, set, type TokenStatus } from "./token";
  * broadcast would hand one tab's answer to every other page on the origin.
  */
 
-export type Request =
-  | { kind: "connect"; token: string; persist: boolean }
-  | { kind: "disconnect" }
-  | { kind: "status" }
-  | { kind: "query"; url: string };
-
-export type Reply =
-  | { kind: "status"; status: TokenStatus }
-  | { kind: "query"; outcome: QueryOutcome };
+/* The contract itself lives in `src/shared/broker.ts` — both realms need it, and `src/sw` is
+   excluded from the main tsconfig, so a shared file is the only thing the panel can import. */
+export type { BrokerReply as Reply, BrokerRequest as Request };
 
 /** Structural, so this module typechecks under `lib.dom` and is testable without a worker. */
 export interface Replier {
-  postMessage(message: Reply): void;
+  postMessage(message: BrokerReply): void;
 }
 
 /**
@@ -42,19 +37,18 @@ export interface Replier {
  * answered with an error naming what it was, and not logged — a page probing for a message that
  * returns the token learns nothing from the shape of the silence.
  */
-export async function handle(
-  data: unknown,
-  reply: Replier,
-  apiOrigin: string,
-): Promise<void> {
+export async function handle(data: unknown, reply: Replier): Promise<void> {
   if (typeof data !== "object" || data === null) return;
   const message = data as { kind?: unknown };
 
   switch (message.kind) {
     case "connect": {
-      const { token, persist } = data as Extract<Request, { kind: "connect" }>;
-      if (typeof token !== "string") return;
-      reply.postMessage({ kind: "status", status: await set(token, persist === true) });
+      const { token, persist, region } = data as Extract<BrokerRequest, { kind: "connect" }>;
+      if (typeof token !== "string" || typeof region !== "string") return;
+      reply.postMessage({
+        kind: "status",
+        status: await set(token, persist === true, region),
+      });
       return;
     }
     case "disconnect":
@@ -68,9 +62,9 @@ export async function handle(
       reply.postMessage({ kind: "status", status: await restore() });
       return;
     case "query": {
-      const { url } = data as Extract<Request, { kind: "query" }>;
+      const { url } = data as Extract<BrokerRequest, { kind: "query" }>;
       if (typeof url !== "string") return;
-      reply.postMessage({ kind: "query", outcome: await query(url, apiOrigin) });
+      reply.postMessage({ kind: "query", outcome: await query(url) });
       return;
     }
     default:

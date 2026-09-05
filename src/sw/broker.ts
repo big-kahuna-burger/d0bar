@@ -1,3 +1,4 @@
+import { addRegion } from "../shared/regions";
 import { handle, replierFor } from "./messages";
 
 /**
@@ -8,10 +9,11 @@ import { handle, replierFor } from "./messages";
  * connects a token should not have a message listener they did not ask for. Nothing here runs
  * unless it is called.
  *
- * `apiOrigin` is required rather than defaulted. There is no `api.dash0.com` — Dash0's issuers
- * are regional and the issuer *is* the region — so any default would be a guess at which
- * region a customer is in, wrong for everyone else, and wrong in a way that surfaces much later
- * as an authorization failure. A missing origin means no broker at all.
+ * The region is chosen by the developer in the connect surface and resolved inside the worker
+ * from the compiled table in `regions.ts`. There is deliberately no default origin: there is no
+ * `api.dash0.com`, Dash0's issuers being regional, so any default would be a guess at which
+ * region a customer is in and wrong for everyone else in a way that surfaces much later as an
+ * authorization failure.
  */
 
 /**
@@ -32,20 +34,29 @@ export interface BrokerScope {
 }
 
 export interface BrokerOptions {
-  /** The organization's regional Dash0 API origin, e.g. `https://api.eu-west-1.aws.dash0.com`. */
-  apiOrigin: string;
+  /**
+   * An API origin outside the compiled region table, e.g. a self-hosted or preview endpoint.
+   *
+   * Optional. Without it the worker serves the regions in `regions.ts` and nothing else, which
+   * is the normal case.
+   */
+  apiOrigin?: string;
 }
 
-export function serveBroker(scope: BrokerScope, options: BrokerOptions): void {
-  const apiOrigin = normalize(options.apiOrigin);
-  /* Refusing to install beats installing something that answers every query with a refusal:
-     the second looks like a broker that is working and finding nothing. */
-  if (apiOrigin === "") return;
+export function serveBroker(scope: BrokerScope, options: BrokerOptions = {}): void {
+  /* An override, not a requirement. The region is normally chosen in the connect surface and
+     resolved from the compiled table in `regions.ts`; this is the host-controlled escape hatch
+     for a region that table does not carry, and it is allowed to be an arbitrary origin
+     precisely because the host sets it when the site is built rather than the page setting it
+     at runtime. */
+  const override = options.apiOrigin ? normalize(options.apiOrigin) : "";
+  if (options.apiOrigin && override === "") return;
+  if (override !== "") registerOverride(override);
 
   scope.addEventListener("message", (event) => {
     const reply = replierFor(event);
     if (!reply) return;
-    const work = handle(event.data, reply, apiOrigin);
+    const work = handle(event.data, reply);
     /* Keeps the worker alive until the reply is posted. Without it a worker woken only by this
        message can be terminated between the `await` and the `postMessage`, and the panel waits
        forever on a promise nothing will settle. */
@@ -71,4 +82,15 @@ function normalize(value: string): string {
 
 function isLoopback(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+
+/**
+ * Registers a host-supplied origin as an additional allowed destination.
+ *
+ * Kept here rather than in `regions.ts` so that the compiled table stays a constant: the table
+ * is what the *page* may choose from, and this is what the *host* added. Two different trust
+ * levels, two different mechanisms.
+ */
+function registerOverride(origin: string): void {
+  addRegion({ id: origin, env: "prod", label: origin, origin });
 }

@@ -1,5 +1,6 @@
 import { computed, signal } from "spark-signals/signal";
 import type { Tier2State } from "../collector/sw";
+import { DISCONNECTED, type TokenStatus } from "../shared/broker";
 import type { OtelState } from "../shared/stage2";
 
 /**
@@ -17,7 +18,7 @@ import type { OtelState } from "../shared/stage2";
 export type Tab = "requests" | "vitals" | "untraced";
 
 /** Which surface is showing. `trace` is pushed over the list and popped by Escape. */
-export type View = "list" | "trace";
+export type View = "list" | "trace" | "connect";
 
 export const open = signal(false);
 export const tab = signal<Tab>("requests");
@@ -175,6 +176,14 @@ export const perturbation = computed<Perturbation>(() => {
 });
 
 /** The untraced badge is hidden at zero but the tab is retained, per the handoff. */
+/**
+ * Whether a Dash0 token is connected, and where it is kept.
+ *
+ * The status only — never the token. `TokenStatus` has nowhere to put one, which is what keeps
+ * this signal from becoming the place a credential leaks into the page's state.
+ */
+export const connection = signal<TokenStatus>(DISCONNECTED);
+
 export const untracedCount = signal(0);
 /**
  * The untraced tab's hover copy, written by the view from the same reading the badge and the
@@ -209,7 +218,10 @@ export function escape(): void {
     dismissTip();
     return;
   }
-  if (view() === "trace") {
+  /* Any pushed surface pops before the panel closes. Listing them rather than testing
+     `!== "list"` so that adding a surface is a decision about Escape, not a silent inheritance
+     of it — a surface with unsaved input may want to confirm rather than discard. */
+  if (view() === "trace" || view() === "connect") {
     popToList();
     return;
   }
@@ -234,6 +246,7 @@ export function selectTab(next: Tab): void {
 
 /** Test seam. */
 export function resetShell(): void {
+  connection.set(DISCONNECTED);
   open.set(false);
   tab.set("requests");
   view.set("list");

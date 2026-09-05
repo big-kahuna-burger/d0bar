@@ -1,4 +1,5 @@
-import { bearer } from "./token";
+import type { QueryOutcome } from "../shared/broker";
+import { apiOrigin, bearer } from "./token";
 
 /**
  * d0bar's own API calls, made by the worker.
@@ -15,21 +16,17 @@ import { bearer } from "./token";
  * equals the configured API origin. It is never part of a reply, an error, or a log line.
  */
 
-export type QueryOutcome =
-  | { ok: true; status: number; body: string }
-  /* Every failure is named. The panel has to be able to say which of these happened, because
-     "no data" from a rejected token and "no data" from an unreachable API are different
-     problems with different fixes — and neither is an empty result. */
-  | { ok: false; reason: "not-connected" | "refused-origin" | "rejected" | "unreachable" };
-
 /**
  * Performs one API call.
  *
- * `apiOrigin` is the configured Dash0 endpoint, passed in rather than read from a module
- * constant so the allowlist is visible at the call site and testable without a global.
+ * The allowed origin is the one the connected token was connected *for*, resolved from a
+ * compiled table by id — see `regions.ts`. Nothing the page sends can widen it.
  */
-export async function query(url: string, apiOrigin: string): Promise<QueryOutcome> {
-  if (!allowed(url, apiOrigin)) return { ok: false, reason: "refused-origin" };
+export async function query(url: string): Promise<QueryOutcome> {
+  /* The origin comes from the connected credential, not from the caller. An `apiOrigin`
+     parameter was the first shape and it put the allowlist in the hands of whoever called —
+     which, one hop back, is the page. */
+  if (!allowed(url, apiOrigin())) return { ok: false, reason: "refused-origin" };
 
   const token = bearer();
   /* Checked after the origin, so a query for the wrong origin is refused as a wrong origin

@@ -5,6 +5,8 @@ import { flushCorrelation } from "../collector/correlate";
 import { resolveTiers } from "./tier";
 import { requestsView } from "./views/requests";
 import { traceView } from "./views/trace";
+import { connectView } from "./views/connect";
+import { connectedLine } from "./views/connect/copy";
 import { untracedView } from "./views/untraced";
 import { vitalsView } from "./views/vitals";
 import type { OtelState, Tier1Access, Tier2State } from "../shared/stage2";
@@ -19,6 +21,7 @@ import {
   hoverTip,
   showUntracedBadge,
   tab,
+  connection,
   tier2,
   otel,
   tip,
@@ -200,6 +203,27 @@ export function openPanel(options: PanelOptions): PanelHandle {
   const hint = el("span", "hint");
   hint.textContent = "⌘⇧0";
 
+  /* The connect affordance. A dot rather than a word, because it is a status first — the
+     panel works without a token, and only the trace jump needs one. Its tooltip carries the
+     whole state, including where the token is kept, which is the part a developer needs to be
+     able to check without hunting for it. */
+  const conn = el("button", "conn-chip");
+  conn.type = "button";
+  const connDot = el("i", "conn-dot");
+  const connText = document.createTextNode("Connect");
+  conn.append(connDot, connText);
+  bindings.add(
+    bindText(connText, () => (connection().connected ? `…${connection().hint}` : "Connect")),
+  );
+  bindings.add(bindAttr(conn, "data-on", () => connection().connected));
+  bindings.add(
+    on(conn, "click", () => {
+      dismissTip();
+      view.set("connect");
+    }),
+  );
+  tooltip(bindings, conn, "conn", "below", { body: () => connectedLine(connection()) });
+
   const close = el("button", "close");
   close.type = "button";
   close.setAttribute("aria-label", "Close d0bar");
@@ -212,7 +236,7 @@ export function openPanel(options: PanelOptions): PanelHandle {
     }),
   );
 
-  head.append(title, url, hint, close);
+  head.append(title, url, hint, conn, close);
   /* The header clips the URL from the left, so the origin is the part that goes missing —
      and on a staging host the origin is often the only thing distinguishing two identical
      pages. The bubble carries the whole thing. */
@@ -329,6 +353,11 @@ export function openPanel(options: PanelOptions): PanelHandle {
   const trace = traceView({ tier1: options.tier1, tier2: () => tier2() });
   bindings.add(bindHidden(trace.el, () => view() !== "trace"));
 
+  /* The connect surface, pushed like the trace one. A fourth tab for something a developer
+     does once would sit permanently beside three that are read constantly. */
+  const connectSurface = connectView();
+  bindings.add(bindHidden(connectSurface.el, () => view() !== "connect"));
+
   /* Focus follows the pushed surface. Without this Escape stops working the moment the
      surface opens — see the note on `TraceView.focus`. Ordered after the `hidden` binding
      above, because a `focus()` on a hidden element is a no-op and the effect graph runs
@@ -336,6 +365,7 @@ export function openPanel(options: PanelOptions): PanelHandle {
   bindings.add(
     effect(() => {
       if (view() === "trace") trace.focus();
+      if (view() === "connect") connectSurface.focus();
     }),
   );
 
@@ -343,13 +373,17 @@ export function openPanel(options: PanelOptions): PanelHandle {
   const emptyText = document.createTextNode("");
   empty.appendChild(emptyText);
   bindings.add(
-    bindHidden(empty, () => showRequests() || showVitals() || showUntraced() || view() === "trace"),
+    bindHidden(
+      empty,
+      () =>
+        showRequests() || showVitals() || showUntraced() || view() === "trace" || view() === "connect",
+    ),
   );
   /* Every tab is built now, so there is nothing left for this node to say. Kept rather than
      deleted: it is the slot a future tab lands in, and an empty body with no element at all
      is a layout that has never been rendered. */
   bindings.add(bindText(emptyText, () => ""));
-  body.append(requests.el, vitals.el, untraced.el, trace.el, empty);
+  body.append(requests.el, vitals.el, untraced.el, trace.el, connectSurface.el, empty);
 
   /* Repaint on the way back in. While hidden the view drops every batch on the floor by
      design, so returning from another tab has to catch up in one go — the next request
@@ -581,6 +615,7 @@ export function openPanel(options: PanelOptions): PanelHandle {
       vitals.destroy();
       untraced.destroy();
       trace.destroy();
+      connectSurface.destroy();
       panel.remove();
       root.adoptedStyleSheets = root.adoptedStyleSheets.filter((s) => s !== sheet);
     },

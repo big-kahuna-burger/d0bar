@@ -19,14 +19,17 @@ import { observeFetches, type WorkerScope } from "./observe";
  */
 observeFetches(globalThis as unknown as WorkerScope);
 
-/* The API origin comes off this script's own URL:
+/* The broker installs unconditionally, because the regions it may reach are compiled in and the
+ * developer picks one in the connect surface. `?api` is the escape hatch for an origin that
+ * table does not carry — a self-hosted or preview endpoint:
  *
- *   navigator.serviceWorker.register("/d0bar-sw.js?api=https://api.eu-west-1.aws.dash0.com")
+ *   navigator.serviceWorker.register("/d0bar-sw.js?api=https://api.<region>.aws.dash0.com")
  *
- * The host already chooses the path this file is served from, so the query string costs them
- * nothing extra. With no `api` parameter the broker does not install and d0bar has no token
- * path at all — which is the correct outcome, not a degraded one: there is no `api.dash0.com`
- * to fall back to, Dash0's issuers being regional. */
-serveBroker(globalThis as unknown as BrokerScope, {
-  apiOrigin: new URL(location.href).searchParams.get("api") ?? "",
-});
+ * It comes off this script's own URL rather than from a message because the host already chooses
+ * the path this file is served from: the query string is set when the site is built, which is a
+ * different trust level from the page naming an origin at runtime. See `regions.ts`. */
+const extra = new URL(location.href).searchParams.get("api");
+serveBroker(
+  globalThis as unknown as BrokerScope,
+  extra ? { apiOrigin: extra } : {},
+);

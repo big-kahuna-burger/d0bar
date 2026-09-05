@@ -56,17 +56,52 @@ requests made by the page.
 - **THEN** the worker performs the request and returns the result, and no fetch event of the
   page's is responded to
 
-### Requirement: The bearer goes only to the configured API origin
-The worker SHALL attach the token only to requests whose origin equals the configured Dash0 API
-origin, compared as a parsed origin.
+### Requirement: The user chooses the environment and the region, from a fixed list
+The connect surface SHALL let the user select a Dash0 environment and a region within it, and
+what crosses to the worker SHALL be an identifier the worker resolves against its own compiled
+table — never an origin supplied by the page.
+
+#### Scenario: Switching environment
+- **WHEN** the user changes the environment
+- **THEN** the region control offers only that environment's regions, a region selected in the
+  other environment is not carried across, and the non-production environment is presented as a
+  warning that names the failure it causes — a rejection indistinguishable from a revoked token
+
+#### Scenario: An environment with one region
+- **WHEN** the selected environment carries exactly one region
+- **THEN** the region is stated rather than offered as a control that cannot be operated
+
+#### Scenario: Selecting a region
+- **WHEN** the user picks a region and connects
+- **THEN** the worker resolves the identifier to that region's API origin and reports the origin
+  back, and the surface shows the origin alongside the region's name
+
+#### Scenario: An identifier the worker does not carry
+- **WHEN** a connect message names a region the compiled table does not contain
+- **THEN** the worker refuses it, holds no token, and reports disconnected — it does not fall
+  back to a default region or to a previously selected one
+
+#### Scenario: A region outside the table
+- **WHEN** the host registers the worker with an explicit API origin on the worker's own script
+  URL
+- **THEN** that origin becomes selectable in addition to the compiled table
+
+### Requirement: The bearer goes only to the connected region's API origin
+The worker SHALL attach the token only to requests whose origin equals the API origin of the
+region the token was connected for, compared as a parsed origin.
 
 #### Scenario: A query for another origin
-- **WHEN** a query names any origin other than the configured one
+- **WHEN** a query names any origin other than the connected region's
 - **THEN** it is refused without the token being attached, and the refusal is reported to the
   page
 
+#### Scenario: A query for a different Dash0 region
+- **WHEN** a query names a Dash0 region other than the connected one
+- **THEN** it is refused — a region in the table is not thereby a destination for a token
+  connected elsewhere
+
 #### Scenario: A lookalike origin
-- **WHEN** a query names an origin that shares a prefix with the configured one but is not
+- **WHEN** a query names an origin that shares a prefix with the connected region's but is not
   equal to it
 - **THEN** it is refused
 

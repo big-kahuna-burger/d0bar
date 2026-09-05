@@ -42,8 +42,11 @@ export function observe(scope?: WorkerScope): void {
  *
  *   import { observe, broker } from "/d0bar-sw-module.js";
  *   observe();
- *   broker({ apiOrigin: "https://api.eu-west-1.aws.dash0.com" });
+ *   broker();
+ *
+ * `options.apiOrigin` is not needed for a Dash0 region — those are compiled in and picked in the
+ * connect surface. Pass it only for an origin the table does not carry.
  */
-export function broker(options: BrokerOptions, scope?: BrokerScope): void {
+export function broker(options: BrokerOptions = {}, scope?: BrokerScope): void {
   serveBroker(scope ?? (globalThis as unknown as BrokerScope), options);
 }

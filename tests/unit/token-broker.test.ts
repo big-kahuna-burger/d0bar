@@ -2,7 +2,8 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDb } from "../../src/sw/db";
-import { handle, type Reply } from "../../src/sw/messages";
+import type { BrokerReply } from "../../src/shared/broker";
+import { handle } from "../../src/sw/messages";
 import { allowed } from "../../src/sw/query";
 import { DB_NAME, DB_VERSION, TOKEN_STORE } from "../../src/sw/protocol";
 import { clear, resetMemory, restore, set, status } from "../../src/sw/token";
@@ -23,6 +24,7 @@ import { clear, resetMemory, restore, set, status } from "../../src/sw/token";
 
 const API = "https://api.eu-west-1.aws.dash0.com";
 const TOKEN = "auth_0123456789abcdefwxyz";
+const REGION = "prod:eu-west-1";
 
 /**
  * Reads the persisted copy the way the *host page* would.
@@ -48,8 +50,8 @@ async function stored(): Promise<string | undefined> {
 }
 
 function collector() {
-  const replies: Reply[] = [];
-  return { replies, postMessage: (message: Reply) => replies.push(message) };
+  const replies: BrokerReply[] = [];
+  return { replies, postMessage: (message: BrokerReply) => replies.push(message) };
 }
 
 /** Everything the worker could hand back, flattened to strings. */
@@ -70,9 +72,9 @@ afterEach(() => {
 describe("what the page can learn", () => {
   it("never returns the token, for any message", async () => {
     const reply = collector();
-    await handle({ kind: "connect", token: TOKEN, persist: false }, reply, API);
-    await handle({ kind: "status" }, reply, API);
-    await handle({ kind: "disconnect" }, reply, API);
+    await handle({ kind: "connect", token: TOKEN, persist: false, region: REGION }, reply);
+    await handle({ kind: "status" }, reply);
+    await handle({ kind: "disconnect" }, reply);
 
     expect(reply.replies).toHaveLength(3);
     for (const message of reply.replies) {
@@ -83,16 +85,21 @@ describe("what the page can learn", () => {
   });
 
   it("reports connection, source and a four-character hint and nothing else", async () => {
-    await set(TOKEN, false);
+    await set(TOKEN, false, REGION);
     const reading = status();
-    expect(reading).toEqual({ connected: true, source: "session", hint: "wxyz" });
-    /* The shape is the guarantee: three fields, and the token is not derivable from any of
-       them. A fourth field added later has to face this assertion. */
-    expect(Object.keys(reading).sort()).toEqual(["connected", "hint", "source"]);
+    expect(reading).toEqual({
+      connected: true,
+      source: "session",
+      hint: "wxyz",
+      apiOrigin: API,
+    });
+    /* The shape is the guarantee: four fields, and the token is not derivable from any of
+       them. A fifth field added later has to face this assertion. */
+    expect(Object.keys(reading).sort()).toEqual(["apiOrigin", "connected", "hint", "source"]);
   });
 
   it("gives no hint at all for a token short enough to be exposed by one", async () => {
-    await set("auth_1", false);
+    await set("auth_1", false, REGION);
     expect(status().hint).toBe("");
   });
 
@@ -100,10 +107,10 @@ describe("what the page can learn", () => {
     const reply = collector();
     /* A page probing for a message that returns the token must learn nothing from the shape of
        the silence — no echo, no error naming what it asked for. */
-    await handle({ kind: "give-me-the-token" }, reply, API);
-    await handle({ kind: "connect" }, reply, API);
-    await handle("status", reply, API);
-    await handle(null, reply, API);
+    await handle({ kind: "give-me-the-token" }, reply);
+    await handle({ kind: "connect" }, reply);
+    await handle("status", reply);
+    await handle(null, reply);
     expect(reply.replies).toHaveLength(0);
   });
 });
@@ -114,16 +121,16 @@ describe("custody", () => {
        test asserted that session-only opens no database at all, and it failed — because
        choosing session-only after having persisted has to *delete* the earlier copy, which
        means opening the store. The guarantee is about writing, not about touching. */
-    await set(TOKEN, false);
+    await set(TOKEN, false, REGION);
     expect(status()).toMatchObject({ connected: true, source: "session" });
     expect(await stored()).toBeUndefined();
   });
 
   it("removes an earlier persisted copy when the safer mode is chosen", async () => {
-    await set(TOKEN, true);
+    await set(TOKEN, true, REGION);
     expect(await stored()).toBe(TOKEN);
 
-    await set(TOKEN, false);
+    await set(TOKEN, false, REGION);
     /* Otherwise choosing session-only would be the option that leaves a credential on disk. */
     expect(await stored(), "the persisted copy outlived the choice to stop persisting").toBe(
       undefined,
@@ -131,20 +138,20 @@ describe("custody", () => {
   });
 
   it("removes the persisted copy on disconnect", async () => {
-    await set(TOKEN, true);
+    await set(TOKEN, true, REGION);
     await clear();
     expect(await stored()).toBeUndefined();
   });
 
   it("reports disconnected once cleared", async () => {
-    await set(TOKEN, false);
+    await set(TOKEN, false, REGION);
     expect(status().connected).toBe(true);
     await clear();
-    expect(status()).toEqual({ connected: false, source: "none", hint: "" });
+    expect(status()).toEqual({ connected: false, source: "none", hint: "", apiOrigin: "" });
   });
 
   it("survives a worker restart when persisted, and does not when not", async () => {
-    await set(TOKEN, true);
+    await set(TOKEN, true, REGION);
     expect(status().source).toBe("stored");
 
     /* A terminated worker loses its realm. `restore()` is what a revived one calls, and
@@ -154,9 +161,57 @@ describe("custody", () => {
     expect((await restore()).source).toBe("stored");
 
     /* The same restart with a session-only token correctly finds nothing. */
-    await set(TOKEN, false);
+    await set(TOKEN, false, REGION);
     resetMemory();
     expect((await restore()).connected).toBe(false);
+  });
+});
+
+describe("which region", () => {
+  it("resolves the id to an origin and reports it back", async () => {
+    expect((await set(TOKEN, false, "prod:us-west-2")).apiOrigin).toBe(
+      "https://api.us-west-2.aws.dash0.com",
+    );
+  });
+
+  it("refuses an id the compiled table does not carry", async () => {
+    /* The refusal is the security property. A page that could name its own origin — directly,
+       or by way of an id the worker resolved from something the page sent — could have the
+       token attached to a request it receives. Choosing from a fixed table cannot do that. */
+    const reading = await set(TOKEN, false, "evil-region-1");
+    expect(reading.connected).toBe(false);
+    expect(reading.apiOrigin).toBe("");
+  });
+
+  it("does not connect to the previous region when a later id is refused", async () => {
+    await set(TOKEN, false, REGION);
+    await set(TOKEN, false, "evil-region-1");
+    /* Otherwise a refused region would leave the token live against whatever was selected
+       before, which is a connection the user did not ask for. */
+    expect(status().connected).toBe(false);
+  });
+
+  it("sends a query to the connected region and refuses every other", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })));
+    await set(TOKEN, false, "prod:us-west-2");
+    const reply = collector();
+
+    await handle({ kind: "query", url: `${API}/api/spans` }, reply);
+    expect(reply.replies[0]).toEqual({
+      kind: "query",
+      outcome: { ok: false, reason: "refused-origin" },
+    });
+
+    await handle({ kind: "query", url: "https://api.us-west-2.aws.dash0.com/api/spans" }, reply);
+    expect((reply.replies[1] as { outcome: { ok: boolean } }).outcome.ok).toBe(true);
+  });
+
+  it("restores the region alongside the token after a worker restart", async () => {
+    await set(TOKEN, true, "prod:us-west-2");
+    resetMemory();
+    /* The token surviving without its region would restore a credential aimed at the default
+       region — a silent 401 that reads exactly like a revoked token. */
+    expect((await restore()).apiOrigin).toBe("https://api.us-west-2.aws.dash0.com");
   });
 });
 
@@ -191,10 +246,10 @@ describe("query outcomes", () => {
   it("refuses a foreign origin without reaching the network", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
-    await set(TOKEN, false);
+    await set(TOKEN, false, REGION);
 
     const reply = collector();
-    await handle({ kind: "query", url: "https://evil.test/api/spans" }, reply, API);
+    await handle({ kind: "query", url: "https://evil.test/api/spans" }, reply);
 
     expect(reply.replies[0]).toEqual({
       kind: "query",
@@ -204,11 +259,11 @@ describe("query outcomes", () => {
   });
 
   it("names a rejected token separately from an unreachable API", async () => {
-    await set(TOKEN, false);
+    await set(TOKEN, false, REGION);
     const reply = collector();
 
     vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 401 })));
-    await handle({ kind: "query", url: `${API}/api/spans` }, reply, API);
+    await handle({ kind: "query", url: `${API}/api/spans` }, reply);
 
     vi.stubGlobal(
       "fetch",
@@ -216,7 +271,7 @@ describe("query outcomes", () => {
         throw new TypeError("network");
       }),
     );
-    await handle({ kind: "query", url: `${API}/api/spans` }, reply, API);
+    await handle({ kind: "query", url: `${API}/api/spans` }, reply);
 
     /* Two different problems with two different fixes. Folding them together would leave a
        user with a revoked token looking at their network. */
@@ -229,7 +284,7 @@ describe("query outcomes", () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
     const reply = collector();
-    await handle({ kind: "query", url: `${API}/api/spans` }, reply, API);
+    await handle({ kind: "query", url: `${API}/api/spans` }, reply);
 
     expect(reply.replies[0]).toEqual({
       kind: "query",
@@ -239,12 +294,12 @@ describe("query outcomes", () => {
   });
 
   it("sends the bearer, omits credentials, and puts the token nowhere else", async () => {
-    await set(TOKEN, false);
+    await set(TOKEN, false, REGION);
     const fetchSpy = vi.fn(async () => new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
 
     const reply = collector();
-    await handle({ kind: "query", url: `${API}/api/spans` }, reply, API);
+    await handle({ kind: "query", url: `${API}/api/spans` }, reply);
 
     const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(`${API}/api/spans`);
