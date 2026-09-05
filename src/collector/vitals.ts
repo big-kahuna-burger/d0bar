@@ -11,6 +11,8 @@
  * definition so those cards do not have to restate it.
  */
 
+import type { VitalsReading } from "../shared/stage2";
+
 export const HEALTHY = 0;
 export const WARNING = 1;
 export const POOR = 2;
@@ -26,11 +28,45 @@ const THRESHOLDS = {
 interface LayoutShiftEntry extends PerformanceEntry {
   value: number;
   hadRecentInput: boolean;
+  sources?: ArrayLike<{ node?: unknown }>;
 }
 
 interface EventTimingEntry extends PerformanceEntry {
   interactionId?: number;
   processingStart: number;
+  target?: unknown;
+}
+
+interface LcpEntry extends PerformanceEntry {
+  element?: unknown;
+}
+
+interface LoafEntry extends PerformanceEntry {
+  scripts?: ArrayLike<{ duration?: number; sourceFunctionName?: string }>;
+}
+
+/**
+ * A bounded, node-free description of an element.
+ *
+ * Two properties matter more than prettiness. It never walks the tree — one element, no
+ * ancestors, no `nth-child` search — because this runs from a `PerformanceObserver` callback
+ * on the page being measured. And it returns a *string*: the entry's `element`, a shift's
+ * `sources[i].node` and an event's `target` are live DOM nodes, and a module-level variable
+ * holding one keeps a detached subtree alive for the life of the page. A performance tool
+ * that leaks the DOM it observed is the failure it exists to prevent.
+ *
+ * Empty when there is nothing to quote — the caller renders that as unavailable rather than
+ * naming a likely element.
+ */
+export function selectorOf(node: unknown): string {
+  const element = node as Element | null;
+  if (!element || typeof element.tagName !== "string") return "";
+  /* `className` is an `SVGAnimatedString` on SVG elements, not a string — the type check is
+     what keeps an `<svg>` from rendering as `svg.[object Object]`. */
+  const cls =
+    typeof element.className === "string" ? element.className.trim().split(/\s+/)[0] : "";
+  const qualifier = element.id ? `#${element.id}` : cls ? `.${cls}` : "";
+  return (element.tagName.toLowerCase() + qualifier).slice(0, 64);
 }
 
 /** LCP in ms, or -1 when the browser has reported none. */
@@ -57,9 +93,25 @@ let longestCount = 0;
 let loafCount = 0;
 let loafLongest = 0;
 
+/**
+ * Attribution, as strings only.
+ *
+ * Each is derived exactly when the entry it describes takes over the vital — a new LCP, a
+ * shift that sets a new maximum, an interaction that becomes the longest, a longer frame.
+ * A page that reports five hundred small layout shifts derives nothing after the first few,
+ * so accumulation stays bounded rather than allocating a string per entry.
+ */
+let lcpElement = "";
+let clsSource = "";
+let clsLargestShift = 0;
+let inpTarget = "";
+let inpTargetLatency = -1;
+let loafScript = "";
+
 export function noteLcp(entry: PerformanceEntry): void {
   /* The last LCP entry before finalization wins; the browser only ever reports larger. */
   lcp = entry.startTime;
+  lcpElement = selectorOf((entry as LcpEntry).element);
 }
 
 export function noteNavigation(entry: PerformanceNavigationTiming): void {
@@ -68,6 +120,13 @@ export function noteNavigation(entry: PerformanceNavigationTiming): void {
 
 export function noteLayoutShift(entry: LayoutShiftEntry): void {
   if (entry.hadRecentInput) return;
+  /* Only the single largest shift is attributed, and only when it is beaten — `sources` is
+     not even read otherwise, which is what keeps five hundred shifts from costing five
+     hundred selector derivations. */
+  if (entry.value > clsLargestShift) {
+    clsLargestShift = entry.value;
+    clsSource = selectorOf(entry.sources?.[0]?.node);
+  }
   if (
     sessionValue !== 0 &&
     entry.startTime - sessionLast < 1000 &&
@@ -87,6 +146,14 @@ export function noteInteraction(entry: EventTimingEntry): void {
   const id = entry.interactionId;
   if (!id) return;
   const latency = entry.duration;
+
+  /* The longest interaction, which is not always the one INP reports — on a page with more
+     than fifty interactions the score is a lower percentile. The card says which it is
+     showing rather than presenting this as the scored interaction's target. */
+  if (latency > inpTargetLatency) {
+    inpTargetLatency = latency;
+    inpTarget = selectorOf(entry.target);
+  }
 
   /* Several event entries share one interactionId; the interaction's latency is the
      largest of them. */
@@ -117,7 +184,22 @@ export function noteInteraction(entry: EventTimingEntry): void {
 
 export function noteLoaf(entry: PerformanceEntry): void {
   loafCount++;
-  if (entry.duration > loafLongest) loafLongest = entry.duration;
+  if (entry.duration > loafLongest) {
+    loafLongest = entry.duration;
+    /* The frame's dominant script, by the browser's own per-script durations. `scripts` is
+       absent on browsers that report the frame but not its breakdown, and the card then
+       shows the duration with no cause named. */
+    const scripts = (entry as LoafEntry).scripts;
+    loafScript = "";
+    let longest = -1;
+    for (let i = 0; scripts && i < scripts.length; i++) {
+      const script = scripts[i] as { duration?: number; sourceFunctionName?: string };
+      if ((script.duration ?? -1) > longest) {
+        longest = script.duration ?? -1;
+        loafScript = (script.sourceFunctionName ?? "").slice(0, 64);
+      }
+    }
+  }
 }
 
 interface InteractionCounter {
@@ -133,15 +215,24 @@ export function inp(): number {
   return sorted[rank] as number;
 }
 
-export function snapshot(): {
-  lcp: number;
-  cls: number;
-  inp: number;
-  ttfb: number;
-  loafCount: number;
-  loafLongest: number;
-} {
-  return { lcp, cls: clsMax, inp: inp(), ttfb, loafCount, loafLongest };
+export function snapshot(): VitalsReading {
+  const scored = inp();
+  return {
+    lcp,
+    cls: clsMax,
+    inp: scored,
+    ttfb,
+    loafCount,
+    loafLongest,
+    lcpElement,
+    clsSource,
+    inpTarget,
+    /* Whether the attributed interaction is the one the score reports. False on a page with
+       enough interactions for the percentile to land below the worst one. */
+    inpTargetIsScored: scored >= 0 && scored === inpTargetLatency,
+    loafScript,
+    entryTypes: [],
+  };
 }
 
 
@@ -212,4 +303,10 @@ export function resetVitals(): void {
   longestCount = 0;
   loafCount = 0;
   loafLongest = 0;
+  lcpElement = "";
+  clsSource = "";
+  clsLargestShift = 0;
+  inpTarget = "";
+  inpTargetLatency = -1;
+  loafScript = "";
 }

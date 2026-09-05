@@ -56,6 +56,22 @@ export function onResourceBatch(fn: () => void): () => void {
   };
 }
 
+/**
+ * The same one-slot pattern, for the vitals entry types.
+ *
+ * Deliberately not the resource slot. Sharing it would repaint the requests list on every
+ * layout shift — a repaint per shift on the page being measured, to update a list that did
+ * not change. The two batches are different events and get different slots.
+ */
+let vitalsListener: (() => void) | undefined;
+
+export function onVitalsBatch(fn: () => void): () => void {
+  vitalsListener = fn;
+  return () => {
+    if (vitalsListener === fn) vitalsListener = undefined;
+  };
+}
+
 /** Deprecations, interventions and CSP violations, bounded so a noisy page cannot grow us. */
 const REPORT_CAP = 50;
 let reportCount = 0;
@@ -132,12 +148,14 @@ export function startObserving(): () => void {
     for (let i = 0; i < entries.length; i++) noteLcp(entries[i] as PerformanceEntry);
     /* Each entry resets the quiet timer the moratorium waits on. */
     noteLcpEntry();
+    vitalsListener?.();
   });
 
   observe("layout-shift", (entries) => {
     for (let i = 0; i < entries.length; i++) {
       noteLayoutShift(entries[i] as LayoutShiftEntry);
     }
+    vitalsListener?.();
   });
 
   /* 40ms matches the threshold the platform itself uses for reporting slow interactions. */
@@ -147,12 +165,14 @@ export function startObserving(): () => void {
       for (let i = 0; i < entries.length; i++) {
         noteInteraction(entries[i] as EventTimingEntry);
       }
+      vitalsListener?.();
     },
     { durationThreshold: 40 },
   );
 
   observe("long-animation-frame", (entries) => {
     for (let i = 0; i < entries.length; i++) noteLoaf(entries[i] as PerformanceEntry);
+    vitalsListener?.();
   });
 
   /* First input finalizes LCP. Observed as an entry type rather than a listener, so the
@@ -183,6 +203,7 @@ export function startObserving(): () => void {
     reportingObserver?.disconnect();
     reportingObserver = undefined;
     batchListener = undefined;
+    vitalsListener = undefined;
   };
 }
 

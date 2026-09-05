@@ -143,6 +143,54 @@ export interface Tier1Access {
    */
   onVisibility(fn: (visible: boolean) => void): () => void;
   visible(): boolean;
+  /**
+   * The vitals accumulator's current reading, plus the entry types this browser accepted.
+   *
+   * Handed across for the same reason as the ring, and it is not a hypothetical: the
+   * accumulator in `collector/vitals.ts` keeps its totals in module-level variables, so
+   * importing that module from the panel yields a second, empty copy that would report
+   * `LCP unavailable` on a page where the browser had reported one. This is the only way
+   * stage 2 sees stage 1's numbers.
+   */
+  vitals(): VitalsReading;
+  /**
+   * Notified once after each batch of vitals entries. Returns a teardown.
+   *
+   * Its own signal, not the resource batch: a layout shift is not a request, and firing the
+   * two together would repaint the requests list once per shift on the page being measured.
+   */
+  onVitals(fn: () => void): () => void;
+}
+
+/**
+ * What the vitals surface is allowed to know.
+ *
+ * Every field is a number or a string — never a browser entry and never a DOM node. The
+ * absence conventions are load-bearing and are the whole reason this shape is declared on the
+ * boundary rather than inferred:
+ *
+ *   - `lcp`, `inp`, `ttfb` are `-1` when the browser has reported none. Not zero: a zero here
+ *     would render as a very good score for a measurement that never happened.
+ *   - `cls` and `loafCount` start at zero legitimately — an observer registered with
+ *     `buffered: true` that has delivered no shift is reporting that the page did not shift.
+ *     Whether the observer exists at all is `entryTypes`, not the value.
+ *   - the attribution strings are empty when the entry carried no attribution. The card then
+ *     states that attribution is unavailable rather than naming a likely element.
+ */
+export interface VitalsReading {
+  lcp: number;
+  cls: number;
+  inp: number;
+  ttfb: number;
+  loafCount: number;
+  loafLongest: number;
+  lcpElement: string;
+  clsSource: string;
+  inpTarget: string;
+  inpTargetIsScored: boolean;
+  loafScript: string;
+  /** Entry types this browser accepted. An absent type is a state to report, not an error. */
+  entryTypes: readonly string[];
 }
 
 /** Mirrors `collector/sw.ts`. Duplicated deliberately — see the note on `PanelModule`. */
