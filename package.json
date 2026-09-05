@@ -32,7 +32,7 @@
     "size": "pnpm build && size-limit",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "dev": "concurrently -n build,serve -c cyan,magenta \"vite build --watch\" \"node --watch bench/fixtures/server.mjs\"",
+    "dev": "pnpm build && concurrently -n s1,panel,sw,serve -c cyan,blue,green,magenta \"vite build --watch\" \"D0BAR_STAGE=2 vite build --watch\" \"D0BAR_STAGE=sw vite build --watch\" \"node --watch bench/fixtures/server.mjs\"",
     "prepublishOnly": "pnpm build && pnpm test && pnpm size"
   },
   "devDependencies": {

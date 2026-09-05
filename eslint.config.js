@@ -3,7 +3,12 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "design_handoff_d0bar", "src/collector/tokens.gen.ts"] },
+  {
+    /* `.claude/worktrees` holds agent worktrees — whole checkouts of this repo, `dist/`
+       included. Without this, `eslint .` walks into them and lints a second copy of the
+       project plus its build output, which is both meaningless and slow. */
+    ignores: ["dist", ".claude", "design_handoff_d0bar", "src/collector/tokens.gen.ts"],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

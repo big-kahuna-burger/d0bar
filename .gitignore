@@ -5,3 +5,6 @@ dist
 bench/last-budget.json
 test-results
 playwright-report
+
+# Agent worktrees: whole checkouts of this repo, created by background agents.
+.claude/worktrees

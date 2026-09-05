@@ -382,12 +382,45 @@ export function requestsView(options: RequestsViewOptions): RequestsView {
    * recorded at all because a hidden tab means `display: none`, which discards `scrollTop`
    * outright: without this, every return to the requests tab lands at the top of the list.
    */
-  const onScroll = () => rememberScroll("requests", list.scrollTop());
+  const onScroll = () => {
+    /* Not while the list is unlaid-out. Hiding it resets `scrollTop` to zero and the browser
+       reports that reset as a scroll — so without this guard, leaving the tab overwrites the
+       offset being remembered with the zero that leaving it just caused, and the restore on
+       the way back has nothing left to restore. Measured: the probe showed `clientHeight` 0
+       and `scrollTop` 0 in the same frame the view was hidden. */
+    if (list.el.clientHeight === 0) return;
+    rememberScroll("requests", list.scrollTop());
+  };
 
   list.el.addEventListener("click", onClick);
   list.el.addEventListener("keydown", onKeyDown);
   list.el.addEventListener("focusin", onFocusIn);
   list.el.addEventListener("scroll", onScroll, { passive: true });
+
+  /**
+   * Puts the list back where the user left it.
+   *
+   * Retried across frames because the caller cannot help but be early: re-entering the tab
+   * flips a signal, and the binding that un-hides the list is a separate subscriber to that
+   * same signal. Whichever order they run in, this can be reached while the element is still
+   * `display: none` — and a `scrollTop` write to an unlaid-out element is silently discarded,
+   * which is exactly the no-op that put the user back at the top of the list.
+   *
+   * Bounded rather than a loop: if the view never becomes visible there is nothing to
+   * restore, and a self-rescheduling frame callback on a hidden element would be a permanent
+   * cost for a state that no longer wants one.
+   */
+  function restoreScroll(attempts: number): void {
+    const saved = recallScroll("requests");
+    if (saved <= 0 || attempts <= 0) return;
+    if (list.el.clientHeight === 0) {
+      requestAnimationFrame(() => restoreScroll(attempts - 1));
+      return;
+    }
+    /* Only from the top. A restore that fired over the user's own scrolling would fight it;
+       arriving at zero is the state the `display: none` reset leaves behind. */
+    if (list.scrollTop() === 0) list.setScrollTop(saved);
+  }
 
   const stopBatch = tier1.onBatch(sync);
   /* Coming back from a hidden tab: the batches that arrived meanwhile were dropped on the
@@ -403,10 +436,7 @@ export function requestsView(options: RequestsViewOptions): RequestsView {
     el: root,
     refresh() {
       sync();
-      /* Only from the top. A restore that fired on every repaint would fight the user's own
-         scrolling; arriving at the top is the state a `display: none` reset leaves behind. */
-      const saved = recallScroll("requests");
-      if (saved > 0 && list.scrollTop() === 0) list.setScrollTop(saved);
+      restoreScroll(3);
     },
     destroy() {
       stopBatch();

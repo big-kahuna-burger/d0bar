@@ -182,21 +182,49 @@ test.describe("bar geometry", () => {
 });
 
 test.describe("streaming", () => {
+  /* The eviction half of this requirement — records falling off the front of a full ring,
+     which shifts every retained index and must move the offset and the selection with them —
+     is settled in `tests/unit/requests-view.test.ts` against a capacity-8 fake ring. It is
+     not reachable here: the fixture issues ~310 requests against a ring that holds 512, and
+     driving 200 more just to reach the boundary would change the traffic shape the rest of
+     this file measures. */
   test("appending does not move the viewport or drop the selection", async ({ page }) => {
     await openPanel(page);
 
+    /* Scrolled and read in its own step. Selecting a row pushes the trace surface, which
+       hides the list — and `display: none` discards `scrollTop` on the spot, so an offset
+       read after the click is always zero and would make this assertion pass for the wrong
+       reason. This is also the ordering a person produces: scroll, then click. */
     const before = await page.evaluate(() => {
-      const root = window.__d0root!;
-      const scroll = root.querySelector(".rows-scroll") as HTMLElement;
+      const scroll = window.__d0root!.querySelector(".rows-scroll") as HTMLElement;
+      const spacer = window.__d0root!.querySelector(".rows-spacer") as HTMLElement;
       scroll.scrollTop = 40 * 21;
-      const row = root.querySelectorAll<HTMLElement>(".row")[3]!;
+      return {
+        scrollTop: scroll.scrollTop,
+        records: Math.round(parseFloat(spacer.style.height) / 21),
+      };
+    });
+    expect(before.scrollTop).toBe(40 * 21);
+
+    const label = await page.evaluate(() => {
+      const row = window.__d0root!.querySelectorAll<HTMLElement>(".row")[3]!;
+      const name = row.getAttribute("aria-label");
       row.click();
-      return { scrollTop: scroll.scrollTop, label: row.getAttribute("aria-label") };
+      return name;
     });
 
-    /* A selected row pushes the trace surface, which hides the list — come back to it. */
+    /* Back to the list. The offset has to survive the round trip, which is what the view's
+       own `rememberScroll` on the way out is for. */
     await page.keyboard.press("Escape");
     await page.waitForFunction(() => window.__d0root!.querySelector(".row") !== null);
+    await page.waitForFunction(
+      (expected) => {
+        const scroll = window.__d0root!.querySelector(".rows-scroll") as HTMLElement;
+        return scroll.scrollTop === expected;
+      },
+      40 * 21,
+      { timeout: 5_000 },
+    );
 
     /* Ten more requests, issued the way the fixture issues its own. */
     await page.evaluate(async () => {
@@ -210,14 +238,21 @@ test.describe("streaming", () => {
 
     const after = await page.evaluate(() => {
       const scroll = window.__d0root!.querySelector(".rows-scroll") as HTMLElement;
-      return { scrollTop: scroll.scrollTop };
+      const spacer = window.__d0root!.querySelector(".rows-spacer") as HTMLElement;
+      return {
+        scrollTop: scroll.scrollTop,
+        records: Math.round(parseFloat(spacer.style.height) / 21),
+      };
     });
 
-    /* The ring is at capacity, so ten arrivals mean ten departures and every retained index
-       moved down by ten — 210px. The viewport must move with them, which is the *opposite*
-       of leaving `scrollTop` alone. */
-    expect(before.label).not.toBeNull();
-    expect(after.scrollTop).toBe(before.scrollTop - 10 * 21);
+    expect(label).not.toBeNull();
+    /* The fixture produces roughly 310 records against a ring that holds 512, so nothing was
+       evicted: the ten arrivals appended below the viewport and every row already on screen
+       kept its index. The requirement is then exactly that the offset does not move — the
+       user reads the same rows they were reading. */
+    expect(after.records).toBeLessThan(512);
+    expect(after.records).toBeGreaterThan(before.records);
+    expect(after.scrollTop).toBe(before.scrollTop);
   });
 });
 

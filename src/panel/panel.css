@@ -315,11 +315,16 @@
   overflow: hidden auto;
   /* Keeps a wheel at the list's edge from scrolling the host page behind the panel. */
   overscroll-behavior: contain;
-  /* Skips rendering work for the list entirely while it is off-screen — which it is
-     whenever another tab is showing. The intrinsic size keeps the scrollbar's geometry
-     stable across that skip, so returning to the tab does not resize the thumb. */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 288px;
+  /* `content-visibility: auto` belongs on a scroller's *rows*, never on the scroller.
+     Measured here rather than reasoned about: with it on this element, restoring a scroll
+     offset on the way back into the tab silently clamped to zero, because a skipped subtree
+     reports `contain-intrinsic-size` as its content extent — a 288px scrollHeight for a
+     10,752px list, so every offset was out of range. The probe read `scrollTop` 0 immediately
+     after a successful write of 840.
+
+     It also buys nothing here. Skipping off-screen rendering work is precisely what the
+     virtualizer already does, by not creating the rows at all, and a hidden tab is
+     `display: none`, which is free already. */
 }
 
 .rows-spacer {

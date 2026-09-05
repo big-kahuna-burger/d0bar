@@ -119,6 +119,15 @@ const SW_ENTRIES = {
 
 const swVariant = process.env.D0BAR_SW === "module" ? "module" : "standalone";
 
+/**
+ * Whether this is a watch build.
+ *
+ * Read from argv rather than from the resolved config: Vite sets `build.watch` from the CLI
+ * flag *after* this config module is evaluated, so by the time it exists it is too late to
+ * decide whether the output directory may be emptied.
+ */
+const watching = process.argv.includes("--watch") || process.argv.includes("-w");
+
 export default defineConfig(({ mode }) => ({
   /* Read from Vite's own mode rather than process.env.NODE_ENV, which is not yet set to
      "production" when this config module is evaluated — the earlier form shipped the
@@ -134,8 +143,14 @@ export default defineConfig(({ mode }) => ({
   ],
   build: {
     target: "es2022",
-    /* Only stage 1 clears the directory; the others build into it afterwards. */
-    emptyOutDir: stage === 1,
+    /* Only stage 1 clears the directory; the others build into it afterwards — and never
+       while watching.
+
+       `pnpm dev` runs every stage's watcher against one `dist/`, so a stage-1 rebuild that
+       emptied the directory would delete `d0bar.panel.js` out from under the running page.
+       The symptom was the whole panel: the pill's click `import()`s stage 2 by URL, got a
+       404, and swallowed it — a toolbar that looked alive and did nothing when clicked. */
+    emptyOutDir: stage === 1 && !watching,
     lib:
       stage === "sw"
         ? {

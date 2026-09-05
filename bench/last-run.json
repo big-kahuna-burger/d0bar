@@ -99,12 +99,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1942,
+                      "duration": 1737,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:35:42.140Z",
+                      "startTime": "2026-09-05T18:53:26.956Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -133,12 +133,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3466,
+                      "duration": 3380,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:35:44.312Z",
+                      "startTime": "2026-09-05T18:53:28.779Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -167,12 +167,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 12528,
+                      "duration": 12593,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:35:47.788Z",
+                      "startTime": "2026-09-05T18:53:32.165Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -209,12 +209,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1758,
+                      "duration": 1765,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:36:00.321Z",
+                      "startTime": "2026-09-05T18:53:44.764Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -243,12 +243,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1739,
+                      "duration": 1747,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:36:02.085Z",
+                      "startTime": "2026-09-05T18:53:46.535Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -271,7 +271,7 @@
           "specs": [
             {
               "title": "appending does not move the viewport or drop the selection",
-              "ok": false,
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -284,53 +284,23 @@
                     {
                       "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 2396,
-                      "error": {
-                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m-210\u001b[39m\nReceived: \u001b[31m0\u001b[39m",
-                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m-210\u001b[39m\nReceived: \u001b[31m0\u001b[39m\n    at /Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:220:29",
-                        "location": {
-                          "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
-                          "column": 29,
-                          "line": 220
-                        },
-                        "snippet": "  218 |        of leaving `scrollTop` alone. */\n  219 |     expect(before.label).not.toBeNull();\n> 220 |     expect(after.scrollTop).toBe(before.scrollTop - 10 * 21);\n      |                             ^\n  221 |   });\n  222 | });\n  223 |"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
-                            "column": 29,
-                            "line": 220
-                          },
-                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m-210\u001b[39m\nReceived: \u001b[31m0\u001b[39m\n\n  218 |        of leaving `scrollTop` alone. */\n  219 |     expect(before.label).not.toBeNull();\n> 220 |     expect(after.scrollTop).toBe(before.scrollTop - 10 * 21);\n      |                             ^\n  221 |   });\n  222 | });\n  223 |\n    at /Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:220:29"
-                        }
-                      ],
+                      "status": "passed",
+                      "duration": 2389,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:36:03.829Z",
+                      "startTime": "2026-09-05T18:53:48.287Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/Users/bkb/d/dash0/d0bar/test-results/requests-view-streaming-ap-f2976-wport-or-drop-the-selection-chromium/error-context.md"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
-                        "column": 29,
-                        "line": 220
-                      }
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 }
               ],
               "id": "602c609c3fd960fe26e3-7ea6abe80c7290447b37",
               "file": "requests-view.spec.ts",
-              "line": 185,
+              "line": 191,
               "column": 3
             }
           ]
@@ -338,7 +308,7 @@
         {
           "title": "keyboard",
           "file": "requests-view.spec.ts",
-          "line": 224,
+          "line": 259,
           "column": 6,
           "specs": [
             {
@@ -354,7 +324,7 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
                       "duration": 1756,
@@ -362,7 +332,7 @@
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:36:06.444Z",
+                      "startTime": "2026-09-05T18:53:50.683Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -372,7 +342,7 @@
               ],
               "id": "602c609c3fd960fe26e3-4a79315d0f6f73413892",
               "file": "requests-view.spec.ts",
-              "line": 225,
+              "line": 260,
               "column": 3
             },
             {
@@ -388,15 +358,15 @@
                   "projectName": "chromium",
                   "results": [
                     {
-                      "workerIndex": 1,
+                      "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1745,
+                      "duration": 1739,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:36:08.274Z",
+                      "startTime": "2026-09-05T18:53:52.446Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -406,7 +376,7 @@
               ],
               "id": "602c609c3fd960fe26e3-6ca2d8499bf7e5e31c4a",
               "file": "requests-view.spec.ts",
-              "line": 251,
+              "line": 286,
               "column": 3
             }
           ]
@@ -416,11 +386,11 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-09-05T18:35:41.715Z",
-    "duration": 28338.44,
-    "expected": 7,
+    "startTime": "2026-09-05T18:53:26.624Z",
+    "duration": 27594.454999999998,
+    "expected": 8,
     "skipped": 0,
-    "unexpected": 1,
+    "unexpected": 0,
     "flaky": 0
   }
 }
