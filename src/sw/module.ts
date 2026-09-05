@@ -1,3 +1,4 @@
+import { serveBroker, type BrokerOptions, type BrokerScope } from "./broker";
 import { observeFetches, type WorkerScope } from "./observe";
 
 /**
@@ -30,4 +31,19 @@ import { observeFetches, type WorkerScope } from "./observe";
 /** Installs d0bar's observation listeners on the calling worker's scope. */
 export function observe(scope?: WorkerScope): void {
   observeFetches(scope ?? (globalThis as unknown as WorkerScope));
+}
+
+/**
+ * Installs the token broker on the calling worker's scope.
+ *
+ * A second explicit call rather than a flag on `observe()`, for the reason `observe()` is a call
+ * at all: adding a message listener to someone else's worker is not something to do as a side
+ * effect of asking for observation. A host who never connects a token never calls this.
+ *
+ *   import { observe, broker } from "/d0bar-sw-module.js";
+ *   observe();
+ *   broker({ apiOrigin: "https://api.eu-west-1.aws.dash0.com" });
+ */
+export function broker(options: BrokerOptions, scope?: BrokerScope): void {
+  serveBroker(scope ?? (globalThis as unknown as BrokerScope), options);
 }

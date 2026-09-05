@@ -1,11 +1,5 @@
-import {
-  DB_NAME,
-  DB_VERSION,
-  MAX_AGE_MS,
-  MAX_RECORDS,
-  STORE,
-  type FetchRecord,
-} from "./protocol";
+import { openDb, openFailed, resetDb } from "./db";
+import { MAX_AGE_MS, MAX_RECORDS, STORE, type FetchRecord } from "./protocol";
 
 /**
  * The worker's durable request log.
@@ -17,58 +11,18 @@ import {
  * and none of those may surface as anything but a degraded reading.
  */
 
-let db: IDBDatabase | undefined;
-let opening: Promise<IDBDatabase | undefined> | undefined;
 /** Latched on the first quota failure. Logging stops; the reading side reports it. */
 let degraded = false;
 
 export function loggingDegraded(): boolean {
-  return degraded;
+  /* Two independent ways to be degraded: the database would not open at all, which `db.ts`
+     latches, or a write hit quota, which is latched here. Either one means the log is not a
+     complete record and the panel must not present it as one. */
+  return degraded || openFailed();
 }
 
 function open(): Promise<IDBDatabase | undefined> {
-  if (db) return Promise.resolve(db);
-  if (opening) return opening;
-
-  opening = new Promise<IDBDatabase | undefined>((resolve) => {
-    let request: IDBOpenDBRequest;
-    try {
-      request = indexedDB.open(DB_NAME, DB_VERSION);
-    } catch {
-      /* `indexedDB` can throw on access alone in a partitioned or blocked context. */
-      degraded = true;
-      resolve(undefined);
-      return;
-    }
-    request.onupgradeneeded = () => {
-      const database = request.result;
-      if (database.objectStoreNames.contains(STORE)) database.deleteObjectStore(STORE);
-      const store = database.createObjectStore(STORE, { keyPath: "order" });
-      /* Pruning walks by age, and the join reads in insertion order — both are served by
-         one index rather than a full scan. */
-      store.createIndex("at", "at");
-    };
-    request.onsuccess = () => {
-      db = request.result;
-      /* A second tab upgrading the schema would otherwise block forever holding this
-         connection open. Close and degrade rather than wedge the other tab. */
-      db.onversionchange = () => {
-        db?.close();
-        db = undefined;
-      };
-      resolve(db);
-    };
-    request.onerror = () => {
-      degraded = true;
-      resolve(undefined);
-    };
-    request.onblocked = () => {
-      degraded = true;
-      resolve(undefined);
-    };
-  });
-
-  return opening;
+  return openDb();
 }
 
 /**
@@ -174,10 +128,8 @@ export async function prune(now: number = Date.now()): Promise<void> {
   });
 }
 
-/** Test seam. */
+/** Test seam. The connection itself lives in `db.ts`, so its reset is `resetDb()`. */
 export function resetLog(): void {
-  db?.close();
-  db = undefined;
-  opening = undefined;
+  resetDb();
   degraded = false;
 }

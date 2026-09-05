@@ -12,10 +12,21 @@
  * wrote. That is also what makes the log durable across a reload for free.
  */
 
-/** Bumped only when the store's shape changes; `onupgradeneeded` recreates the store. */
+/** Bumped only when a store's shape changes; `onupgradeneeded` in `db.ts` applies it. */
 export const DB_NAME = "d0bar";
-export const DB_VERSION = 1;
+/** 2 added `TOKEN_STORE`. The request log is recreated on a bump; the token store never is. */
+export const DB_VERSION = 2;
 export const STORE = "requests";
+
+/**
+ * Where a persisted auth token lives.
+ *
+ * Same database as the log rather than its own, so there is one connection and one upgrade
+ * path — see `db.ts`. Note what this store is *not*: it is not private to the worker. The page
+ * opens this database too, by design, which is the whole reason `token.ts` offers a
+ * session-only mode and says out loud what the persisted mode costs.
+ */
+export const TOKEN_STORE = "auth";
 
 /** Oldest records are pruned past either bound, whichever binds first. */
 export const MAX_RECORDS = 2000;

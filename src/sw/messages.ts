@@ -1,0 +1,91 @@
+import { query, type QueryOutcome } from "./query";
+import { clear, restore, set, type TokenStatus } from "./token";
+
+/**
+ * The worker's message surface.
+ *
+ * **Why there is one at all, when `protocol.ts` refuses one.** That refusal is specific and
+ * still correct: a message handler for the *request log* would run the toolbar's correlation
+ * work on the host's main thread during load, which is exactly when TBT is being measured. This
+ * surface is four messages — a user-initiated paste, a disconnect, a status read, and one query
+ * per panel interaction — none of them on the load path, and none of them per-request. The log
+ * stays in IndexedDB.
+ *
+ * The whole surface is below. It is small on purpose: every message is something the page may
+ * ask for, and there is deliberately no message that returns the token. That is not enforced by
+ * remembering not to add one — `token.ts` exports `bearer()` for `query.ts` alone, and nothing
+ * in this file can reach it.
+ *
+ * Replies go back over the `MessagePort` the caller supplied, not broadcast to every client. A
+ * broadcast would hand one tab's answer to every other page on the origin.
+ */
+
+export type Request =
+  | { kind: "connect"; token: string; persist: boolean }
+  | { kind: "disconnect" }
+  | { kind: "status" }
+  | { kind: "query"; url: string };
+
+export type Reply =
+  | { kind: "status"; status: TokenStatus }
+  | { kind: "query"; outcome: QueryOutcome };
+
+/** Structural, so this module typechecks under `lib.dom` and is testable without a worker. */
+export interface Replier {
+  postMessage(message: Reply): void;
+}
+
+/**
+ * Handles one message.
+ *
+ * Returns without replying for anything unrecognised. An unknown message is not echoed, not
+ * answered with an error naming what it was, and not logged — a page probing for a message that
+ * returns the token learns nothing from the shape of the silence.
+ */
+export async function handle(
+  data: unknown,
+  reply: Replier,
+  apiOrigin: string,
+): Promise<void> {
+  if (typeof data !== "object" || data === null) return;
+  const message = data as { kind?: unknown };
+
+  switch (message.kind) {
+    case "connect": {
+      const { token, persist } = data as Extract<Request, { kind: "connect" }>;
+      if (typeof token !== "string") return;
+      reply.postMessage({ kind: "status", status: await set(token, persist === true) });
+      return;
+    }
+    case "disconnect":
+      reply.postMessage({ kind: "status", status: await clear() });
+      return;
+    case "status":
+      /* `restore()` rather than `status()`: a worker that was terminated and revived has an
+         empty in-memory copy while the persisted token is still on disk, and answering from
+         memory alone would tell the user they are disconnected and ask for the credential
+         again. */
+      reply.postMessage({ kind: "status", status: await restore() });
+      return;
+    case "query": {
+      const { url } = data as Extract<Request, { kind: "query" }>;
+      if (typeof url !== "string") return;
+      reply.postMessage({ kind: "query", outcome: await query(url, apiOrigin) });
+      return;
+    }
+    default:
+      return;
+  }
+}
+
+/** The port a caller supplied, or the client that sent the message. */
+export function replierFor(event: {
+  ports?: readonly MessagePort[];
+  source?: { postMessage(message: unknown): void } | null;
+}): Replier | undefined {
+  const port = event.ports?.[0];
+  if (port) return port as unknown as Replier;
+  const source = event.source;
+  if (source) return source as Replier;
+  return undefined;
+}
