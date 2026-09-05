@@ -1,5 +1,14 @@
 # request-correlation
 
+## Purpose
+
+Correlates the requests a page makes with the traces they belong to, by reading request headers
+from inside a service worker instead of patching `fetch` or `XMLHttpRequest`. It exists because
+the trace id travels in a header the page's own JavaScript cannot see without intercepting the
+call that carries it — and intercepting it would change the thing being measured. Where no
+worker scope is available the capability turns itself off and says so, because a correlation the
+toolbar cannot honestly make is better named than faked.
+
 ## ADDED Requirements
 
 ### Requirement: Observation without interception
@@ -11,10 +20,17 @@ caching semantics, or response content.
 - **THEN** the worker records the request's headers and returns without responding, and the
   browser services the request natively
 
-#### Scenario: Worker overhead measured
+#### Scenario: Worker overhead bounded
 - **WHEN** resource timings are read for an observed request
-- **THEN** the gap between `workerStart` and `fetchStart` stays within the recorded budget,
-  and the overhead is disclosed in the UI rather than omitted
+- **THEN** the gap between `workerStart` and `fetchStart` stays within a committed budget,
+  asserted at p95, and the time it represents is carried in the request's bar rather than
+  dropped from it
+
+#### Scenario: The worker's own cost is isolated
+- **WHEN** the same page is loaded with the worker registered and with it absent, everything
+  else held identical
+- **THEN** the difference in request latency stays within a committed budget, so the cost of
+  registering the worker is a measured number and not an assumption
 
 > Corrected against the platform. This scenario previously read "`workerStart` shows no
 > worker-attributable delay", which was written as though `workerStart` were zero for a
@@ -23,6 +39,18 @@ caching semantics, or response content.
 > calls `respondWith`. A zero assertion could only pass on a page with no worker, which
 > proves nothing about one that has a worker. Measured over 250 requests: p50 0.5ms, p95
 > 3.4ms, max 3.6ms.
+>
+> Corrected a second time, on the wording rather than the platform. The scenario also
+> required the overhead to be "disclosed in the UI rather than omitted", and that was not
+> true: the time is folded into the waterfall's `lead` segment along with redirects and
+> queueing, and `geometry.ts` declines to give it a colour of its own because the record
+> carries no breakdown of it. So the time is *not dropped* — it occupies the bar and the
+> measured phases start where they really started — but it is not attributed to the worker,
+> and no user could learn from the panel that the worker costs anything. Attributing it would
+> mean carrying a fourth number across the stage boundary for a p95 of 3.4ms, which is not a
+> trade this design wants to make silently. The scenario now says what is true, and the
+> second scenario below carries the claim that actually matters: what registering the worker
+> costs, measured against not registering it.
 
 ### Requirement: Globals remain unpatched
 Correlation SHALL be achieved without modifying `fetch`, `XMLHttpRequest`, or any other host
