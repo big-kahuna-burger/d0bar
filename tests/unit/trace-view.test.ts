@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import { traceView } from "../../src/panel/views/trace";
-import { open, resetShell, selected, view } from "../../src/panel/shell";
+import { connection, open, resetShell, selected, view } from "../../src/panel/shell";
 import type { TraceContext } from "../../src/collector/correlate";
 import { F_HAS_SPAN, F_XHR } from "../../src/shared/flags";
 import { scratch, type RequestRecord } from "../../src/shared/record";
@@ -255,19 +255,42 @@ describe("traceView", () => {
     surface.destroy();
   });
 
-  it("says so plainly when there is no query to make", async () => {
-    /* What a real deployment shows today. It is not the no-span screen's claim and it is
-       not a spinner: the span exists, and d0bar cannot ask about it. */
+  it("tells an unconnected developer the one thing they can do about it", async () => {
+    /* The span exists and d0bar cannot ask about it — but with no token connected that is a
+       state the developer fixes in ten seconds, so the screen has to say which. This copy
+       previously read "d0bar has no credentialed backend to query yet", which stopped being
+       true the day the connect surface shipped. */
+    connection.set({ connected: false, source: "none", hint: "", apiOrigin: "" });
     const surface = mount({ tier2: LIVE, withQuery: false }, [requestRecord()]);
     open.set(true);
     view.set("trace");
     selected.set(0);
     await settled();
 
-    expect(textOf(surface.el, ".trace-none-title")).toBe("No trace query is configured.");
-    expect(textOf(surface.el, ".trace-none-why")).toBe(UNQUERYABLE_COPY);
+    expect(textOf(surface.el, ".trace-none-title")).toBe("Connect a token to fetch this span.");
+    expect(textOf(surface.el, ".trace-none-why")).toBe(UNQUERYABLE_COPY["not-connected"]);
     expect(visible(surface.el, ".trace-none-sw")).toBe(false);
     expect(visible(surface.el, ".trace-wait")).toBe(false);
+    surface.destroy();
+  });
+
+  it("blames itself, not the user's custody, once a token is connected", async () => {
+    /* The other half of the same correction. Telling someone to connect a token when one is
+       connected sends them to perform a no-op and then stop believing the panel. */
+    connection.set({
+      connected: true,
+      source: "session",
+      hint: "wxyz",
+      apiOrigin: "https://api.eu-west-1.aws.dash0.com",
+    });
+    const surface = mount({ tier2: LIVE, withQuery: false }, [requestRecord()]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+
+    expect(textOf(surface.el, ".trace-none-title")).toBe("This panel does not query spans yet.");
+    expect(textOf(surface.el, ".trace-none-why")).toBe(UNQUERYABLE_COPY["not-wired"]);
     surface.destroy();
   });
 

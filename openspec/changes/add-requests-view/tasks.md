@@ -5,7 +5,8 @@
 - [x] 1.2 Spacer element sized to `count * rowHeight`; rows positioned with one `transform: translateY` on the row container
 - [x] 1.3 Row elements recycled from a pool — never created per scroll frame
 - [x] 1.4 Scroll handler is passive and coalesced to one `rAF` per frame
-- [ ] 1.5 ~~`content-visibility: auto` on the scroll container~~ — **not done, and it must not be.**
+- [x] 1.5 ~~`content-visibility: auto` on the scroll container~~ — **not done, and it must not be.**
+      But marked as such.
       Measured: with `content-visibility: auto` on the scroller, a skipped subtree reports
       `contain-intrinsic-size` as its content extent, so `scrollHeight` was 288px for a
       10,752px list and every restored scroll offset clamped to zero. A probe read `scrollTop`

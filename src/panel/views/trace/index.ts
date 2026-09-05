@@ -4,7 +4,7 @@ import { traceContext, type TraceContext } from "../../../collector/correlate";
 import { F_XHR } from "../../../shared/flags";
 import { scratch, type RequestRecord } from "../../../shared/record";
 import type { Tier1Access, Tier2State } from "../../../shared/stage2";
-import { open, popToList, selected, view } from "../../shell";
+import { connection, open, popToList, selected, view } from "../../shell";
 import { traceJumpAvailable } from "../../tier";
 import { virtualList, type VirtualList } from "../../virtual";
 import { displayPath, formatDuration } from "../requests/format";
@@ -138,6 +138,9 @@ export function traceView(options: TraceViewOptions): TraceView {
   const machine = createTraceMachine({
     ...options.machine,
     ...(options.query ? { query: options.query } : {}),
+    /* Custody decides which absence this is, and the shell already holds it. Read through a
+       callback so a token connected while the panel is open changes the next reading. */
+    unqueryable: () => (connection().connected ? "not-wired" : "not-connected"),
     now,
   });
 
@@ -371,14 +374,21 @@ export function traceView(options: TraceViewOptions): TraceView {
   bindings.add(
     bindText(noneTitleText, () => {
       const at = state();
-      if (at.name === "unqueryable") return "No trace query is configured.";
+      /* The headline names which of the two it is. "No trace query is configured" was the old
+         single headline and it described d0bar's plumbing — true, and not the thing a developer
+         looking at a missing span needs to read first. */
+      if (at.name === "unqueryable") {
+        return at.why === "not-connected"
+          ? "Connect a token to fetch this span."
+          : "This panel does not query spans yet.";
+      }
       return "No span exists for this request.";
     }),
   );
   bindings.add(
     bindText(noneWhyText, () => {
       const at = state();
-      if (at.name === "unqueryable") return UNQUERYABLE_COPY;
+      if (at.name === "unqueryable") return UNQUERYABLE_COPY[at.why];
       if (at.name === "none") return NONE_COPY[at.why];
       return "";
     }),

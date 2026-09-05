@@ -157,7 +157,7 @@ export type TraceState =
   /** No span exists. Terminal, and never reached by a query returning nothing. */
   | { name: "none"; why: NoneCause }
   /** A trace id exists but d0bar has no way to ask about it. A statement about d0bar. */
-  | { name: "unqueryable"; traceId: string }
+  | { name: "unqueryable"; traceId: string; why: UnqueryableCause }
   | { name: "fetching"; traceId: string; attempt: number; timeRange: TimeRange }
   | {
       name: "waiting";
@@ -175,6 +175,13 @@ export type TraceState =
 export interface TraceMachineOptions {
   /** Omitted where no backend is reachable — see {@link TraceQuery}. */
   query?: TraceQuery;
+  /**
+   * Why there is no query, when there is no query. Defaults to `not-wired`.
+   *
+   * A callback rather than a value because custody changes while the panel is open: the
+   * developer connects a token, and the next selection must say the true thing.
+   */
+  unqueryable?: () => UnqueryableCause;
   ceiling?: number;
   baseDelayMs?: number;
   maxDelayMs?: number;
@@ -252,7 +259,14 @@ export function createTraceMachine(options: TraceMachineOptions = {}): TraceMach
   function attemptFetch(input: Extract<TraceInput, { kind: "trace" }>, attempt: number): void {
     const query = options.query;
     if (!query) {
-      set({ name: "unqueryable", traceId: input.traceId });
+      /* Read at the moment the state is set, not captured at construction: a developer can
+         connect a token with the panel open, and the sentence has to be right for the token
+         they have now rather than the one they had when the view mounted. */
+      set({
+        name: "unqueryable",
+        traceId: input.traceId,
+        why: options.unqueryable?.() ?? "not-wired",
+      });
       return;
     }
     const mine = exit();
@@ -396,10 +410,35 @@ export const NONE_COPY: Record<NoneCause, string> = {
 };
 
 /**
+ * Why a trace id d0bar can see cannot be asked about.
+ *
+ * Two reasons, and they are not interchangeable: one the developer can act on in the next ten
+ * seconds, one they cannot act on at all. Collapsing them was the original mistake — see the
+ * note on `UNQUERYABLE_COPY`.
+ */
+export type UnqueryableCause = "not-connected" | "not-wired";
+
+/**
  * The copy for a trace id d0bar can see but cannot ask about.
  *
- * Phrased as d0bar's own gap, not the host's: the request is instrumented, the span exists,
- * and the missing piece is a credential this toolbar has not yet learned how to obtain.
+ * **Corrected.** This was a single sentence reading "d0bar has no credentialed backend to query
+ * yet", which was true when it was written and stopped being true the day `add-pasted-token`
+ * landed: there is a credentialed backend now, the connect surface obtains the credential and
+ * the worker holds it. A panel whose entire purpose is being trustworthy about absences was
+ * telling the user a capability did not exist while it sat two clicks away in the header.
+ *
+ * Split rather than reworded, because the two states differ in the only way that matters to
+ * whoever is reading: `not-connected` is a thing the developer can fix right now, and the copy
+ * has to say so. `not-wired` is d0bar's own gap, and saying "connect a token" there would send
+ * someone to do something that changes nothing.
+ *
+ * Both keep the last clause verbatim. "The span exists — nothing here says otherwise" is the
+ * honest-degradation sentence: d0bar not being able to fetch a span is a fact about d0bar, and
+ * must never read as a finding about the host's instrumentation.
  */
-export const UNQUERYABLE_COPY =
-  "This request carried a trace id, but d0bar has no credentialed backend to query yet. The span exists — nothing here says otherwise.";
+export const UNQUERYABLE_COPY: Record<UnqueryableCause, string> = {
+  "not-connected":
+    "This request carried a trace id. Connect a Dash0 token and d0bar can fetch the span for you. The span exists — nothing here says otherwise.",
+  "not-wired":
+    "This request carried a trace id and a token is connected, but this panel does not issue the span query yet. The span exists — nothing here says otherwise.",
+};

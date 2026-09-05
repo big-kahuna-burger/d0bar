@@ -6,6 +6,7 @@ import {
   BASE_DELAY_MS,
   MAX_DELAY_MS,
   RANGE_MS,
+  UNQUERYABLE_COPY,
   type TraceInput,
   type TraceQuery,
   type TraceQueryOutcome,
@@ -199,7 +200,13 @@ describe("createTraceMachine", () => {
     const machine = createTraceMachine();
     machine.select(traceInput());
     await settled();
-    expect(machine.state()).toEqual({ name: "unqueryable", traceId: TRACE_ID });
+    /* `not-wired` is the default: the machine is told why only when someone tells it, and a
+       machine with no opinion should blame itself rather than the user's custody. */
+    expect(machine.state()).toEqual({
+      name: "unqueryable",
+      traceId: TRACE_ID,
+      why: "not-wired",
+    });
   });
 
   it("carries a ±2s time range on every attempt", async () => {
@@ -438,5 +445,49 @@ describe("createTraceMachine", () => {
     q.settle(1, { kind: "not-found" });
     await settled();
     expect(machine.state()).toEqual({ name: "exhausted", traceId: TRACE_ID, attempts: 2 });
+  });
+});
+
+describe("why it cannot be queried", () => {
+  /**
+   * The two reasons are not interchangeable, and the machine must not pick one for itself.
+   *
+   * `not-connected` is something the developer fixes in ten seconds; `not-wired` is d0bar's
+   * own gap and nothing they do changes it. Telling someone to connect a token when a token
+   * is already connected sends them to perform a no-op and then distrust the panel.
+   */
+  it("reports the cause the caller supplies", async () => {
+    const machine = createTraceMachine({ unqueryable: () => "not-connected" });
+    machine.select(traceInput());
+    await settled();
+    expect(machine.state()).toMatchObject({ name: "unqueryable", why: "not-connected" });
+  });
+
+  it("re-reads the cause on every selection, so connecting mid-session changes it", async () => {
+    let connected = false;
+    const machine = createTraceMachine({
+      unqueryable: () => (connected ? "not-wired" : "not-connected"),
+    });
+
+    machine.select(traceInput());
+    await settled();
+    expect(machine.state()).toMatchObject({ why: "not-connected" });
+
+    /* The developer connects a token with the panel open. A cause captured at construction
+       would leave the surface telling them to do the thing they just did. */
+    connected = true;
+    machine.select(null);
+    machine.select(traceInput());
+    await settled();
+    expect(machine.state()).toMatchObject({ why: "not-wired" });
+  });
+
+  it("never claims the span is missing, whichever cause it is", () => {
+    /* The clause that must survive every rewrite: d0bar being unable to fetch a span is a
+       fact about d0bar, and must never read as a finding about the host's instrumentation. */
+    for (const copy of Object.values(UNQUERYABLE_COPY)) {
+      expect(copy).toContain("The span exists — nothing here says otherwise.");
+      expect(copy).not.toContain("no credentialed backend");
+    }
   });
 });
