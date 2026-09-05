@@ -1,0 +1,25 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "design-handoff",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8731",
+        "--directory",
+        "design_handoff_d0bar"
+      ],
+      "port": 8731
+    },
+    {
+      "name": "fixture",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "bench/fixtures/server.mjs"
+      ],
+      "port": 8732
+    }
+  ]
+}

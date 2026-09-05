@@ -1,0 +1,56 @@
+# requests-view
+
+## ADDED Requirements
+
+### Requirement: Row rendering is windowed
+The request list SHALL render only the visible rows plus a small overscan, regardless of how
+many requests have been recorded.
+
+#### Scenario: Two thousand requests
+- **WHEN** 2000 requests are in the buffer
+- **THEN** the number of row elements in the DOM stays proportional to the visible window, and
+  continuous scrolling produces no frame with more than 8 ms of toolbar work
+
+### Requirement: Bar geometry is declarative
+Waterfall bar position and width SHALL be expressed as CSS custom properties on a contained
+row, so that updating a bar does not recalculate style outside that row.
+
+#### Scenario: A request completes
+- **WHEN** a new resource entry updates a row's bar
+- **THEN** only that row's custom properties are written, and no layout is invalidated outside it
+
+### Requirement: A shared comparison window
+Every row SHALL be positioned within one fixed page-relative time window, so bars are directly
+comparable between rows.
+
+#### Scenario: Two requests of equal duration
+- **WHEN** two requests have equal durations but different start times
+- **THEN** their bars have equal widths and differing offsets
+
+### Requirement: Phase segments come from measured timings
+Connect, wait and transfer segments SHALL be derived from the resource entry's own phase
+timestamps, and SHALL NOT be synthesized.
+
+#### Scenario: Timings unavailable
+- **WHEN** a cross-origin entry exposes no phase timings
+- **THEN** the bar renders as a single undifferentiated segment that is visually distinguishable
+  from a measured breakdown, rather than showing invented proportions
+
+### Requirement: Streaming does not disturb the user
+Appending rows SHALL NOT move the scroll position or change the selected row.
+
+#### Scenario: Requests arrive while scrolled
+- **WHEN** the user has scrolled the list and selected a row, and new requests arrive
+- **THEN** the viewport stays on the same rows and the selection is retained
+
+#### Scenario: Panel closed
+- **WHEN** requests arrive while the panel is closed or the document is hidden
+- **THEN** no row DOM is created or updated
+
+### Requirement: Rows are keyboard operable
+Each row SHALL be reachable and openable by keyboard, with an accessible name covering its
+method, path, status and duration.
+
+#### Scenario: Opening a row without a pointer
+- **WHEN** a row has keyboard focus and Enter is pressed
+- **THEN** the trace view for that request opens

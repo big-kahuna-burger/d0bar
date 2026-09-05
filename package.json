@@ -1,0 +1,75 @@
+{
+  "name": "d0bar",
+  "version": "0.1.0",
+  "description": "A Dash0-branded observability toolbar for your own web app \u2014 that does not distort what it measures.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "readme.md",
+    "architecture.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/d0bar.js"
+    },
+    "./iife": "./dist/d0bar.iife.js",
+    "./panel": "./dist/d0bar.panel.js",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "tokens": "node scripts/vendor-tokens.mjs",
+    "build": "pnpm tokens && pnpm -F spark-signals build && tsc --noEmit && vite build && D0BAR_STAGE=2 vite build && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run && pnpm -F spark-signals test",
+    "test:watch": "vitest",
+    "test:perf": "playwright test",
+    "bench:serve": "node bench/fixtures/server.mjs",
+    "size": "pnpm build && size-limit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "dev": "concurrently -n build,serve -c cyan,magenta \"vite build --watch\" \"node --watch bench/fixtures/server.mjs\"",
+    "prepublishOnly": "pnpm build && pnpm test && pnpm size"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.49.1",
+    "@size-limit/preset-small-lib": "^11.1.6",
+    "@types/node": "^26.4.1",
+    "concurrently": "^10.0.5",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
+    "jsdom": "^30.0.1",
+    "prettier": "^3.4.2",
+    "size-limit": "^11.1.6",
+    "terser": "^5.37.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.2",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8",
+    "spark-signals": "workspace:*"
+  },
+  "packageManager": "pnpm@11.18.0",
+  "keywords": [
+    "observability",
+    "performance",
+    "web-vitals",
+    "toolbar",
+    "opentelemetry",
+    "devtools"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/big-kahuna-burger/d0bar.git"
+  },
+  "homepage": "https://github.com/big-kahuna-burger/d0bar#readme",
+  "bugs": {
+    "url": "https://github.com/big-kahuna-burger/d0bar/issues"
+  }
+}

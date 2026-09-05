@@ -1,0 +1,7 @@
+.npmrc
+.DS_Store
+node_modules
+dist
+bench/last-budget.json
+test-results
+playwright-report

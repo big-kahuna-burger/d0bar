@@ -1,0 +1,163 @@
+import { noteFirstInput, noteLcpEntry, noteLoaded, noteVisibilityState } from "./phase";
+import { pushResource } from "./ring";
+import { noteInteraction, noteLayoutShift, noteLcp, noteLoaf, noteNavigation } from "./vitals";
+
+/**
+ * Tier 1 observation.
+ *
+ * The browser already records every request with a full timing breakdown, and every vital
+ * with attribution. The toolbar reads that rather than recreating it — which is why nothing
+ * here patches, wraps, or intercepts anything.
+ *
+ * This is also the toolbar's only point of contact with the host page. Lifecycle signals that
+ * would conventionally be listeners — load, visibility, first input — are taken from entry
+ * types instead and routed to `phase.ts`, so the toolbar registers no event listener on
+ * `window` or `document` at all. `non-perturbation.spec.ts` asserts that.
+ *
+ * Every observer is registered with `buffered: true`, so mounting late still yields every
+ * entry from page start. Each entry type is registered in its own try/catch: browsers throw
+ * on unknown types, and losing `long-animation-frame` on Safari must not cost us `resource`
+ * everywhere.
+ */
+
+const observers: PerformanceObserver[] = [];
+let reportingObserver: { disconnect(): void } | undefined;
+
+/** Entry types this browser accepted, for the diagnostics surface. */
+const active: string[] = [];
+
+/** Deprecations, interventions and CSP violations, bounded so a noisy page cannot grow us. */
+const REPORT_CAP = 50;
+let reportCount = 0;
+
+interface ReportingObserverLike {
+  new (
+    callback: (reports: unknown[]) => void,
+    options: { buffered: boolean; types: string[] },
+  ): { observe(): void; disconnect(): void };
+}
+
+function observe(
+  type: string,
+  handle: (entries: PerformanceEntryList) => void,
+  options?: Record<string, unknown>,
+): void {
+  try {
+    const observer = new PerformanceObserver((list) => handle(list.getEntries()));
+    observer.observe({ type, buffered: true, ...options });
+    observers.push(observer);
+    active.push(type);
+  } catch {
+    /* Entry type unsupported on this browser. The tier stack degrades per type, and the
+       UI reads `activeEntryTypes()` rather than assuming a set. */
+  }
+}
+
+interface LayoutShiftEntry extends PerformanceEntry {
+  value: number;
+  hadRecentInput: boolean;
+}
+
+interface EventTimingEntry extends PerformanceEntry {
+  interactionId?: number;
+  processingStart: number;
+}
+
+/** Registers every tier 1 observer. Returns a teardown that disconnects all of them. */
+export function startObserving(): () => void {
+  observe("resource", (entries) => {
+    /* The only work permitted during the load phase: a straight write into the ring. */
+    for (let i = 0; i < entries.length; i++) {
+      pushResource(entries[i] as PerformanceResourceTiming);
+    }
+  });
+
+  observe("navigation", (entries) => {
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i] as PerformanceNavigationTiming;
+      noteNavigation(entry);
+      /* The navigation entry is delivered twice — first with every field still zero, then
+         again once the load event has run, carrying `loadEventEnd`. The second delivery is
+         the load signal, which is why this module needs no `load` listener on the host. */
+      if (entry.loadEventEnd > 0) noteLoaded();
+    }
+  });
+
+  /* Visibility as an entry type rather than a `visibilitychange` listener. Registered with
+     `buffered: true`, so the initial state arrives as `{ name: "visible", startTime: 0 }`
+     without asking the document for it. */
+  observe("visibility-state", (entries) => {
+    for (let i = 0; i < entries.length; i++) {
+      noteVisibilityState(entries[i]!.name);
+    }
+  });
+
+  observe("largest-contentful-paint", (entries) => {
+    for (let i = 0; i < entries.length; i++) noteLcp(entries[i] as PerformanceEntry);
+    /* Each entry resets the quiet timer the moratorium waits on. */
+    noteLcpEntry();
+  });
+
+  observe("layout-shift", (entries) => {
+    for (let i = 0; i < entries.length; i++) {
+      noteLayoutShift(entries[i] as LayoutShiftEntry);
+    }
+  });
+
+  /* 40ms matches the threshold the platform itself uses for reporting slow interactions. */
+  observe(
+    "event",
+    (entries) => {
+      for (let i = 0; i < entries.length; i++) {
+        noteInteraction(entries[i] as EventTimingEntry);
+      }
+    },
+    { durationThreshold: 40 },
+  );
+
+  observe("long-animation-frame", (entries) => {
+    for (let i = 0; i < entries.length; i++) noteLoaf(entries[i] as PerformanceEntry);
+  });
+
+  /* First input finalizes LCP. Observed as an entry type rather than a listener, so the
+     toolbar adds nothing to the host page's event surface. */
+  observe("first-input", () => noteFirstInput());
+
+  const Reporting = (globalThis as { ReportingObserver?: ReportingObserverLike })
+    .ReportingObserver;
+  if (Reporting) {
+    try {
+      const observer = new Reporting(
+        (reports) => {
+          reportCount = Math.min(REPORT_CAP, reportCount + reports.length);
+        },
+        { buffered: true, types: ["deprecation", "intervention", "csp-violation"] },
+      );
+      observer.observe();
+      reportingObserver = observer;
+    } catch {
+      /* Unsupported. */
+    }
+  }
+
+  return () => {
+    for (const observer of observers) observer.disconnect();
+    observers.length = 0;
+    active.length = 0;
+    reportingObserver?.disconnect();
+    reportingObserver = undefined;
+  };
+}
+
+export function activeEntryTypes(): readonly string[] {
+  return active;
+}
+
+export function reportsSeen(): number {
+  return reportCount;
+}
+
+/** Test seam. */
+export function resetObserve(): void {
+  reportCount = 0;
+}

@@ -1,0 +1,289 @@
+/* Level Tokens */
+
+/*
+ * Level system: lvl-0 (lightest) to lvl-9 (darkest) in dark mode
+ * Each level provides a complete set of tokens for:
+ * - bg: background color
+ * - text: foreground text color
+ * - stroke: border/outline color
+ * - State variants: hover, active, focus, disabled
+ * - Intensity variants: subtle, intense
+ * - Special: inverse text colors for overlays
+ */
+
+:root,
+.dark {
+	/* Default implicit level classes to lvl-0 */
+	--lvl-active-stroke: var(--lvl-0-active-stroke);
+	--lvl-active-bg: var(--lvl-0-active-bg);
+	--lvl-active-text: var(--lvl-0-active-text);
+	--lvl-focus-stroke: var(--lvl-0-focus-stroke);
+	--lvl-hover-stroke: var(--lvl-0-hover-stroke);
+	--lvl-hover-bg: var(--lvl-0-hover-bg);
+	--lvl-hover-text: var(--lvl-0-hover-text);
+	--lvl-intense-bg: var(--lvl-0-intense-bg);
+	--lvl-intense-stroke: var(--lvl-0-intense-stroke);
+	--lvl-intense-text: var(--lvl-0-intense-text);
+	--lvl-subtle-bg: var(--lvl-0-subtle-bg);
+	--lvl-subtle-stroke: var(--lvl-0-subtle-stroke);
+	--lvl-subtle-text: var(--lvl-0-subtle-text);
+	--lvl-stroke: var(--lvl-0-stroke);
+	--lvl-bg: var(--lvl-0-bg);
+	--lvl-text: var(--lvl-0-text);
+
+	--lvl-0-active-bg: var(--neutral-800);
+	--lvl-0-active-stroke: var(--neutral-600);
+	--lvl-0-active-text: var(--neutral-0);
+	--lvl-0-bg: var(--neutral-900);
+	--lvl-0-focus-stroke: var(--blue-600);
+	--lvl-0-hover-bg: var(--neutral-850);
+	--lvl-0-hover-stroke: var(--neutral-700);
+	--lvl-0-hover-text: var(--neutral-50);
+	--lvl-0-intense-bg: var(--neutral-850);
+	--lvl-0-intense-stroke: var(--neutral-600);
+	--lvl-0-intense-text: var(--neutral-0);
+	--lvl-0-stroke: var(--neutral-750);
+	--lvl-0-subtle-bg: var(--neutral-950);
+	--lvl-0-subtle-stroke: var(--neutral-800);
+	--lvl-0-subtle-text: var(--neutral-400);
+	--lvl-0-text: var(--neutral-250);
+	--lvl-1-active-stroke: var(--neutral-550);
+	--lvl-1-active-bg: var(--neutral-750);
+	--lvl-1-active-text: var(--neutral-0);
+	--lvl-1-hover-stroke: var(--neutral-650);
+	--lvl-1-hover-bg: var(--neutral-800);
+	--lvl-1-hover-text: var(--neutral-50);
+	--lvl-1-intense-stroke: var(--neutral-600);
+	--lvl-1-intense-bg: var(--neutral-800);
+	--lvl-1-intense-text: var(--neutral-0);
+	--lvl-1-subtle-bg: var(--neutral-900);
+	--lvl-1-subtle-stroke: var(--neutral-750);
+	--lvl-1-subtle-text: var(--neutral-400);
+	--lvl-1-stroke: var(--neutral-700);
+	--lvl-1-bg: var(--neutral-850);
+	--lvl-1-text: var(--neutral-250);
+	--lvl-1-focus-stroke: var(--blue-600);
+
+	/* Level 2 */
+	--lvl-2-active-stroke: var(--neutral-500);
+	--lvl-2-active-bg: var(--neutral-700);
+	--lvl-2-active-text: var(--neutral-0);
+	--lvl-2-hover-stroke: var(--neutral-600);
+	--lvl-2-hover-bg: var(--neutral-750);
+	--lvl-2-hover-text: var(--neutral-50);
+	--lvl-2-intense-stroke: var(--neutral-550);
+	--lvl-2-intense-bg: var(--neutral-750);
+	--lvl-2-intense-text: var(--neutral-0);
+	--lvl-2-subtle-stroke: var(--neutral-700);
+	--lvl-2-subtle-bg: var(--neutral-850);
+	--lvl-2-subtle-text: var(--neutral-400);
+	--lvl-2-stroke: var(--neutral-650);
+	--lvl-2-bg: var(--neutral-800);
+	--lvl-2-text: var(--neutral-250);
+	--lvl-2-focus-stroke: var(--blue-600);
+
+	/* Level 3 */
+	--lvl-3-active-stroke: var(--neutral-450);
+	--lvl-3-active-bg: var(--neutral-650);
+	--lvl-3-active-text: var(--neutral-0);
+	--lvl-3-hover-stroke: var(--neutral-550);
+	--lvl-3-hover-bg: var(--neutral-700);
+	--lvl-3-hover-text: var(--neutral-50);
+	--lvl-3-intense-stroke: var(--neutral-500);
+	--lvl-3-intense-bg: var(--neutral-700);
+	--lvl-3-intense-text: var(--neutral-0);
+	--lvl-3-subtle-bg: var(--neutral-800);
+	--lvl-3-subtle-stroke: var(--neutral-650);
+	--lvl-3-subtle-text: var(--neutral-350);
+	--lvl-3-stroke: var(--neutral-600);
+	--lvl-3-bg: var(--neutral-750);
+	--lvl-3-text: var(--neutral-200);
+	--lvl-3-focus-stroke: var(--blue-600);
+
+	/* Level 4 */
+	--lvl-4-active-stroke: var(--neutral-400);
+	--lvl-4-active-bg: var(--neutral-600);
+	--lvl-4-active-text: var(--neutral-0);
+	--lvl-4-hover-stroke: var(--neutral-500);
+	--lvl-4-hover-bg: var(--neutral-650);
+	--lvl-4-hover-text: var(--neutral-50);
+	--lvl-4-intense-stroke: var(--neutral-450);
+	--lvl-4-intense-bg: var(--neutral-650);
+	--lvl-4-intense-text: var(--neutral-0);
+	--lvl-4-subtle-stroke: var(--neutral-600);
+	--lvl-4-subtle-bg: var(--neutral-750);
+	--lvl-4-subtle-text: var(--neutral-350);
+	--lvl-4-stroke: var(--neutral-550);
+	--lvl-4-bg: var(--neutral-700);
+	--lvl-4-text: var(--neutral-200);
+	--lvl-4-focus-stroke: var(--blue-600);
+
+	/* Level 5 */
+	--lvl-5-active-stroke: var(--neutral-350);
+	--lvl-5-active-bg: var(--neutral-550);
+	--lvl-5-active-text: var(--neutral-0);
+	--lvl-5-hover-stroke: var(--neutral-450);
+	--lvl-5-hover-bg: var(--neutral-600);
+	--lvl-5-hover-text: var(--neutral-50);
+	--lvl-5-intense-stroke: var(--neutral-400);
+	--lvl-5-intense-bg: var(--neutral-600);
+	--lvl-5-intense-text: var(--neutral-0);
+	--lvl-5-subtle-stroke: var(--neutral-550);
+	--lvl-5-subtle-bg: var(--neutral-700);
+	--lvl-5-subtle-text: var(--neutral-350);
+	--lvl-5-stroke: var(--neutral-500);
+	--lvl-5-bg: var(--neutral-650);
+	--lvl-5-text: var(--neutral-200);
+	--lvl-5-focus-stroke: var(--blue-600);
+
+	/* Level 6 */
+	--lvl-6-active-stroke: var(--neutral-300);
+	--lvl-6-active-bg: var(--neutral-500);
+	--lvl-6-active-text: var(--neutral-0);
+	--lvl-6-hover-stroke: var(--neutral-400);
+	--lvl-6-hover-bg: var(--neutral-550);
+	--lvl-6-hover-text: var(--neutral-0);
+	--lvl-6-intense-stroke: var(--neutral-350);
+	--lvl-6-intense-bg: var(--neutral-550);
+	--lvl-6-intense-text: var(--neutral-0);
+	--lvl-6-subtle-stroke: var(--neutral-500);
+	--lvl-6-subtle-bg: var(--neutral-650);
+	--lvl-6-subtle-text: var(--neutral-350);
+	--lvl-6-stroke: var(--neutral-450);
+	--lvl-6-bg: var(--neutral-600);
+	--lvl-6-text: var(--neutral-100);
+	--lvl-6-focus-stroke: var(--blue-600);
+}
+.light {
+	/* Level 0 */
+	--lvl-0-active-stroke: var(--neutral-400);
+	--lvl-0-active-bg: var(--neutral-75);
+	--lvl-0-active-text: var(--neutral-900);
+	--lvl-0-hover-stroke: var(--neutral-250);
+	--lvl-0-hover-bg: var(--neutral-50);
+	--lvl-0-hover-text: var(--neutral-700);
+	--lvl-0-intense-stroke: var(--neutral-200);
+	--lvl-0-intense-bg: var(--neutral-0);
+	--lvl-0-intense-text: var(--neutral-950);
+	--lvl-0-subtle-bg: var(--neutral-50);
+	--lvl-0-subtle-stroke: var(--neutral-75);
+	--lvl-0-subtle-text: var(--neutral-500);
+	--lvl-0-stroke: var(--neutral-100);
+	--lvl-0-bg: var(--neutral-0);
+	--lvl-0-text: var(--neutral-700);
+
+	/* Levels 1-6 inherit from level 0 (identical values in light mode) */
+	--lvl-1-active-bg: var(--lvl-0-active-bg);
+	--lvl-1-active-stroke: var(--lvl-0-active-stroke);
+	--lvl-1-active-text: var(--lvl-0-active-text);
+	--lvl-1-bg: var(--lvl-0-bg);
+	--lvl-1-focus-stroke: var(--lvl-0-focus-stroke);
+	--lvl-1-hover-bg: var(--lvl-0-hover-bg);
+	--lvl-1-hover-stroke: var(--lvl-0-hover-stroke);
+	--lvl-1-hover-text: var(--lvl-0-hover-text);
+	--lvl-1-intense-bg: var(--lvl-0-intense-bg);
+	--lvl-1-intense-stroke: var(--lvl-0-intense-stroke);
+	--lvl-1-intense-text: var(--lvl-0-intense-text);
+	--lvl-1-stroke: var(--lvl-0-stroke);
+	--lvl-1-subtle-bg: var(--lvl-0-subtle-bg);
+	--lvl-1-subtle-stroke: var(--lvl-0-subtle-stroke);
+	--lvl-1-subtle-text: var(--lvl-0-subtle-text);
+	--lvl-1-text: var(--lvl-0-text);
+	--lvl-2-active-bg: var(--lvl-0-active-bg);
+	--lvl-2-active-stroke: var(--lvl-0-active-stroke);
+	--lvl-2-active-text: var(--lvl-0-active-text);
+	--lvl-2-bg: var(--lvl-0-bg);
+	--lvl-2-focus-stroke: var(--lvl-0-focus-stroke);
+	--lvl-2-hover-bg: var(--lvl-0-hover-bg);
+	--lvl-2-hover-stroke: var(--lvl-0-hover-stroke);
+	--lvl-2-hover-text: var(--lvl-0-hover-text);
+	--lvl-2-intense-bg: var(--lvl-0-intense-bg);
+	--lvl-2-intense-stroke: var(--lvl-0-intense-stroke);
+	--lvl-2-intense-text: var(--lvl-0-intense-text);
+	--lvl-2-stroke: var(--lvl-0-stroke);
+	--lvl-2-subtle-bg: var(--lvl-0-subtle-bg);
+	--lvl-2-subtle-stroke: var(--lvl-0-subtle-stroke);
+	--lvl-2-subtle-text: var(--lvl-0-subtle-text);
+	--lvl-2-text: var(--lvl-0-text);
+	--lvl-3-active-bg: var(--lvl-0-active-bg);
+	--lvl-3-active-stroke: var(--lvl-0-active-stroke);
+	--lvl-3-active-text: var(--lvl-0-active-text);
+	--lvl-3-bg: var(--lvl-0-bg);
+	--lvl-3-focus-stroke: var(--lvl-0-focus-stroke);
+	--lvl-3-hover-bg: var(--lvl-0-hover-bg);
+	--lvl-3-hover-stroke: var(--lvl-0-hover-stroke);
+	--lvl-3-hover-text: var(--lvl-0-hover-text);
+	--lvl-3-intense-bg: var(--lvl-0-intense-bg);
+	--lvl-3-intense-stroke: var(--lvl-0-intense-stroke);
+	--lvl-3-intense-text: var(--lvl-0-intense-text);
+	--lvl-3-stroke: var(--lvl-0-stroke);
+	--lvl-3-subtle-bg: var(--lvl-0-subtle-bg);
+	--lvl-3-subtle-stroke: var(--lvl-0-subtle-stroke);
+	--lvl-3-subtle-text: var(--lvl-0-subtle-text);
+	--lvl-3-text: var(--lvl-0-text);
+	--lvl-4-active-bg: var(--lvl-0-active-bg);
+	--lvl-4-active-stroke: var(--lvl-0-active-stroke);
+	--lvl-4-active-text: var(--lvl-0-active-text);
+	--lvl-4-bg: var(--lvl-0-bg);
+	--lvl-4-focus-stroke: var(--lvl-0-focus-stroke);
+	--lvl-4-hover-bg: var(--lvl-0-hover-bg);
+	--lvl-4-hover-stroke: var(--lvl-0-hover-stroke);
+	--lvl-4-hover-text: var(--lvl-0-hover-text);
+	--lvl-4-intense-bg: var(--lvl-0-intense-bg);
+	--lvl-4-intense-stroke: var(--lvl-0-intense-stroke);
+	--lvl-4-intense-text: var(--lvl-0-intense-text);
+	--lvl-4-stroke: var(--lvl-0-stroke);
+	--lvl-4-subtle-bg: var(--lvl-0-subtle-bg);
+	--lvl-4-subtle-stroke: var(--lvl-0-subtle-stroke);
+	--lvl-4-subtle-text: var(--lvl-0-subtle-text);
+	--lvl-4-text: var(--lvl-0-text);
+	--lvl-5-active-bg: var(--lvl-0-active-bg);
+	--lvl-5-active-stroke: var(--lvl-0-active-stroke);
+	--lvl-5-active-text: var(--lvl-0-active-text);
+	--lvl-5-bg: var(--lvl-0-bg);
+	--lvl-5-focus-stroke: var(--lvl-0-focus-stroke);
+	--lvl-5-hover-bg: var(--lvl-0-hover-bg);
+	--lvl-5-hover-stroke: var(--lvl-0-hover-stroke);
+	--lvl-5-hover-text: var(--lvl-0-hover-text);
+	--lvl-5-intense-bg: var(--lvl-0-intense-bg);
+	--lvl-5-intense-stroke: var(--lvl-0-intense-stroke);
+	--lvl-5-intense-text: var(--lvl-0-intense-text);
+	--lvl-5-stroke: var(--lvl-0-stroke);
+	--lvl-5-subtle-bg: var(--lvl-0-subtle-bg);
+	--lvl-5-subtle-stroke: var(--lvl-0-subtle-stroke);
+	--lvl-5-subtle-text: var(--lvl-0-subtle-text);
+	--lvl-5-text: var(--lvl-0-text);
+	--lvl-6-active-bg: var(--lvl-0-active-bg);
+	--lvl-6-active-stroke: var(--lvl-0-active-stroke);
+	--lvl-6-active-text: var(--lvl-0-active-text);
+	--lvl-6-bg: var(--lvl-0-bg);
+	--lvl-6-focus-stroke: var(--lvl-0-focus-stroke);
+	--lvl-6-hover-bg: var(--lvl-0-hover-bg);
+	--lvl-6-hover-stroke: var(--lvl-0-hover-stroke);
+	--lvl-6-hover-text: var(--lvl-0-hover-text);
+	--lvl-6-intense-bg: var(--lvl-0-intense-bg);
+	--lvl-6-intense-stroke: var(--lvl-0-intense-stroke);
+	--lvl-6-intense-text: var(--lvl-0-intense-text);
+	--lvl-6-stroke: var(--lvl-0-stroke);
+	--lvl-6-subtle-bg: var(--lvl-0-subtle-bg);
+	--lvl-6-subtle-stroke: var(--lvl-0-subtle-stroke);
+	--lvl-6-subtle-text: var(--lvl-0-subtle-text);
+	--lvl-6-text: var(--lvl-0-text);
+}
+
+@media (prefers-contrast: more) {
+	.light {
+		--lvl-0-active-stroke: var(--neutral-700);
+		--lvl-0-hover-stroke: var(--neutral-600);
+		--lvl-0-intense-stroke: var(--neutral-500);
+		--lvl-0-subtle-stroke: var(--neutral-300);
+		--lvl-0-stroke: var(--neutral-350);
+		--lvl-0-text: var(--neutral-1000);
+		--lvl-0-hover-bg: var(--neutral-300);
+		--lvl-0-subtle-text: var(--neutral-900);
+		--lvl-0-subtle-text: var(--neutral-900);
+		--lvl-0-subtle-bg: var(--neutral-150);
+		--lvl-0-active-bg: var(--neutral-350);
+		--lvl-0-active-text: var(--neutral-1000);
+	}
+}

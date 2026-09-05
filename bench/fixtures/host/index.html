@@ -1,0 +1,118 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: Copyright 2026 Dash0 Inc. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Northwind Freight — fixture</title>
+
+    <!--
+      Captured before anything else runs, so the non-perturbation checks compare against the
+      page's genuinely untouched globals rather than against whatever exists at assert time.
+    -->
+    <script>
+      window.__pristine = {
+        fetch: window.fetch,
+        fetchSource: Function.prototype.toString.call(window.fetch),
+        xhrOpen: XMLHttpRequest.prototype.open,
+        xhrSend: XMLHttpRequest.prototype.send,
+      };
+    </script>
+
+    <!--
+      The measuring instrument. Identical in both arms — it is not part of what is being
+      measured, so it must not differ between them.
+    -->
+    <script src="/metrics.js"></script>
+
+    <!--
+      d0bar, loaded exactly as a host application would: same-origin, deferred, opted in by
+      an explicit attribute. `?d0bar=off` omits it entirely; `?d0bar=gated` loads the bundle
+      without the attribute, which must leave the page untouched.
+    -->
+    <script>
+      (function () {
+        var arm = new URLSearchParams(location.search).get("d0bar") || "off";
+        if (arm === "off") return;
+        var script = document.createElement("script");
+        script.src = "/dist/d0bar.iife.js";
+        script.defer = true;
+        if (arm === "on") script.setAttribute("data-d0bar-enabled", "");
+        document.head.appendChild(script);
+      })();
+    </script>
+
+    <!--
+      Live reload, for `pnpm dev` only.
+
+      Strictly opt-in via `?live`, and never requested otherwise. The fixture is the measuring
+      instrument, not part of what is measured: an EventSource held open for the life of the
+      page is a request, a connection and a wakeup source, and letting it run during a
+      benchmark would put the harness inside the numbers. The perf suite never passes `live`,
+      so this is inert there by construction rather than by discipline.
+    -->
+    <script>
+      (function () {
+        if (!new URLSearchParams(location.search).has("live")) return;
+        var seenOpen = false;
+        var source = new EventSource("/__live");
+        source.addEventListener("open", function () {
+          /* A reopen means the server restarted under `node --watch`, so the fixture
+             itself changed. */
+          if (seenOpen) location.reload();
+          seenOpen = true;
+        });
+        source.addEventListener("change", function () {
+          location.reload();
+        });
+      })();
+    </script>
+
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">Northwind Freight</div>
+      <nav>
+        <a class="active" href="#">Shipments</a>
+        <a href="#">Rates &amp; quotes</a>
+        <a href="#">Fleet</a>
+        <a href="#">Customers</a>
+        <a href="#">Reports</a>
+      </nav>
+    </aside>
+
+    <main>
+      <h1>Shipment #8821 <small>Rotterdam → Duisburg</small></h1>
+
+      <!--
+        The LCP element. Filled with large text once a deliberately slow request returns, so
+        the page has a poor LCP of its own. Text rather than an image on purpose: Chrome
+        excludes low-entropy images from LCP candidacy, and a placeholder PNG is exactly that.
+      -->
+      <div class="hero-map" id="hero"></div>
+
+      <div class="stats">
+        <div class="stat"><span>Legs</span><strong>3</strong></div>
+        <div class="stat"><span>Weight</span><strong>18.4 t</strong></div>
+        <div class="stat"><span>Quoted</span><strong>€ 4 120</strong></div>
+      </div>
+
+      <!-- The layout-shift victim: a row is inserted above this table after load. -->
+      <div id="shift-anchor"></div>
+      <table class="rates">
+        <tbody>
+          <tr><td>Line haul · Rotterdam–Duisburg</td><td>€ 2 880</td></tr>
+          <tr><td>Terminal handling</td><td>€ 540</td></tr>
+          <tr><td>Customs clearance</td><td>€ 280</td></tr>
+          <tr><td>Fuel surcharge</td><td>€ 420</td></tr>
+        </tbody>
+      </table>
+
+      <button id="confirm-hold" class="confirm">Confirm hold</button>
+      <p class="synced">Last synced 12:41 · Quote engine v14</p>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

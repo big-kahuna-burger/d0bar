@@ -1,0 +1,57 @@
+{
+  "name": "spark-signals",
+  "version": "0.1.0",
+  "description": "\u26a1 A ~1 kB synchronous signals core with direct DOM bindings and keyed list reconciliation.",
+  "keywords": [
+    "signals",
+    "reactive",
+    "reactivity",
+    "dom",
+    "tiny",
+    "no-vdom"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./signal": {
+      "types": "./dist/signal.d.ts",
+      "default": "./dist/signal.js"
+    },
+    "./bind": {
+      "types": "./dist/bind.d.ts",
+      "default": "./dist/bind.js"
+    },
+    "./list": {
+      "types": "./dist/list.d.ts",
+      "default": "./dist/list.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "size": "size-limit",
+    "prepublishOnly": "pnpm build && pnpm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/big-kahuna-burger/d0bar.git",
+    "directory": "packages/spark"
+  },
+  "homepage": "https://github.com/big-kahuna-burger/d0bar/tree/main/packages/spark#readme",
+  "bugs": {
+    "url": "https://github.com/big-kahuna-burger/d0bar/issues"
+  }
+}

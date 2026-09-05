@@ -1,0 +1,67 @@
+/* Dash0 chart categorical palette — mirrors ui/src/lib/colors/palettes/schemes/auto.css.
+   Prefixed prim and color-neutral tokens in the source map onto this project's
+   base palette (same hues). Use var(--palette-auto-N-fill) for chart series 0..8. */
+:root, .dark {
+	--palette-auto-unset-fill: var(--zinc-600);
+	--palette-auto-unset-fill-hover: var(--zinc-500);
+	--palette-auto-unset-text: var(--neutral-0);
+	--palette-auto-0-fill: var(--indigo-400);
+	--palette-auto-0-fill-hover: var(--indigo-300);
+	--palette-auto-0-text: var(--neutral-1000);
+	--palette-auto-1-fill: var(--sky-800);
+	--palette-auto-1-fill-hover: var(--sky-700);
+	--palette-auto-1-text: var(--neutral-0);
+	--palette-auto-2-fill: var(--moonstone-500);
+	--palette-auto-2-fill-hover: var(--moonstone-400);
+	--palette-auto-2-text: var(--neutral-1000);
+	--palette-auto-3-fill: var(--violet-750);
+	--palette-auto-3-fill-hover: var(--violet-700);
+	--palette-auto-3-text: var(--neutral-0);
+	--palette-auto-4-fill: var(--sand-400);
+	--palette-auto-4-fill-hover: var(--sand-300);
+	--palette-auto-4-text: var(--neutral-1000);
+	--palette-auto-5-fill: var(--stone-500);
+	--palette-auto-5-fill-hover: var(--stone-400);
+	--palette-auto-5-text: var(--neutral-1000);
+	--palette-auto-6-fill: var(--sand-600);
+	--palette-auto-6-fill-hover: var(--sand-500);
+	--palette-auto-6-text: var(--neutral-1000);
+	--palette-auto-7-fill: var(--violet-300);
+	--palette-auto-7-fill-hover: var(--violet-200);
+	--palette-auto-7-text: var(--neutral-1000);
+	--palette-auto-8-fill: var(--sky-300);
+	--palette-auto-8-fill-hover: var(--sky-200);
+	--palette-auto-8-text: var(--neutral-1000);
+}
+.light {
+	--palette-auto-unset-fill: var(--zinc-400);
+	--palette-auto-unset-fill-hover: var(--zinc-500);
+	--palette-auto-unset-text: var(--neutral-1000);
+	--palette-auto-0-fill: #4ca8a5;
+	--palette-auto-0-fill-hover: #3e8987;
+	--palette-auto-0-text: #4ca8a5;
+	--palette-auto-1-fill: #4038c0;
+	--palette-auto-1-fill-hover: #342d9d;
+	--palette-auto-1-text: #4038c0;
+	--palette-auto-2-fill: #e1831a;
+	--palette-auto-2-fill-hover: #b86b15;
+	--palette-auto-2-text: #e1831a;
+	--palette-auto-3-fill: #c54474;
+	--palette-auto-3-fill-hover: #a1375f;
+	--palette-auto-3-text: #c54474;
+	--palette-auto-4-fill: #7975f6;
+	--palette-auto-4-fill-hover: #635fc9;
+	--palette-auto-4-text: #7975f6;
+	--palette-auto-5-fill: #3e68ee;
+	--palette-auto-5-fill-hover: #3255c3;
+	--palette-auto-5-text: #3e68ee;
+	--palette-auto-6-fill: #641ec9;
+	--palette-auto-6-fill-hover: #5218a4;
+	--palette-auto-6-text: #641ec9;
+	--palette-auto-7-fill: #b35b0a;
+	--palette-auto-7-fill-hover: #924a08;
+	--palette-auto-7-text: #b35b0a;
+	--palette-auto-8-fill: #dcc223;
+	--palette-auto-8-fill-hover: #b49f1c;
+	--palette-auto-8-text: #dcc223;
+}

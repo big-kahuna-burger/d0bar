@@ -1,0 +1,13 @@
+/* SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc. */
+
+@import "./colors.css";
+@import "./semantics.css";
+@import "./shadows.css";
+@import "./levels.css";
+@import "./utilities.css";
+@import "./palette-auto.css";
+
+:root {
+	/* Using pink color here, because red is used often within the product. */
+	--debug-token-missing: #f0f;
+}

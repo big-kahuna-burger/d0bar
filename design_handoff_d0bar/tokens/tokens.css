@@ -1,0 +1,16 @@
+/* Dash0 Design Tokens — synced from ui/src/design-tokens (the source of truth).
+   The card/screen HTML files load tokens/index.css directly; this root file mirrors
+   that exact closure so the design-system compiler registers the real token set
+   (full color ramps, level system lvl-0..6 with all state/intensity variants,
+   semantic colors, shadows). Do not hand-edit token values here — edit the files
+   under tokens/ (which are verbatim copies of ui/src/design-tokens/css). */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "./tokens/index.css";
+
+/* Standalone base styling (cards set .dark/.light on <html>; product base is 13px). */
+html, body { background: var(--lvl-0-bg); color: var(--lvl-0-text); font-family: var(--font-sans);
+  font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased; }
+* { box-sizing: border-box; }
+code, pre, .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.tnum { font-variant-numeric: tabular-nums; }

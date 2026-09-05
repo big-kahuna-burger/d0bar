@@ -1,0 +1,86 @@
+{
+  "$comment": "Committed thresholds for the observer-effect budget. See bench/README.md for how to change one.",
+  "measuredAt": "2026-09-05",
+  "runs": 20,
+  "environment": "Apple Silicon, headless Chromium, no CPU throttling",
+  "observerEffect": [
+    {
+      "metric": "inpP95",
+      "threshold": 2,
+      "unit": "ms",
+      "lastMeasured": 0,
+      "arms": {
+        "off": 88,
+        "on": 88
+      },
+      "rationale": "Interaction latency is the metric the footer makes a claim about. Two milliseconds is below the 8ms quantum Chrome reports INP in, so any real regression shows up as a whole quantum."
+    },
+    {
+      "metric": "tbtP95",
+      "threshold": 5,
+      "unit": "ms",
+      "lastMeasured": 0,
+      "arms": {
+        "off": 240,
+        "on": 240
+      },
+      "rationale": "The fixture blocks for 240ms of its own accord. Five milliseconds on top is roughly 2% and still far below what a developer could perceive."
+    },
+    {
+      "metric": "cls",
+      "threshold": 0.001,
+      "unit": "score",
+      "lastMeasured": 0,
+      "arms": {
+        "off": 0.0067,
+        "on": 0.0067
+      },
+      "rationale": "The pill is fixed-position and `contain: layout paint style`, so its correct contribution is exactly zero. The threshold exists only to absorb float noise."
+    },
+    {
+      "metric": "longTaskCount",
+      "threshold": 0.5,
+      "unit": "tasks per run",
+      "lastMeasured": 0,
+      "arms": {
+        "off": 6,
+        "on": 6
+      },
+      "rationale": "Half a task per run means a regression that adds a long task to even one run in two fails. Attributing a long task to d0bar specifically needs long-animation-frame script attribution, which arrives with add-self-attribution."
+    },
+    {
+      "metric": "lcpP95",
+      "threshold": null,
+      "unit": "ms",
+      "lastMeasured": 4,
+      "arms": {
+        "off": 1568,
+        "on": 1572
+      },
+      "rationale": "Reported, not gated. The 4ms difference is the host's own request for the bundle, which a host pays deliberately. LCP on this fixture is dominated by a fixed server delay and its run-to-run spread is wider than any toolbar effect, so gating it would be noise."
+    }
+  ],
+  "bundle": [
+    {
+      "artifact": "dist/d0bar.js",
+      "threshold": 5,
+      "unit": "kB gzip",
+      "lastMeasured": 4.26,
+      "rationale": "Stage 1 as shipped: observers, ring, interning, vitals accumulation and the pill. The 2 kB figure in the original proposal was written before any code existed and was not attainable with the pill included. Rose from 4.09 kB when minification moved out of Vite and into an explicit plugin for both formats: terser normalises its options object in place, so a shared literal leaked the ES pass's `module: true` into the IIFE pass and silently deleted the `D0bar` global. Keeping the global costs top-level mangling. Deferring the pill behind a post-settle dynamic import would restore a ~1.7 kB critical path; that is a real option, not a decision taken here. Threshold raised from 4.5 kB to 5 kB by explicit decision, to leave headroom for the stage-2 boundary and the epoch column rather than have each increment relitigated."
+    },
+    {
+      "artifact": "dist/d0bar.iife.js",
+      "threshold": 5,
+      "unit": "kB gzip",
+      "lastMeasured": 4.33,
+      "rationale": "The script-tag build cannot code-split, so it is one file by construction and is measured separately from the ESM build. Rose from 4.15 kB for the reason recorded against the ESM artifact; the build now fails outright if the `D0bar` global is minified away. Threshold raised from 4.5 kB to 5 kB by explicit decision, to leave headroom for the stage-2 boundary and the epoch column rather than have each increment relitigated."
+    },
+    {
+      "artifact": "dist/d0bar.panel.js",
+      "threshold": 5,
+      "unit": "kB gzip",
+      "lastMeasured": null,
+      "rationale": "Stage 2, fetched only on first open or by a post-settle background prefetch, so it is off the host's critical path by construction. Measured separately because it is a separate artifact: IIFE output cannot code-split, so the panel is built as its own ES module and loaded by runtime URL from either build."
+    }
+  ]
+}

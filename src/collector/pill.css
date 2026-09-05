@@ -1,0 +1,125 @@
+/* The token aliases this file references (--d0-*) are declared on :host by PRELUDE in
+   tokens.gen.ts. Vite minifies this stylesheet into the bundle at build time. */
+
+:host {
+  /* `all: initial` guards against whatever the customer's page sets on inherited
+     properties. Custom properties are deliberately not reset by `all`, so a Dash0-styled
+     host still resolves the real design tokens through it. */
+  all: initial;
+  position: fixed;
+  left: 24px;
+  bottom: 22px;
+  z-index: 2147483000;
+  display: block;
+  /* The governing constraint as one declaration: the toolbar cannot induce layout or
+     paint work in the host page. */
+  contain: layout paint style;
+  font-family: var(--d0-font-sans);
+}
+
+.pill {
+  height: 34px;
+  padding: 0 6px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--d0-stroke);
+  border-radius: 999px;
+  background: var(--d0-bg);
+  box-shadow: var(--d0-shadow);
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    background-color 0.12s ease-out,
+    border-color 0.12s ease-out;
+}
+
+.pill:hover {
+  border-color: var(--d0-hover-stroke);
+  background: var(--d0-hover-bg);
+}
+
+.pill:focus-visible {
+  outline: 2px solid var(--d0-cta);
+  outline-offset: 2px;
+}
+
+.mark {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--d0-cta);
+  display: grid;
+  place-items: center;
+}
+
+.mark::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--d0-cta);
+}
+
+.count,
+.vtext {
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.count {
+  color: var(--d0-text-intense);
+}
+
+.vtext {
+  color: var(--d0-text);
+}
+
+.sep {
+  width: 1px;
+  height: 14px;
+  background: var(--d0-stroke);
+  flex: none;
+}
+
+.vital {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--d0-healthy);
+}
+
+.untraced {
+  height: 22px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--d0-badge-bg);
+}
+
+.untraced,
+.dropped {
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-warning-inline);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill {
+    transition: none;
+  }
+}
