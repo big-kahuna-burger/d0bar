@@ -4,6 +4,7 @@ import panelCss from "./panel.css?inline";
 import { flushCorrelation } from "../collector/correlate";
 import { resolveTiers } from "./tier";
 import { requestsView } from "./views/requests";
+import { traceView } from "./views/trace";
 import { vitalsView } from "./views/vitals";
 import type { Tier1Access, Tier2State } from "../shared/stage2";
 import {
@@ -255,19 +256,44 @@ export function openPanel(options: PanelOptions): PanelHandle {
   const showVitals = () => tab() === "vitals" && view() === "list";
   bindings.add(bindHidden(vitals.el, () => !showVitals()));
 
+  /**
+   * The trace surface, mounted alongside the list rather than swapped for it.
+   *
+   * No `query` is passed. Issuing the backend call needs a credential that
+   * `add-credential-broker` supplies, and that change is blocked on this one — so the query
+   * boundary is declared, injected and driven by a fake in tests, and left unimplemented
+   * here. The machine renders that as `unqueryable`, which is a statement about d0bar rather
+   * than a fourth way of saying "not found". With tier 2 off, which is the default, no
+   * request carries a traceparent at all and the surface never gets that far: every
+   * selection resolves to the no-span state.
+   */
+  const trace = traceView({ tier1: options.tier1, tier2: () => tier2() });
+  bindings.add(bindHidden(trace.el, () => view() !== "trace"));
+
+  /* Focus follows the pushed surface. Without this Escape stops working the moment the
+     surface opens — see the note on `TraceView.focus`. Ordered after the `hidden` binding
+     above, because a `focus()` on a hidden element is a no-op and the effect graph runs
+     these in registration order. */
+  bindings.add(
+    effect(() => {
+      if (view() === "trace") trace.focus();
+    }),
+  );
+
   const empty = el("div", "empty");
   const emptyText = document.createTextNode("");
   empty.appendChild(emptyText);
-  bindings.add(bindHidden(empty, () => showRequests() || showVitals()));
+  bindings.add(
+    bindHidden(empty, () => showRequests() || showVitals() || view() === "trace"),
+  );
   bindings.add(
     bindText(emptyText, () => {
-      if (view() === "trace") return "The trace view lands with add-trace-view.";
       const which = tab();
       if (which === "untraced") return "The untraced view lands with add-untraced-view.";
       return "";
     }),
   );
-  body.append(requests.el, vitals.el, empty);
+  body.append(requests.el, vitals.el, trace.el, empty);
 
   /* Repaint on the way back in. While hidden the view drops every batch on the floor by
      design, so returning from another tab has to catch up in one go — the next request
@@ -481,6 +507,7 @@ export function openPanel(options: PanelOptions): PanelHandle {
       bindings.dispose();
       requests.destroy();
       vitals.destroy();
+      trace.destroy();
       panel.remove();
       root.adoptedStyleSheets = root.adoptedStyleSheets.filter((s) => s !== sheet);
     },

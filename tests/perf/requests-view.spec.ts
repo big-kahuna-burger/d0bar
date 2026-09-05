@@ -271,16 +271,28 @@ test.describe("keyboard", () => {
       row.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     });
 
-    /* The trace view is not built yet, so what is asserted is the transition: the list gives
-       way to the surface that will hold it. */
+    /* The list gives way to the trace surface. Asserted against the surface itself now that
+       `add-trace-view` has landed — this test used to assert its placeholder copy. */
     await page.waitForFunction(() => {
       const requests = window.__d0root!.querySelector(".requests") as HTMLElement;
-      return requests.hidden;
+      const trace = window.__d0root!.querySelector(".trace") as HTMLElement;
+      return requests.hidden && !trace.hidden;
     });
-    const text = await page.evaluate(
-      () => (window.__d0root!.querySelector(".empty") as HTMLElement).textContent,
+
+    /* And focus goes with it. Escape is bound on the panel element and never on the host's
+       document, so it only fires while focus is inside the panel; the row that had focus is
+       now hidden, which drops focus to `<body>` and silently breaks Escape. Observed in
+       Chromium before it was fixed, which is why it is asserted here rather than trusted. */
+    const focused = await page.evaluate(
+      () => window.__d0root!.activeElement?.className ?? "",
     );
-    expect(text).toContain("trace view");
+    expect(focused).toContain("trace-back");
+
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => {
+      const requests = window.__d0root!.querySelector(".requests") as HTMLElement;
+      return !requests.hidden;
+    });
   });
 
   test("names every row for a screen reader", async ({ page }) => {

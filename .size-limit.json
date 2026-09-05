@@ -14,7 +14,7 @@
   {
     "name": "stage 2 — the panel, loaded on first open",
     "path": "dist/d0bar.panel.js",
-    "limit": "11.5 kB",
+    "limit": "15.5 kB",
     "gzip": true
   }
 ]

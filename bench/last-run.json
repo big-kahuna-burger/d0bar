@@ -4,7 +4,7 @@
       "/Users/bkb/.n/bin/node",
       "/Users/bkb/d/dash0/d0bar/node_modules/@playwright/test/cli.js",
       "test",
-      "tests/perf/requests-view.spec.ts"
+      "tests/perf/non-perturbation.spec.ts"
     ],
     "configFile": "/Users/bkb/d/dash0/d0bar/playwright.config.ts",
     "rootDir": "/Users/bkb/d/dash0/d0bar/tests/perf",
@@ -71,20 +71,55 @@
   },
   "suites": [
     {
-      "title": "requests-view.spec.ts",
-      "file": "requests-view.spec.ts",
+      "title": "non-perturbation.spec.ts",
+      "file": "non-perturbation.spec.ts",
       "column": 0,
       "line": 0,
-      "specs": [],
+      "specs": [
+        {
+          "title": "reports a real cache hit through deliveryType",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 600000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3307,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-05T19:30:11.825Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "fedc85524d6fbb490aaa-1ee469b8e7ce16e8968f",
+          "file": "non-perturbation.spec.ts",
+          "line": 259,
+          "column": 1
+        }
+      ],
       "suites": [
         {
-          "title": "windowing",
-          "file": "requests-view.spec.ts",
-          "line": 46,
+          "title": "with the toolbar enabled",
+          "file": "non-perturbation.spec.ts",
+          "line": 25,
           "column": 6,
           "specs": [
             {
-              "title": "keeps the row count proportional to the viewport, not to the record count",
+              "title": "leaves fetch and XMLHttpRequest strictly unpatched",
               "ok": true,
               "tags": [],
               "tests": [
@@ -99,12 +134,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1754,
+                      "duration": 1675,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:45:55.776Z",
+                      "startTime": "2026-09-05T19:29:53.359Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -112,13 +147,13 @@
                   "status": "expected"
                 }
               ],
-              "id": "602c609c3fd960fe26e3-37f3b18b0eec92ed0aa2",
-              "file": "requests-view.spec.ts",
-              "line": 47,
+              "id": "fedc85524d6fbb490aaa-887e012e839215cfd84a",
+              "file": "non-perturbation.spec.ts",
+              "line": 31,
               "column": 3
             },
             {
-              "title": "creates no new rows while scrolling the whole list",
+              "title": "adds no rule to the host document",
               "ok": true,
               "tags": [],
               "tests": [
@@ -133,12 +168,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3575,
+                      "duration": 1664,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:45:57.616Z",
+                      "startTime": "2026-09-05T19:29:55.124Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -146,13 +181,13 @@
                   "status": "expected"
                 }
               ],
-              "id": "602c609c3fd960fe26e3-37a31303a4beb8c2028b",
-              "file": "requests-view.spec.ts",
-              "line": 72,
+              "id": "fedc85524d6fbb490aaa-f17e53d03043a2a4f999",
+              "file": "non-perturbation.spec.ts",
+              "line": 50,
               "column": 3
             },
             {
-              "title": "scrolling the full list costs no long frame",
+              "title": "mounts exactly one element, and only after the load phase",
               "ok": true,
               "tags": [],
               "tests": [
@@ -167,12 +202,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 12998,
+                      "duration": 1671,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:46:01.197Z",
+                      "startTime": "2026-09-05T19:29:56.797Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -180,21 +215,97 @@
                   "status": "expected"
                 }
               ],
-              "id": "602c609c3fd960fe26e3-a0a73e20203d810db336",
-              "file": "requests-view.spec.ts",
+              "id": "fedc85524d6fbb490aaa-c5ba3a82d44b1a839e53",
+              "file": "non-perturbation.spec.ts",
+              "line": 66,
+              "column": 3
+            },
+            {
+              "title": "records nothing into the host page's own storage",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 600000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1666,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-05T19:29:58.478Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fedc85524d6fbb490aaa-df151b9d0b48fd0761bd",
+              "file": "non-perturbation.spec.ts",
+              "line": 82,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "with the toolbar present but not enabled",
+          "file": "non-perturbation.spec.ts",
+          "line": 93,
+          "column": 6,
+          "specs": [
+            {
+              "title": "does nothing at all",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 600000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1666,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-05T19:30:00.154Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fedc85524d6fbb490aaa-70c6f83efae5744a82f4",
+              "file": "non-perturbation.spec.ts",
               "line": 94,
               "column": 3
             }
           ]
         },
         {
-          "title": "bar geometry",
-          "file": "requests-view.spec.ts",
-          "line": 137,
+          "title": "host event surface",
+          "file": "non-perturbation.spec.ts",
+          "line": 153,
           "column": 6,
           "specs": [
             {
-              "title": "arrives as two custom properties on the row",
+              "title": "adds exactly the shortcut listener, and nothing else",
               "ok": true,
               "tags": [],
               "tests": [
@@ -209,12 +320,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1734,
+                      "duration": 3342,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:46:14.203Z",
+                      "startTime": "2026-09-05T19:30:01.826Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -222,13 +333,13 @@
                   "status": "expected"
                 }
               ],
-              "id": "602c609c3fd960fe26e3-26a9196d4e6cdb4d9046",
-              "file": "requests-view.spec.ts",
-              "line": 138,
+              "id": "fedc85524d6fbb490aaa-01503f1e907ea50cd516",
+              "file": "non-perturbation.spec.ts",
+              "line": 209,
               "column": 3
             },
             {
-              "title": "draws an undifferentiated bar where the browser reported no phases",
+              "title": "adds no listener at all when the shortcut is disabled",
               "ok": true,
               "tags": [],
               "tests": [
@@ -243,12 +354,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1736,
+                      "duration": 3318,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:46:15.945Z",
+                      "startTime": "2026-09-05T19:30:05.174Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -256,22 +367,14 @@
                   "status": "expected"
                 }
               ],
-              "id": "602c609c3fd960fe26e3-c6287bdd8699c1ff2d38",
-              "file": "requests-view.spec.ts",
-              "line": 160,
+              "id": "fedc85524d6fbb490aaa-df41b1bd3b7c9431cd58",
+              "file": "non-perturbation.spec.ts",
+              "line": 220,
               "column": 3
-            }
-          ]
-        },
-        {
-          "title": "streaming",
-          "file": "requests-view.spec.ts",
-          "line": 184,
-          "column": 6,
-          "specs": [
+            },
             {
-              "title": "appending does not move the viewport or drop the selection",
-              "ok": false,
+              "title": "adds none after teardown either",
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -284,181 +387,23 @@
                     {
                       "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 2431,
-                      "error": {
-                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m630\u001b[39m\nReceived: \u001b[31m840\u001b[39m",
-                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m630\u001b[39m\nReceived: \u001b[31m840\u001b[39m\n    at /Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:239:29",
-                        "location": {
-                          "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
-                          "column": 29,
-                          "line": 239
-                        },
-                        "snippet": "  237 |        the user a different set of requests than the one they were reading. */\n  238 |     expect(label).not.toBeNull();\n> 239 |     expect(after.scrollTop).toBe(before.scrollTop - 10 * 21);\n      |                             ^\n  240 |   });\n  241 | });\n  242 |"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
-                            "column": 29,
-                            "line": 239
-                          },
-                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m630\u001b[39m\nReceived: \u001b[31m840\u001b[39m\n\n  237 |        the user a different set of requests than the one they were reading. */\n  238 |     expect(label).not.toBeNull();\n> 239 |     expect(after.scrollTop).toBe(before.scrollTop - 10 * 21);\n      |                             ^\n  240 |   });\n  241 | });\n  242 |\n    at /Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:239:29"
-                        }
-                      ],
+                      "status": "passed",
+                      "duration": 3321,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-05T18:46:17.687Z",
+                      "startTime": "2026-09-05T19:30:08.497Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/Users/bkb/d/dash0/d0bar/test-results/requests-view-streaming-ap-f2976-wport-or-drop-the-selection-chromium/error-context.md"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
-                        "column": 29,
-                        "line": 239
-                      }
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 }
               ],
-              "id": "602c609c3fd960fe26e3-7ea6abe80c7290447b37",
-              "file": "requests-view.spec.ts",
-              "line": 185,
-              "column": 3
-            }
-          ]
-        },
-        {
-          "title": "keyboard",
-          "file": "requests-view.spec.ts",
-          "line": 243,
-          "column": 6,
-          "specs": [
-            {
-              "title": "gives the list one tab stop and opens a row with Enter",
-              "ok": false,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 600000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 0,
-                      "status": "timedOut",
-                      "duration": 600040,
-                      "error": {
-                        "message": "\u001b[31mTest timeout of 600000ms exceeded.\u001b[39m",
-                        "stack": "\u001b[31mTest timeout of 600000ms exceeded.\u001b[39m"
-                      },
-                      "errors": [
-                        {
-                          "message": "\u001b[31mTest timeout of 600000ms exceeded.\u001b[39m"
-                        },
-                        {
-                          "location": {
-                            "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
-                            "column": 14,
-                            "line": 40
-                          },
-                          "message": "Error: page.waitForFunction: Test timeout of 600000ms exceeded.\n\n  38 |   await page.waitForFunction(() => window.__d0root !== undefined);\n  39 |   await page.locator(\"d0-bar\").click();\n> 40 |   await page.waitForFunction(() => window.__d0root!.querySelector(\".panel\") !== null);\n     |              ^\n  41 |   await page.waitForFunction(() => window.__d0root!.querySelector(\".row\") !== null, undefined, {\n  42 |     timeout: 15_000,\n  43 |   });\n    at openPanel (/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:40:14)\n    at /Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:245:5"
-                        }
-                      ],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-09-05T18:46:20.334Z",
-                      "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/Users/bkb/d/dash0/d0bar/test-results/requests-view-keyboard-giv-484ec--and-opens-a-row-with-Enter-chromium/error-context.md"
-                        }
-                      ]
-                    }
-                  ],
-                  "status": "unexpected"
-                }
-              ],
-              "id": "602c609c3fd960fe26e3-4a79315d0f6f73413892",
-              "file": "requests-view.spec.ts",
-              "line": 244,
-              "column": 3
-            },
-            {
-              "title": "names every row for a screen reader",
-              "ok": false,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 600000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 2,
-                      "parallelIndex": 0,
-                      "status": "failed",
-                      "duration": 1092,
-                      "error": {
-                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8732/?d0bar=on\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:8732/?d0bar=on\", waiting until \"load\"\u001b[22m\n",
-                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8732/?d0bar=on\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:8732/?d0bar=on\", waiting until \"load\"\u001b[22m\n\n    at openPanel (/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:36:14)\n    at /Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:287:11",
-                        "location": {
-                          "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
-                          "column": 14,
-                          "line": 36
-                        },
-                        "snippet": "  34 |\n  35 | async function openPanel(page: import(\"@playwright/test\").Page, query = \"?d0bar=on\") {\n> 36 |   await page.goto(`/${query}`, { waitUntil: \"load\" });\n     |              ^\n  37 |   await page.evaluate(() => window.__fixtureReady);\n  38 |   await page.waitForFunction(() => window.__d0root !== undefined);\n  39 |   await page.locator(\"d0-bar\").click();"
-                      },
-                      "errors": [
-                        {
-                          "location": {
-                            "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
-                            "column": 14,
-                            "line": 36
-                          },
-                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8732/?d0bar=on\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:8732/?d0bar=on\", waiting until \"load\"\u001b[22m\n\n\n  34 |\n  35 | async function openPanel(page: import(\"@playwright/test\").Page, query = \"?d0bar=on\") {\n> 36 |   await page.goto(`/${query}`, { waitUntil: \"load\" });\n     |              ^\n  37 |   await page.evaluate(() => window.__fixtureReady);\n  38 |   await page.waitForFunction(() => window.__d0root !== undefined);\n  39 |   await page.locator(\"d0-bar\").click();\n    at openPanel (/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:36:14)\n    at /Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:287:11"
-                        }
-                      ],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-09-05T18:56:20.681Z",
-                      "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/Users/bkb/d/dash0/d0bar/test-results/requests-view-keyboard-names-every-row-for-a-screen-reader-chromium/error-context.md"
-                        }
-                      ],
-                      "errorLocation": {
-                        "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
-                        "column": 14,
-                        "line": 36
-                      }
-                    }
-                  ],
-                  "status": "unexpected"
-                }
-              ],
-              "id": "602c609c3fd960fe26e3-6ca2d8499bf7e5e31c4a",
-              "file": "requests-view.spec.ts",
-              "line": 270,
+              "id": "fedc85524d6fbb490aaa-a1e5732e69aaa458b2e8",
+              "file": "non-perturbation.spec.ts",
+              "line": 233,
               "column": 3
             }
           ]
@@ -468,11 +413,11 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-09-05T18:45:55.488Z",
-    "duration": 626391.807,
-    "expected": 5,
+    "startTime": "2026-09-05T19:29:53.065Z",
+    "duration": 22109.548,
+    "expected": 9,
     "skipped": 0,
-    "unexpected": 3,
+    "unexpected": 0,
     "flaky": 0
   }
 }
