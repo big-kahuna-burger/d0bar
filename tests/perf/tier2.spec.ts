@@ -157,8 +157,10 @@ test.describe("observation without interception", () => {
 
        Note what this does *not* establish. It bounds service-worker dispatch, which any
        registered worker imposes; it does not attribute that cost to d0bar's handler versus
-       the browser's own machinery. Separating those needs the registered-vs-not comparison
-       in task 2.6, which is not built yet. */
+       the browser's own machinery. Separating those is `worker-perturbation.spec.ts`, which
+       compares `?d0bar=on` against `?d0bar=on&sw=off` — the identical bundle and toolbar with
+       and without a registration, so everything but the worker cancels. Measured across 1458
+       requests per arm: p50 identical, p95 +1.6ms. */
     expect(deltas.length).toBeGreaterThan(0);
     const p95 = deltas[Math.floor(deltas.length * 0.95)] ?? 0;
     expect(
@@ -290,5 +292,119 @@ test.describe("honest degradation", () => {
     /* Live tier 2 still does not licence a fabricated number: nothing has measured the
        toolbar's INP cost yet, so the slot says so. */
     expect(footer.perturb).toBe("Δ INP unavailable");
+  });
+});
+
+test.describe("the host owns the scope", () => {
+  /**
+   * Outcome 3, against a real contended origin.
+   *
+   * `?sw=off` above covers a *different* state — no worker path configured — and the two are
+   * only one dot apart in the footer while being completely different situations for the
+   * developer reading it. One means "you did not serve the file"; this one means "your own
+   * worker already owns this origin, and d0bar will not take it from you". A test that only
+   * exercised the first would leave the sentence that actually explains this case unasserted.
+   *
+   * The fixture registers `/host-sw.js` — a worker that knows nothing about d0bar and has no
+   * `fetch` handler at all — before the bundle loads, and claims the page on activate so the
+   * contention exists on the first load rather than the second.
+   */
+  test("renders the whole degraded path, and names the reason", async ({ page }) => {
+    await page.goto("/?d0bar=on&hostsw=1", { waitUntil: "load" });
+    await page.evaluate(() => window.__fixtureReady);
+    /* The host's worker has to have taken the scope before d0bar looks, or the test is
+       measuring the uncontended path under a contended name. */
+    await page.waitForFunction(async () => {
+      const registration = await navigator.serviceWorker.getRegistration();
+      return Boolean(registration?.active?.scriptURL.endsWith("/host-sw.js"));
+    });
+    await page.waitForFunction(() => window.__d0root !== undefined);
+
+    await page.locator("d0-bar").click();
+    await page.waitForFunction(() => window.__d0root!.querySelector(".panel") !== null);
+    await page.waitForFunction(
+      () => window.__d0root!.querySelector('.tier[data-state="off"]') !== null,
+    );
+
+    const footer = await page.evaluate(() => {
+      const root = window.__d0root!;
+      const labelOf = (tier: Element) => {
+        const copy = tier.cloneNode(true) as HTMLElement;
+        copy.querySelectorAll(".tip").forEach((bubble) => bubble.remove());
+        return copy.textContent?.trim();
+      };
+      const tiers = [...root.querySelectorAll(".tier")].map((tier) => ({
+        state: (tier as HTMLElement).dataset["state"],
+        label: labelOf(tier),
+        detail: tier.querySelector(".tip")?.textContent?.trim() ?? "",
+      }));
+      const perturb = root.querySelector(".perturb") as HTMLElement | null;
+      return {
+        tiers,
+        perturb: perturb?.textContent?.trim(),
+        perturbState: perturb?.dataset["state"],
+      };
+    });
+
+    expect(footer.tiers[0]).toMatchObject({ state: "live" });
+    expect(footer.tiers[1]).toMatchObject({ state: "off", label: "2 SW off" });
+
+    /* The reason, not just the state. This is the assertion that separates this test from the
+       `?sw=off` one, and the sentence is the whole product of the degraded path: it says the
+       scope belongs to the host, that d0bar will not take it, and what the developer can do
+       instead. It must never be replaced by a guess at a cause. */
+    expect(footer.tiers[1]?.detail).toContain("belongs to the host page");
+    expect(footer.tiers[1]?.detail).toContain("never takes or unregisters someone else's scope");
+    expect(footer.tiers[1]?.detail).toContain("import d0bar's worker module");
+    expect(footer.tiers[1]?.detail, "the no-worker-path copy leaked into the contended state")
+      .not.toContain("No worker path is configured");
+
+    expect(footer.perturbState).toBe("degraded");
+    expect(footer.perturb).toBe("degraded — no trace jump");
+  });
+
+  test("every request resolves to the no-span state, and no global is patched", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "__pristineFetch", { value: window.fetch });
+      Object.defineProperty(window, "__pristineOpen", { value: XMLHttpRequest.prototype.open });
+    });
+
+    await page.goto("/?d0bar=on&hostsw=1", { waitUntil: "load" });
+    await page.evaluate(() => window.__fixtureReady);
+    await page.waitForFunction(() => window.__d0root !== undefined);
+    await page.locator("d0-bar").click();
+    await page.waitForFunction(
+      () => (window.__d0root!.querySelectorAll(".row").length ?? 0) > 0,
+    );
+
+    const reading = await page.evaluate(() => {
+      const root = window.__d0root!;
+      const chips = [...root.querySelectorAll(".row")]
+        .map((row) => row.querySelector(".col-trace .chip")?.textContent?.trim())
+        .filter((text): text is string => typeof text === "string" && text.length > 0);
+      return {
+        chips,
+        traced: chips.filter((text) => text === "TRACE").length,
+        /* The rejected alternative, asserted absent. Patching `fetch` is what every other
+           toolbar does when the scope is unavailable, and it is exactly what must not happen
+           here — the degraded state is the answer, not a problem to route around. */
+        fetchPristine:
+          window.fetch === (window as unknown as { __pristineFetch: unknown }).__pristineFetch,
+        openPristine:
+          XMLHttpRequest.prototype.open ===
+          (window as unknown as { __pristineOpen: unknown }).__pristineOpen,
+        fetchNative: Function.prototype.toString.call(window.fetch).includes("[native code]"),
+      };
+    });
+
+    expect(reading.chips.length, "no rows rendered, so nothing was actually asserted").toBeGreaterThan(0);
+    /* With no worker there is no traceparent to read, so no request can be shown as traced.
+       A single `TRACE` chip here would mean the panel is claiming trace context it never saw. */
+    expect(reading.traced).toBe(0);
+    expect(reading.fetchPristine).toBe(true);
+    expect(reading.openPristine).toBe(true);
+    expect(reading.fetchNative).toBe(true);
   });
 });

@@ -32,6 +32,17 @@
     -->
     <script>
       (function () {
+        /* `?hostsw=1` gives the *host page* a service worker of its own, registered before
+           d0bar loads and knowing nothing about it. That is outcome 3 in `src/collector/sw.ts`:
+           the scope is owned by someone else, d0bar must refuse to register, and the whole
+           degraded path has to render. Registered here rather than in the module below because
+           it has to be the host's, not the toolbar's — and left un-awaited, because a host would
+           not block their page on it either. */
+        if (new URLSearchParams(location.search).get("hostsw") === "1") {
+          if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.register("/host-sw.js", { scope: "/" }).catch(function () {});
+          }
+        }
         var arm = new URLSearchParams(location.search).get("d0bar") || "off";
         if (arm === "off") return;
         var script = document.createElement("script");

@@ -185,6 +185,22 @@ const server = createServer(async (req, res) => {
    * `Service-Worker-Allowed` is sent anyway so a host that *does* serve it from a
    * subdirectory can widen the scope explicitly, which is the documented escape hatch.
    */
+  /**
+   * The *host page's* own worker, served from the root for the same reason d0bar's is.
+   *
+   * Not part of any measured arm — reachable only under `?hostsw=1` — but served from the root
+   * because the scope it has to own is the whole origin. A worker at `/dist/host-sw.js` would
+   * own `/dist/` and d0bar would register happily beside it, which is the opposite of the state
+   * this fixture exists to produce.
+   */
+  if (path === "/host-sw.js") {
+    await serveFile(res, join(repoRoot, "bench", "fixtures", "host", "host-sw.js"), {
+      "service-worker-allowed": "/",
+      "cache-control": "no-store",
+    });
+    return;
+  }
+
   if (path === "/d0bar-sw.js") {
     await serveFile(res, join(repoRoot, "dist", "d0bar-sw.js"), {
       "service-worker-allowed": "/",
