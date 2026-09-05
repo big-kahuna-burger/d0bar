@@ -43,7 +43,12 @@ async function loadControlled(page: import("@playwright/test").Page, query = "?d
 async function readLog(page: import("@playwright/test").Page) {
   return page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("d0bar", 1);
+      /* No version. A reader has no business naming one: `open(name, n)` where `n` is below the
+         existing version throws `VersionError`, so a hardcoded number here breaks every time the
+         worker's schema moves — which is exactly what it did when the token store took the
+         database to 2. Omitting it opens whatever version exists, which is what a reader wants
+         and is the only form that cannot go stale. */
+      const request = indexedDB.open("d0bar");
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });

@@ -94,16 +94,32 @@
       derived from the selection, and an unknown `D0BAR_REGION` falls back to the default.
       In jsdom rather than a browser spec: the `<select>` is in a closed shadow root and its
       dropdown is painted by the OS outside the page, so no driver can reach either
-- [ ] 4.5 **Not done.** No browser test yet. The unit tests assert the message surface never
-      returns the token; what is unasserted is the same claim against a real registration, with
-      a real page realm to search
+- [x] 4.5 `tests/perf/token-custody.spec.ts` — the same claim against a real registration, with
+      a real page realm to search: after a session-only connect over a real `MessagePort`, the
+      token appears in no global, neither web storage, and no value of any object store of any
+      database on the origin. Full string and 24-character prefix, so a token stored split or
+      truncated still fails it. The companion test asserts the *opposite* for persisted mode —
+      the page can read it — because that is true, the custody copy says so in as many words,
+      and a test that looked away from it would be the dishonest one
 
 ## 5. Measure, do not assume
-- [ ] 5.1 Probe how long an idle service worker survives in this Chromium, so the session-only
-      copy's real cost is a number and not the ~30s everyone quotes
-- [ ] 5.2 Probe what `Origin` a worker-initiated `fetch` sends to a cross-origin API — origin
-      allowlisting is what killed the OAuth path, and this change assumes it does not bite here
-- [ ] 5.3 Record both in design.md
+- [x] 5.1 Probed. The token survived 15s, 30s, 60s and 120s of complete silence — no termination
+      was ever observed, so this is a **lower bound and not a lifetime**. `controller.state` was
+      the first instrument and is wrong: it describes the registration, which stays `activated`
+      across a terminated instance. The session-only copy is the right one, because its
+      disappearance *is* the termination. The "~30s everyone quotes" did not happen, which is
+      enough to know the surface must not promise a number — the copy stays qualitative, and it
+      is true at any lifetime
+- [x] 5.2 Probed, through the real broker rather than a facsimile: `connect` then `query` over a
+      `MessagePort` to a registered worker, against a loopback echo route on a second origin.
+      **The request carries the page's origin** (`http://127.0.0.1:8732`), not `null` and not the
+      API's, with `sec-fetch-site: cross-site` and `sec-fetch-mode: cors`. So the OAuth finding
+      does not transfer. The same reading confirms `credentials: "omit"` works (no cookie) and
+      the bearer is not stripped. Kept as a permanent assertion in `token-custody.spec.ts`, ~3s,
+      because it guards the premise of the whole change
+- [x] 5.3 Both recorded in design.md under "Measured, not assumed", with the two caveats that
+      would change the reading of the lifetime number: Chromium was under automation, and the
+      page stayed open throughout
 
 ## 5b. Unbudgeted growth
 - [x] 5b.1 Budget added — `dist/d0bar-sw.js` at 3 kB gzip, in both `.size-limit.json` and
@@ -117,11 +133,13 @@
       which is why this was a gap and not a regression
 
 ## 6. UI
-- [ ] 6.1 `src/panel/views/connect/` — paste field, custody choice, required restrictions,
-      the unverifiable note
-- [ ] 6.2 Connected state in the panel header, showing the hint and the custody mode
-- [ ] 6.3 Disconnect
-- [ ] 6.4 Features needing the API are unavailable with a reason while unconnected
+- [x] 6.1 `src/panel/views/connect/` — paste field, custody choice, required restrictions,
+      the unverifiable note, and the environment/region picker
+- [x] 6.2 Connected state in the panel header, showing the hint and the custody mode. Confirmed
+      working by the user against a real token
+- [x] 6.3 Disconnect. Confirmed working by the user
+- [x] 6.4 Features needing the API are unavailable with a reason while unconnected. Confirmed
+      working by the user
 
 ## 7. Withdraw the false claim
 - [x] 7.1 Withdrawn in all three places it was claimed, and kept rather than deleted so the

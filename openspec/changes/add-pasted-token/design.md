@@ -137,3 +137,71 @@ The worker answers `status` with `{ connected, source, hint }` where `hint` is t
 four characters, for telling two pasted tokens apart. It never returns the token, and there is
 no message that does. Dash0's own `dash0.auth.token` span attribute records the last seven
 digits for the same purpose, so the shape is not novel.
+
+## Measured, not assumed
+
+Two things this design rested on were beliefs until they were probed. Both are now numbers.
+
+### What a worker-initiated cross-origin `fetch` carries
+
+The question mattered because origin allowlisting is exactly what killed the OAuth path
+(`add-credential-broker` §1.3), and nothing said it would not kill this one too.
+
+Driven through the real broker — `connect` then `query` over a `MessagePort` to a registered
+worker — against a loopback echo route. `localhost:8732` and `127.0.0.1:8732` are the same
+process and different origins, so this is a genuine cross-origin request with no second server:
+
+```
+origin           http://127.0.0.1:8732      ← the page's origin
+referer          http://127.0.0.1:8732/
+sec-fetch-site   cross-site
+sec-fetch-mode   cors
+sec-fetch-dest   empty
+cookie           absent
+authorization    Bearer
+```
+
+**A worker's request is indistinguishable from the page's at the `Origin` header.** It carries
+the page's origin, not `null` and not the API's. Combined with the data API answering
+`access-control-allow-origin: *` to a foreign `Origin` — verified on all six regions — the
+assumption holds, and the OAuth finding does not transfer.
+
+Two things fall out of the same reading. `credentials: "omit"` works: no cookie is sent, which
+is a correctness constraint rather than a preference, because a credentialed request is illegal
+against `allow-origin: *`. And the bearer arrives, so the header is not being stripped.
+
+This is now an assertion in `tests/perf/token-custody.spec.ts` rather than a one-off. It runs in
+about 3 seconds and it guards the premise of the whole change.
+
+### How long an idle worker keeps the session-only copy
+
+`controller.state` was the first instrument and it is the wrong one: it describes the
+*registration*, which stays `activated` straight across a terminated instance. What answers the
+question is the session-only copy itself — it lives in the worker's global scope, so its
+disappearance **is** the termination, and it is also the thing the custody mode promises.
+
+Measured by connecting, then going completely silent for a gap, then asking once. Every message
+wakes the worker and restarts its idle timer, so the gaps were taken one at a time:
+
+```
+gap      session-only token
+ 15s     alive
+ 30s     alive
+ 60s     alive
+120s     alive
+```
+
+**A lower bound, not a lifetime.** The probe never observed a termination, so what it establishes
+is that the token survives at least two minutes of idleness in Playwright's Chromium — not when
+it dies. The commonly quoted "~30 seconds" did not happen here, which is enough to know the
+connect surface should not promise a number.
+
+Two caveats, because they would change the reading. Playwright drives Chromium with the DevTools
+protocol attached, and a browser under automation may keep workers warm longer than one on a
+user's desk. And the page stayed open throughout; a closed tab is a different question this did
+not ask.
+
+So the copy stays qualitative — "the browser shuts an idle worker down, so you will paste it
+again after a quiet spell". That sentence is true at any lifetime, which is the point of not
+putting a number in it. The 3.8-minute probe was deleted rather than kept in CI; the result is
+here.

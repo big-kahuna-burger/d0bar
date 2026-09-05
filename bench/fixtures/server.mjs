@@ -112,6 +112,54 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  /**
+   * Reflects what the *request* looked like, for probing what the browser attaches.
+   *
+   * Exists because `add-pasted-token` rests on an assumption worth measuring rather than
+   * reasoning about: that a worker-initiated cross-origin `fetch` carries the page's origin in
+   * `Origin`, and is therefore not subject to the allowlisting that killed the OAuth path.
+   *
+   * Cross-origin without a second server: `localhost:8732` and `127.0.0.1:8732` are the same
+   * process and different origins.
+   *
+   * **The `authorization` header is reported as present or absent and never echoed.** A probe
+   * route that printed a bearer back into a transcript would be the one place in this repo that
+   * leaks a credential, and the probe needs only the boolean.
+   */
+  if (path === "/__echo") {
+    /* An `Authorization` header makes the request non-simple, so the browser preflights it. No
+       other route here needs this because no other route is fetched cross-origin with a header. */
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "access-control-allow-origin": "*",
+        "access-control-allow-methods": "GET,OPTIONS",
+        "access-control-allow-headers": "authorization",
+        "access-control-max-age": "0",
+      });
+      res.end();
+      return;
+    }
+    const auth = req.headers["authorization"];
+    res.writeHead(200, {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "access-control-allow-origin": "*",
+      "access-control-allow-headers": "authorization",
+    });
+    res.end(
+      JSON.stringify({
+        origin: req.headers["origin"] ?? null,
+        referer: req.headers["referer"] ?? null,
+        secFetchSite: req.headers["sec-fetch-site"] ?? null,
+        secFetchMode: req.headers["sec-fetch-mode"] ?? null,
+        secFetchDest: req.headers["sec-fetch-dest"] ?? null,
+        hasCookie: "cookie" in req.headers,
+        authScheme: typeof auth === "string" ? auth.split(" ")[0] : null,
+      }),
+    );
+    return;
+  }
+
   if (path.startsWith("/api/") || path.startsWith("/legacy/")) {
     await sleep(Number(url.searchParams.get("delay") ?? 20));
     /* Same-origin responses expose their timings. Requests the fixture sends to `localhost`
