@@ -169,6 +169,19 @@ export const untracedCount = signal(0);
 export const showUntracedBadge = computed(() => untracedCount() > 0);
 
 /**
+ * Pops the trace surface back to the list.
+ *
+ * Clearing `selected` is the load-bearing half: the trace view's only entry point into the
+ * query machine is an effect over `open`, `view` and `selected`, so this is also what aborts
+ * whatever that surface had in flight. Leaving the index set would keep a query alive behind
+ * a surface nobody is looking at.
+ */
+export function popToList(): void {
+  view.set("list");
+  selected.set(-1);
+}
+
+/**
  * Escape's meaning depends on depth: from the trace surface it goes back to the list, and
  * from the list it closes. One place, so the keyboard handler has no branching of its own.
  */
@@ -178,8 +191,7 @@ export function escape(): void {
     return;
   }
   if (view() === "trace") {
-    view.set("list");
-    selected.set(-1);
+    popToList();
     return;
   }
   open.set(false);

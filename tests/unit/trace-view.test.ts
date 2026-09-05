@@ -1,0 +1,442 @@
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it } from "vitest";
+import { traceView } from "../../src/panel/views/trace";
+import { open, resetShell, selected, view } from "../../src/panel/shell";
+import type { TraceContext } from "../../src/collector/correlate";
+import { F_HAS_SPAN, F_XHR } from "../../src/shared/flags";
+import { scratch, type RequestRecord } from "../../src/shared/record";
+import type { Tier1Access, Tier2State } from "../../src/shared/stage2";
+import {
+  NONE_COPY,
+  UNQUERYABLE_COPY,
+  type TraceQuery,
+  type TraceQueryOutcome,
+  type TraceQueryRequest,
+  type TraceSummary,
+} from "../../src/trace/traceMachine";
+
+/**
+ * The trace surface.
+ *
+ * The property under test is the one the whole change exists for: found, not-queryable-yet
+ * and no-span-at-all are three different screens, and no two of them can be reached by the
+ * same input. The query is a fake — there is no shipped implementation to test against —
+ * and tier 2's state is a value this file sets, because with it off *every* request must
+ * land on the no-span screen.
+ */
+
+const ORIGIN = "https://app.example.com";
+const TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736";
+const LIVE: Tier2State = { kind: "live", owner: "d0bar" };
+const OFF: Tier2State = { kind: "off", reason: "not-registered" };
+
+const SUMMARY: TraceSummary = {
+  spanCount: 7,
+  serviceCount: 4,
+  logCount: 3,
+  truncated: false,
+  mainThreadMs: null,
+  log: { level: "WARN", message: "tariff cache miss for corridor NL-DE" },
+  spans: [
+    {
+      name: "GET /api/quote",
+      service: "edge",
+      depth: 0,
+      left: 0,
+      width: 1,
+      durationMs: 412,
+      colorIndex: 0,
+      orphan: false,
+      error: false,
+    },
+    {
+      name: "pricing.lookup",
+      service: "pricing-svc",
+      depth: 1,
+      left: 0.2,
+      width: 0.5,
+      durationMs: 210,
+      colorIndex: 2,
+      orphan: false,
+      error: true,
+    },
+  ],
+};
+
+function fakeRing(records: RequestRecord[]): Tier1Access {
+  return {
+    entries: () => [],
+    correlate: () => {},
+    stats: () => ({ written: records.length, dropped: 0, capacity: 64 }),
+    read(index, out) {
+      const record = records[index];
+      if (!record) return false;
+      Object.assign(out, record);
+      return true;
+    },
+    onBatch: () => () => {},
+    onVisibility: () => () => {},
+    visible: () => true,
+  };
+}
+
+function requestRecord(over: Partial<RequestRecord> = {}): RequestRecord {
+  return Object.assign(scratch(), {
+    startTime: 100,
+    duration: 300,
+    url: `${ORIGIN}/api/quote`,
+    method: "GET",
+    status: 200,
+    contextId: 1,
+    flags: F_HAS_SPAN,
+    ...over,
+  });
+}
+
+const CONTEXT: TraceContext = {
+  traceId: TRACE_ID,
+  spanId: "00f067aa0ba902b7",
+  sampled: true,
+  confident: true,
+};
+
+const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
+const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+
+function textOf(root: HTMLElement, selector: string): string {
+  return root.querySelector(selector)?.textContent?.trim() ?? "";
+}
+
+function visible(root: HTMLElement, selector: string): boolean {
+  const node = root.querySelector<HTMLElement>(selector);
+  return node !== null && !node.hidden;
+}
+
+interface Mounted {
+  el: HTMLElement;
+  destroy(): void;
+  calls: TraceQueryRequest[];
+  settleQuery(index: number, outcome: TraceQueryOutcome): void;
+}
+
+function mount(
+  options: {
+    tier2: Tier2State;
+    withQuery?: boolean;
+    context?: TraceContext | undefined;
+    ceiling?: number;
+  },
+  records: RequestRecord[],
+): Mounted {
+  const calls: TraceQueryRequest[] = [];
+  const resolvers: Array<(outcome: TraceQueryOutcome) => void> = [];
+  const query: TraceQuery = (request) => {
+    calls.push(request);
+    return new Promise<TraceQueryOutcome>((resolve) => resolvers.push(resolve));
+  };
+  const context = "context" in options ? options.context : CONTEXT;
+  const created = traceView({
+    tier1: fakeRing(records),
+    tier2: () => options.tier2,
+    origin: ORIGIN,
+    timeOrigin: 1_700_000_000_000,
+    now: () => 1_700_000_001_000,
+    /* Keyed on the record's own `contextId`, exactly as `correlate.ts`'s side table is:
+       index 0 is reserved as absent, so a record with no trace context resolves to undefined
+       rather than borrowing its neighbour's id. */
+    context: (id: number) => (id === 0 ? undefined : context),
+    ...(options.ceiling === undefined ? {} : { machine: { ceiling: options.ceiling } }),
+    ...(options.withQuery === false ? {} : { query }),
+  });
+  document.body.appendChild(created.el);
+  return {
+    el: created.el,
+    destroy: created.destroy,
+    calls,
+    settleQuery: (index, outcome) => resolvers[index]?.(outcome),
+  };
+}
+
+beforeEach(() => {
+  resetShell();
+  document.body.replaceChildren();
+});
+
+describe("traceView", () => {
+  it("issues no query when the panel opens with nothing selected", async () => {
+    const surface = mount({ tier2: LIVE }, [requestRecord()]);
+    open.set(true);
+    await settled();
+    expect(surface.calls).toHaveLength(0);
+    surface.destroy();
+  });
+
+  it("issues no query while the panel is closed, even with a request selected", async () => {
+    const surface = mount({ tier2: LIVE }, [requestRecord()]);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+    expect(surface.calls).toHaveLength(0);
+    surface.destroy();
+  });
+
+  it("renders the no-span screen for every request when tier 2 is off", async () => {
+    /* The degraded case, and the one most easily got wrong: with no service worker there is
+       no traceparent on anything, so this must not read as "not found" and must not spin. */
+    const surface = mount({ tier2: OFF }, [requestRecord()]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+
+    expect(visible(surface.el, ".trace-none")).toBe(true);
+    expect(visible(surface.el, ".trace-wait")).toBe(false);
+    expect(visible(surface.el, ".trace-found")).toBe(false);
+    expect(textOf(surface.el, ".trace-none-title")).toBe("No span exists for this request.");
+    expect(textOf(surface.el, ".trace-none-why")).toBe(NONE_COPY["tier-2-off"]);
+    /* Nothing was seen by any worker, so the line that claims one saw it is not printed. */
+    expect(visible(surface.el, ".trace-none-sw")).toBe(false);
+    expect(surface.calls).toHaveLength(0);
+    surface.destroy();
+  });
+
+  it("names XHR as the cause and credits the worker's observation", async () => {
+    const surface = mount({ tier2: LIVE, context: undefined }, [
+      requestRecord({ flags: F_XHR, contextId: 0 }),
+    ]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+
+    expect(textOf(surface.el, ".trace-none-why")).toBe(NONE_COPY.xhr);
+    expect(visible(surface.el, ".trace-none-sw")).toBe(true);
+    expect(textOf(surface.el, ".trace-none-sw")).toBe(
+      "seen by the SW · never reached the backend",
+    );
+    expect(surface.calls).toHaveLength(0);
+    surface.destroy();
+  });
+
+  it("says so plainly when there is no query to make", async () => {
+    /* What a real deployment shows today. It is not the no-span screen's claim and it is
+       not a spinner: the span exists, and d0bar cannot ask about it. */
+    const surface = mount({ tier2: LIVE, withQuery: false }, [requestRecord()]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+
+    expect(textOf(surface.el, ".trace-none-title")).toBe("No trace query is configured.");
+    expect(textOf(surface.el, ".trace-none-why")).toBe(UNQUERYABLE_COPY);
+    expect(visible(surface.el, ".trace-none-sw")).toBe(false);
+    expect(visible(surface.el, ".trace-wait")).toBe(false);
+    surface.destroy();
+  });
+
+  it("renders the ingest-lag screen with a live retry line, never the no-span ring", async () => {
+    const surface = mount({ tier2: LIVE }, [requestRecord()]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+    expect(surface.calls).toHaveLength(1);
+
+    surface.settleQuery(0, { kind: "not-found" });
+    await settled();
+
+    expect(visible(surface.el, ".trace-wait")).toBe(true);
+    expect(visible(surface.el, ".trace-none")).toBe(false);
+    expect(visible(surface.el, ".lag-dots")).toBe(true);
+    expect(textOf(surface.el, ".trace-wait-title")).toBe(
+      "Trace not queryable yet — waiting for ingest.",
+    );
+    expect(textOf(surface.el, ".trace-wait-retry")).toMatch(
+      /^retry 1 of 5 · next in \d\.\ds · backoff$/,
+    );
+    expect(textOf(surface.el, ".trace-wait-why")).toContain("The request finished");
+    /* No manual retry while an automatic one is still scheduled. */
+    expect(visible(surface.el, ".trace-retry")).toBe(false);
+    surface.destroy();
+  });
+
+  it("renders the found screen with counts, span rows and the correlated-log footer", async () => {
+    const surface = mount({ tier2: LIVE }, [requestRecord()]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+    surface.settleQuery(0, { kind: "found", summary: SUMMARY });
+    await settled();
+    await frame();
+
+    expect(visible(surface.el, ".trace-found")).toBe(true);
+    expect(visible(surface.el, ".trace-none")).toBe(false);
+    expect(visible(surface.el, ".trace-wait")).toBe(false);
+    expect(textOf(surface.el, ".trace-meta span")).toBe("7 spans · 4 services · 3 logs");
+    expect(surface.el.querySelectorAll(".trace-meta span")[1]?.textContent).toBe(
+      "timeRange ±2s",
+    );
+    /* Nothing measured the flattening cost, so the panel prints no claim about it. */
+    expect(visible(surface.el, ".trace-cost")).toBe(false);
+
+    expect(textOf(surface.el, ".trace-id")).toBe(TRACE_ID);
+    expect(surface.el.querySelector(".trace-id")?.hasAttribute("data-uncertain")).toBe(false);
+
+    const rows = [...surface.el.querySelectorAll<HTMLElement>(".span-row")].filter(
+      (row) => !row.hidden,
+    );
+    expect(rows).toHaveLength(2);
+    expect(textOf(rows[0]!, ".span-label")).toBe("GET /api/quote");
+    expect(rows[0]!.dataset["root"]).toBe("true");
+    expect(rows[1]!.dataset["error"]).toBe("true");
+    expect(
+      rows[1]!.querySelector<HTMLElement>(".span-name")!.style.getPropertyValue("--depth"),
+    ).toBe("1");
+    expect(rows[1]!.style.getPropertyValue("--l")).toBe("0.2");
+    expect(rows[1]!.style.getPropertyValue("--w")).toBe("0.5");
+
+    expect(visible(surface.el, ".trace-log")).toBe(true);
+    expect(textOf(surface.el, ".trace-log-level")).toBe("WARN");
+    expect(textOf(surface.el, ".trace-log-link")).toBe("3 correlated logs");
+    surface.destroy();
+  });
+
+  it("prints the worker-cost claim only from a measured value", async () => {
+    const surface = mount({ tier2: LIVE }, [requestRecord()]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+    surface.settleQuery(0, {
+      kind: "found",
+      summary: { ...SUMMARY, mainThreadMs: 0.4 },
+    });
+    await settled();
+    expect(visible(surface.el, ".trace-cost")).toBe(true);
+    expect(textOf(surface.el, ".trace-cost")).toBe(
+      "flattened in worker · 0.4 ms on main thread",
+    );
+    surface.destroy();
+  });
+
+  it("marks a low-confidence trace id rather than asserting it", async () => {
+    const surface = mount({ tier2: LIVE, context: { ...CONTEXT, confident: false } }, [
+      requestRecord(),
+    ]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+    expect(surface.el.querySelector(".trace-id")?.hasAttribute("data-uncertain")).toBe(true);
+    surface.destroy();
+  });
+
+  it("offers a manual retry once the ceiling is reached, and stops the dots", async () => {
+    /* Ceiling of one, so exhaustion is reached without waiting out four real doublings. The
+       ceiling's own arithmetic is asserted in `trace-machine.test.ts` against a fake clock;
+       what is under test here is the screen it produces. */
+    const surface = mount({ tier2: LIVE, ceiling: 1 }, [requestRecord()]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+    surface.settleQuery(0, { kind: "not-found" });
+    await settled();
+
+    expect(textOf(surface.el, ".trace-wait-title")).toBe("The trace did not become queryable.");
+    expect(visible(surface.el, ".lag-dots")).toBe(false);
+    expect(visible(surface.el, ".trace-retry")).toBe(true);
+    expect(visible(surface.el, ".trace-none")).toBe(false);
+    surface.destroy();
+  });
+
+  it("never lets a response from a previous selection reach the panel", async () => {
+    const first = requestRecord();
+    const second = requestRecord({ url: `${ORIGIN}/api/other`, flags: F_XHR, contextId: 0 });
+    const surface = mount({ tier2: LIVE, context: CONTEXT }, [first, second]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+    expect(surface.calls).toHaveLength(1);
+
+    /* The user clicks a different row while the first query is still open. */
+    selected.set(1);
+    await settled();
+
+    surface.settleQuery(0, { kind: "found", summary: SUMMARY });
+    await settled();
+    await frame();
+
+    /* The stale trace must not appear, and the screen must be the one the new selection
+       resolves to on its own. */
+    expect(visible(surface.el, ".trace-found")).toBe(false);
+    expect(visible(surface.el, ".trace-none")).toBe(true);
+    expect(textOf(surface.el, ".trace-none-title")).toBe("No span exists for this request.");
+    surface.destroy();
+  });
+
+  it("aborts and clears when the surface is popped back to the list", async () => {
+    const surface = mount({ tier2: LIVE }, [requestRecord()]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+
+    const back = surface.el.querySelector<HTMLButtonElement>(".trace-back")!;
+    back.click();
+    await settled();
+
+    expect(view()).toBe("list");
+    expect(selected()).toBe(-1);
+
+    surface.settleQuery(0, { kind: "found", summary: SUMMARY });
+    await settled();
+    expect(visible(surface.el, ".trace-found")).toBe(false);
+    surface.destroy();
+  });
+
+  it("aborts when the panel closes", async () => {
+    const surface = mount({ tier2: LIVE }, [requestRecord()]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+
+    open.set(false);
+    await settled();
+    surface.settleQuery(0, { kind: "found", summary: SUMMARY });
+    await settled();
+    expect(visible(surface.el, ".trace-found")).toBe(false);
+    surface.destroy();
+  });
+
+  it("hides the log footer when the trace has no correlated logs", async () => {
+    const surface = mount({ tier2: LIVE }, [requestRecord()]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+    surface.settleQuery(0, {
+      kind: "found",
+      summary: { ...SUMMARY, logCount: 0, log: undefined as never },
+    });
+    await settled();
+    expect(visible(surface.el, ".trace-found")).toBe(true);
+    expect(visible(surface.el, ".trace-log")).toBe(false);
+    surface.destroy();
+  });
+
+  it("states truncation rather than presenting a partial waterfall as whole", async () => {
+    const surface = mount({ tier2: LIVE }, [requestRecord()]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+    surface.settleQuery(0, { kind: "found", summary: { ...SUMMARY, truncated: true } });
+    await settled();
+    expect(visible(surface.el, ".trace-trunc")).toBe(true);
+    surface.destroy();
+  });
+});

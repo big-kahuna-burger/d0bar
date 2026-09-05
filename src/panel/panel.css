@@ -810,3 +810,335 @@
 [hidden] {
   display: none !important;
 }
+
+/* ══ add-trace-view ══════════════════════════════════════════════════════════
+   The trace surface, pushed over the request list. Everything below is stage 2
+   only; nothing here reaches the pill's stylesheet or the host document.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* The categorical series palette.
+
+   Declared here rather than in `tokens.gen.ts`'s PRELUDE, deliberately: the prelude ships
+   inside the pill's stylesheet, which is stage 1 — the one thing on a host page's critical
+   path — and nine colours that only a span waterfall ever reads have no business being
+   downloaded by a page that never opens the panel. Same shape as every other d0bar alias
+   though: the host's own token first, the vendored literal only as the fallback, so a page
+   carrying Dash0's design tokens gets its own palette and one that does not still renders. */
+.trace {
+  --d0-series-0: var(--palette-auto-0-fill, #828aff);
+  --d0-series-1: var(--palette-auto-1-fill, #225584);
+  --d0-series-2: var(--palette-auto-2-fill, #829ed6);
+  --d0-series-3: var(--palette-auto-3-fill, #6d459b);
+  --d0-series-4: var(--palette-auto-4-fill, #b79958);
+  --d0-series-5: var(--palette-auto-5-fill, #a39999);
+  --d0-series-6: var(--palette-auto-6-fill, #906d3e);
+  --d0-series-7: var(--palette-auto-7-fill, #d8b4fe);
+  --d0-series-8: var(--palette-auto-8-fill, #74d1f0);
+}
+
+/* ── sub-header ── */
+
+.trace-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--d0-stroke);
+}
+
+.trace-back {
+  height: 22px;
+  padding: 0 8px 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--d0-lvl2-stroke);
+  border-radius: 5px;
+  background: var(--d0-lvl2-bg);
+  color: var(--d0-text);
+  font-family: var(--d0-font-sans);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.trace-back:hover {
+  border-color: var(--d0-hover-stroke);
+  color: var(--d0-text-intense);
+}
+
+.trace-req {
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+  color: var(--d0-text-intense);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-id {
+  margin-left: auto;
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-text-subtle);
+  flex: none;
+}
+
+/* A join that had a same-URL sibling in flight may have popped the wrong record's id.
+   `join.ts` flags that, and the id is marked here rather than shown with the confidence of
+   one that was unambiguous — an id the panel is not sure of is worse than none, because it
+   is exactly the kind of string a reader copies and goes searching for. */
+.trace-id[data-uncertain] {
+  color: var(--d0-warning-inline);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+/* ── 7a · trace found ── */
+
+.trace-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--d0-stroke);
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-text-subtle);
+}
+
+.trace-cost {
+  margin-left: auto;
+  color: var(--d0-healthy);
+}
+
+.trace-trunc {
+  padding: 8px 14px;
+  font-size: 11px;
+  color: var(--d0-warning-inline);
+}
+
+.trace-log {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-top: 1px solid var(--d0-stroke);
+  background: var(--d0-lvl2-bg);
+}
+
+.trace-log-level {
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-warning-inline);
+  flex: none;
+}
+
+.trace-log-msg {
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+  color: var(--d0-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-log-link {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--d0-cta);
+  flex: none;
+}
+
+/* ── span rows ── */
+
+/* The handoff's 300px, against the request list's 288px: a waterfall is read down a tree,
+   and a shorter viewport costs a level of depth per scroll. */
+.spans {
+  max-height: 300px;
+}
+
+.span-row {
+  display: grid;
+  grid-template-columns: 300px 1fr 56px;
+  gap: 10px;
+  align-items: center;
+  /* 22px, and the virtualizer's arithmetic depends on it being exact — stated here rather
+     than left to the content, exactly as `.row`'s 21px is. */
+  height: 22px;
+  padding: 0 14px;
+  white-space: nowrap;
+  contain: layout style;
+}
+
+.span-row:hover {
+  background: var(--d0-hover-bg);
+}
+
+.span-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  /* Depth as a number the row writes and CSS multiplies, so an indent change is one custom
+     property write rather than a pixel value computed in JavaScript. */
+  padding-left: calc(var(--depth, 0) * 14px);
+}
+
+.span-swatch {
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.span-label {
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+  color: var(--d0-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.span-row[data-root="true"] .span-label {
+  color: var(--d0-text-intense);
+}
+
+.span-service {
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-text-subtle);
+  flex: none;
+}
+
+.span-bar {
+  position: relative;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--d0-lvl2-bg);
+}
+
+/* Unitless fractions the row writes, turned into geometry by `calc` — the same contract the
+   request list's bars use, and for the same reason: no layout arithmetic in JavaScript. */
+.span-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--l, 0) * 100%);
+  width: calc(var(--w, 0) * 100%);
+  border-radius: 2px;
+}
+
+.span-dur {
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A span whose parent is not in this trace. Marked rather than reparented under the root,
+   which would draw a tree the backend never returned. */
+.span-row[data-orphan="true"] .span-label::after {
+  content: " ⟂ orphan";
+  color: var(--d0-warning-inline);
+}
+
+/* An error is a state of the span, not of its service, so it overrides the service colour
+   the row wrote inline. */
+.span-row[data-error="true"] .span-fill {
+  background: var(--d0-error) !important;
+}
+
+/* ── 7b · no span exists ── */
+
+.trace-none {
+  padding: 24px 14px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  text-align: center;
+}
+
+/* Dashed, not solid, and emphatically not a spinner: the ring says "there is nothing here"
+   where a spinner would say "something is on its way". These two states must never be
+   mistakable for one another — that confusion is the whole reason this change exists. */
+.trace-ring {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px dashed var(--d0-warning);
+}
+
+.trace-none-title {
+  font-size: 12px;
+  color: var(--d0-text-intense);
+}
+
+.trace-none-why {
+  font-size: 11px;
+  color: var(--d0-text-subtle);
+  max-width: 44ch;
+  line-height: 1.5;
+}
+
+.trace-none-sw {
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-text-subtle);
+}
+
+/* ── 7c · waiting for ingest ── */
+
+.trace-wait {
+  padding: 26px 14px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.lag-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.trace-wait-title {
+  font-size: 12px;
+  color: var(--d0-text-intense);
+}
+
+/* Tabular figures: the countdown redraws ten times a second, and proportional digits would
+   make the whole line jitter as `1.6s` became `1.5s`. */
+.trace-wait-retry {
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+  color: var(--d0-text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.trace-wait-why {
+  font-size: 11px;
+  color: var(--d0-text-subtle);
+  max-width: 40ch;
+  line-height: 1.5;
+}
+
+.trace-retry {
+  height: 22px;
+  padding: 0 10px;
+  border: 1px solid var(--d0-lvl2-stroke);
+  border-radius: 5px;
+  background: var(--d0-lvl2-bg);
+  color: var(--d0-text);
+  font-family: var(--d0-font-sans);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.trace-retry:hover {
+  border-color: var(--d0-hover-stroke);
+  color: var(--d0-text-intense);
+}
