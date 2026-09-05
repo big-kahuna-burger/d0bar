@@ -27,12 +27,27 @@ export default tseslint.config(
     },
   },
   {
-    /* The service worker observes; it must never respond. */
+    /* The service worker observes; it must never respond.
+
+       `no-restricted-properties` keyed on `object: "event"` was the first form of this rule
+       and it only matches that exact receiver — `const e = event; e.respondWith(...)` walks
+       straight past it, and so does any handler that names its parameter something else. The
+       syntax selector matches the property access whatever it is called, which is the
+       property actually worth enforcing. The built bundle is grepped too, in
+       `tests/unit/sw-observes.test.ts`: lint cannot see a `respondWith` that arrives through
+       a dependency, and this ban has to hold for the artifact, not just the source. */
     files: ["src/sw/**/*.ts"],
+    languageOptions: {
+      globals: { ...globals.serviceworker, __DEV__: "readonly" },
+    },
     rules: {
-      "no-restricted-properties": [
+      "no-restricted-syntax": [
         "error",
-        { object: "event", property: "respondWith", message: "d0bar's worker observes without intercepting. respondWith() is forbidden." },
+        {
+          selector: "MemberExpression[property.name='respondWith']",
+          message:
+            "d0bar's worker observes without intercepting: respondWith() would make the toolbar serve the request it is measuring. See src/sw/observe.ts.",
+        },
       ],
     },
   },

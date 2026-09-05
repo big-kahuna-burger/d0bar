@@ -36,11 +36,12 @@ const PNG = Buffer.from(
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function serveFile(res, absolute) {
+async function serveFile(res, absolute, extraHeaders = {}) {
   try {
     const body = await readFile(absolute);
     res.writeHead(200, {
       "content-type": TYPES[extname(absolute)] ?? "application/octet-stream",
+      ...extraHeaders,
       "cache-control": "no-store",
     });
     res.end(body);
@@ -122,6 +123,25 @@ const server = createServer(async (req, res) => {
       "access-control-allow-origin": "*",
     });
     res.end(JSON.stringify({ ok: true, path }));
+    return;
+  }
+
+  /**
+   * The service worker, served from the **root** path rather than out of `/dist/`.
+   *
+   * This is not a fixture convenience — it is the constraint a host has to satisfy. A worker
+   * script controls a scope no wider than its own directory, so a file served at
+   * `/dist/d0bar-sw.js` can only ever see requests under `/dist/`, which is none of the
+   * page's traffic. Serving it at the root is what lets it observe the whole origin.
+   *
+   * `Service-Worker-Allowed` is sent anyway so a host that *does* serve it from a
+   * subdirectory can widen the scope explicitly, which is the documented escape hatch.
+   */
+  if (path === "/d0bar-sw.js") {
+    await serveFile(res, join(repoRoot, "dist", "d0bar-sw.js"), {
+      "service-worker-allowed": "/",
+      "cache-control": "no-store",
+    });
     return;
   }
 

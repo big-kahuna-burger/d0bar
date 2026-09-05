@@ -1,7 +1,7 @@
 {
   "name": "d0bar",
   "version": "0.1.0",
-  "description": "A Dash0-branded observability toolbar for your own web app \u2014 that does not distort what it measures.",
+  "description": "A Dash0-branded observability toolbar for your own web app — that does not distort what it measures.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -18,12 +18,13 @@
     },
     "./iife": "./dist/d0bar.iife.js",
     "./panel": "./dist/d0bar.panel.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./sw": "./dist/d0bar-sw-module.mjs"
   },
   "scripts": {
     "tokens": "node scripts/vendor-tokens.mjs",
-    "build": "pnpm tokens && pnpm -F spark-signals build && tsc --noEmit && vite build && D0BAR_STAGE=2 vite build && tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
+    "build": "pnpm tokens && pnpm -F spark-signals build && pnpm typecheck && vite build && D0BAR_STAGE=2 vite build && D0BAR_STAGE=sw vite build && D0BAR_STAGE=sw D0BAR_SW=module vite build && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/sw",
     "test": "vitest run && pnpm -F spark-signals test",
     "test:watch": "vitest",
     "test:perf": "playwright test",
@@ -41,16 +42,17 @@
     "@types/node": "^26.4.1",
     "concurrently": "^10.0.5",
     "eslint": "^9.17.0",
+    "fake-indexeddb": "^6.2.5",
     "globals": "^15.14.0",
     "jsdom": "^30.0.1",
     "prettier": "^3.4.2",
     "size-limit": "^11.1.6",
+    "spark-signals": "workspace:*",
     "terser": "^5.37.0",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.2",
     "vite": "^6.0.7",
-    "vitest": "^2.1.8",
-    "spark-signals": "workspace:*"
+    "vitest": "^2.1.8"
   },
   "packageManager": "pnpm@11.18.0",
   "keywords": [

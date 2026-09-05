@@ -2,7 +2,7 @@
 
 **An in-page observability toolbar that does not distort what it measures.**
 
-[![size](https://img.shields.io/badge/stage%201-4.87%20kB%20gzip-blue)](.size-limit.json)
+[![size](https://img.shields.io/badge/stage%201-5.47%20kB%20gzip-blue)](.size-limit.json)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ```bash
@@ -36,7 +36,7 @@ Concretely, d0bar is for:
 
 **This is probably not for you if** you are profiling a build step, need a flame graph of your
 own JavaScript (use devtools — it's better at that and always will be), or want a
-production-wide RUM product. d0bar shows you *this* page, *this* session, right now.
+production-wide RUM product. d0bar shows you _this_ page, _this_ session, right now.
 
 ---
 
@@ -50,20 +50,47 @@ That is not a small flaw. It is the tool being wrong about the only thing it cla
 d0bar is built around one constraint — **it must not distort what it measures** — and that
 single rule explains every design decision in it:
 
-| | |
-| --- | --- |
-| **Nothing is patched** | Not `fetch`, not `XMLHttpRequest`, not `history`. The browser already records every request with a full timing breakdown; d0bar reads that. Asserted in CI with strict identity checks. |
-| **Zero event listeners on your page** | Load, visibility and first input all arrive as performance entries instead. Verified through the browser's real listener registry via CDP, not by counting our own calls. |
-| **Nothing runs during load** | Until your LCP is final, the only permitted work is writing a number into a preallocated buffer. No derivation, no DOM, no network. A development guard throws if anything tries. |
-| **No allocation in the hot path** | Requests go into a fixed struct-of-arrays ring over one `ArrayBuffer`. URLs are interned to integers. GC pressure from the toolbar can't correlate with the numbers it reports. |
-| **The panel isn't there until you open it** | 4.87 kB gzip on your critical path. The panel is a separate 3.08 kB file fetched on first click. |
-| **Absence is disclosed, never guessed** | If the browser doesn't report a cache status, d0bar says the value was inferred. If attribution is missing, it says so instead of naming a likely element. |
+|                                                             |                                                                                                                                                                                                                                                                                                                               |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Nothing is patched**                                      | Not `fetch`, not `XMLHttpRequest`, not `history`. The browser already records every request with a full timing breakdown; d0bar reads that. Asserted in CI with strict identity checks.                                                                                                                                       |
+| **One event listener on your page, and you can decline it** | Load, visibility and first input all arrive as performance entries, costing nothing. The single exception is the keyboard shortcut — there is no entry type for a keypress — and `data-d0bar-shortcut="off"` removes even that. Verified through the browser's real listener registry via CDP, not by counting our own calls. |
+| **Nothing runs during load**                                | Until your LCP is final, the only permitted work is writing a number into a preallocated buffer. No derivation, no DOM, no network. A development guard throws if anything tries.                                                                                                                                             |
+| **No allocation in the hot path**                           | Requests go into a fixed struct-of-arrays ring over one `ArrayBuffer`. URLs are interned to integers. GC pressure from the toolbar can't correlate with the numbers it reports.                                                                                                                                               |
+| **The panel isn't there until you open it**                 | 5.47 kB gzip on your critical path. The panel is a separate 4.15 kB file fetched on first click.                                                                                                                                                                                                                              |
+| **Absence is disclosed, never guessed**                     | If the browser doesn't report a cache status, d0bar says the value was inferred. If attribution is missing, it says so instead of naming a likely element.                                                                                                                                                                    |
 
 The claim is tested, not asserted. `bench/` runs the same hostile fixture with the toolbar on
 and off, 20+ alternating runs, and compares **p95** deltas — a toolbar that is usually free
 and occasionally costs 40 ms is not free, and a mean hides exactly that.
 
 Current measured deltas, toolbar on vs off: **INP 0 · TBT 0 · CLS 0 · long tasks 0.**
+
+---
+
+## How this differs from the tool you're thinking of
+
+d0bar is a **field** tool. Most performance tooling is a **lab** tool, and the distinction is
+the whole reason this exists.
+
+|                                                  | Lighthouse / PageSpeed             | Devtools                       | RUM (Sentry, Datadog…)      | d0bar                        |
+| ------------------------------------------------ | ---------------------------------- | ------------------------------ | --------------------------- | ---------------------------- |
+| **measures**                                     | a synthetic load it started itself | the page, in depth             | aggregates across all users | the session you are in       |
+| **can reach**                                    | a URL it can open                  | wherever you can open devtools | everywhere, always          | wherever you can open a page |
+| **behind auth, on page 3 of a wizard**           | no                                 | yes                            | yes                         | **yes**                      |
+| **on a tablet, kiosk, or someone else's laptop** | no                                 | no                             | yes                         | **yes**                      |
+| **answers "why is it slow _right now_"**         | no — it's a different load         | yes                            | no — it's a percentile      | **yes**                      |
+| **trace correlation**                            | no                                 | no                             | yes                         | **yes**                      |
+| **cost to the page**                             | n/a — separate run                 | large while open               | an agent, always on         | 5.5 kB, measured at zero     |
+
+Concretely: Lighthouse cannot tell you why _this_ customer's shipment page is slow, because it
+cannot log in and get to it. Devtools can — if you are sitting at a machine that has them. RUM
+knows your p75 across a million sessions but cannot tell you about the one session in front of
+you. d0bar is for the case those three leave open: a real session, on a real device, where you
+need the answer now.
+
+It is not a replacement for any of them. Lighthouse is better at auditing, devtools is better
+at profiling your own JavaScript, and RUM is the only one of the four that can tell you about
+users who never filed a ticket.
 
 ---
 
@@ -94,6 +121,25 @@ at all** — no observers, no DOM, no network. That inert path is asserted in CI
 d0bar to production behind a flag is safe by construction.
 
 `init()` returns a handle with `destroy()` and `diagnostics()`.
+
+### You pay for what you use
+
+The ESM build is side-effect free, so a bundler drops what you do not call. Measured with
+esbuild against the published bundle:
+
+| what you write                    | ships                                                 |
+| --------------------------------- | ----------------------------------------------------- |
+| `import "d0bar"` and never use it | **0 bytes**                                           |
+| `import { init }` and call it     | **5.36 kB** gzip                                      |
+| open the panel                    | **+4.15 kB** gzip, fetched on the click, never before |
+
+Three stages, and a host page only ever pays for the ones it reaches. Stage 1 is the collector
+and the pill. Stage 2 is the panel, a separate file behind `import()` — prefetched at
+background priority _after_ the load phase settles, so it cannot compete with your own critical
+requests. Anything heavier lands in a stage 3 that most pages never fetch at all.
+
+The script-tag build cannot code-split, so it carries stage 1 only and loads stage 2 by URL at
+runtime — same boundary, same bytes on the critical path.
 
 ---
 
@@ -161,7 +207,7 @@ panel. The dominant risk, and the one that is gated in CI. Must be indistinguish
 Allowed to cost something; they asked for it.
 
 **Perturbation** — any effect on the host page that is not reading. Patching a global, adding
-a listener, adding a stylesheet, writing to storage. Distinct from *cost*: a change can be
+a listener, adding a stylesheet, writing to storage. Distinct from _cost_: a change can be
 free in milliseconds and still be perturbation.
 
 **Non-perturbation suite** — `tests/perf/non-perturbation.spec.ts`. Asserts properties a timing
@@ -191,7 +237,7 @@ of silently costing a customer main-thread time in production.
 **Ring** — the request store: struct-of-arrays over one preallocated `ArrayBuffer`, fixed at
 512 records. Allocation-free on the write path.
 
-**Struct-of-arrays (SoA)** — one typed array per *field* rather than one object per record. A
+**Struct-of-arrays (SoA)** — one typed array per _field_ rather than one object per record. A
 record is a slot index read across every column, not a contiguous struct.
 
 **Slot** — a record's index within the ring, `written & 511`. Reused on wraparound.
@@ -216,9 +262,9 @@ one. Rendering virtualized rows therefore allocates nothing per frame.
 **Epoch** — the time window a view scopes to. On a multi-page app that is the document; on a
 single-page app it is a route.
 
-**`navigationId`** — the browser's own epoch id, stamped on *every* `PerformanceEntry`. Read
+**`navigationId`** — the browser's own epoch id, stamped on _every_ `PerformanceEntry`. Read
 rather than derived, because it is correct for entries buffered from before the toolbar
-mounted, and because the interaction that *causes* a navigation correctly stays in the old
+mounted, and because the interaction that _causes_ a navigation correctly stays in the old
 epoch despite sharing its timestamp.
 
 **Soft navigation** — a route change the browser itself recognises: interaction → URL change →
@@ -234,8 +280,104 @@ and cannot live in a `u32`, so the ring stores the handle — the same indirecti
 
 ### Provenance
 
-**Tier** (observation) — which source a measurement came from: `PerformanceObserver`, a service
-worker, `Server-Timing`, or the host's own OTel SDK. Each degrades independently.
+**Tier** (observation) — which source a measurement came from. The four are **additive, not
+alternatives**: each answers a question the others cannot, so a tier going dark subtracts a
+column rather than downgrading the whole reading. The footer strip states which are live
+precisely because the set is a sum.
+
+| tier                      | answers                                                                                                 | its absence costs                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| 1 · `PerformanceObserver` | _when_ — the timing spine. Every request and every vital, read rather than intercepted                  | never absent; the other three only ever add to it                                         |
+| 2 · Service worker        | _which trace_ — a worker sees the request headers the page cannot, so it is what supplies `traceparent` | timings with no way to name the trace they belong to, which is what the Untraced count is |
+| 3 · `Server-Timing`       | _where in the backend_ — the response carries the server's own phases                                   | one opaque wait bar instead of server-side segments                                       |
+| 4 · Host OTel SDK         | _the spans themselves_ — the host already builds them, so reading them beats reconstructing them        | the jump from a slow request to its trace is a search rather than a link                  |
+
+Tiers 3 and 4 are not wired to anything yet and render as `planned`.
+
+## Tier 2 — the service worker
+
+`PerformanceResourceTiming` deliberately exposes no request headers, so tier 1 can never see a
+`traceparent`. A service worker can. d0bar's worker **reads headers and returns** — it never
+calls `respondWith`, so the browser services every request exactly as it would with no worker
+registered. That ban is enforced by a lint rule over `src/sw/**` and by an assertion against
+the shipped bundle, not by care.
+
+### What a host has to serve
+
+|           |                                                                                 |
+| --------- | ------------------------------------------------------------------------------- |
+| The file  | `dist/d0bar-sw.js`, served **same-origin and from the scope root**              |
+| Opting in | `data-d0bar-sw="/d0bar-sw.js"` on the script tag, or `sw: { path }` to `init()` |
+| CSP       | `worker-src 'self'` (or `child-src 'self'` on older policies)                   |
+| Context   | HTTPS, or localhost                                                             |
+
+Serving the worker from the root is a **constraint, not a preference**: a worker script
+controls a scope no wider than its own directory, so a file at `/dist/d0bar-sw.js` sees only
+requests under `/dist/` — none of the page's traffic. A host that must serve it from a
+subdirectory has to widen the scope explicitly with a `Service-Worker-Allowed: /` response
+header.
+
+There is no default path. Registering a service worker is a persistent, origin-scoped side
+effect on someone else's site, and a path d0bar invented would 404 against their routing.
+Omit it and tier 2 stays off — which the panel states rather than hides.
+
+### If the host already has a worker
+
+One worker controls a scope, and d0bar will not take or unregister anyone's. Three outcomes,
+in order:
+
+```
+no worker registered        ──▶  d0bar registers its own      ──▶  tier 2 live
+host worker imports d0bar   ──▶  nothing to register          ──▶  tier 2 live (owner: host)
+host worker will not import ──▶  registration refused         ──▶  tier 2 off, and it says so
+```
+
+The middle path is the importable module:
+
+```js
+// the host's own sw.js — classic
+importScripts("/d0bar-sw-module.js");
+D0barSW.observe();
+
+// or as a module worker
+import { observe } from "/d0bar-sw-module.mjs";
+observe();
+```
+
+The listeners are additive. Because d0bar's `fetch` handler never responds, the host's handler
+decides the response exactly as it did before — a property of the ban, not of registration
+order.
+
+### What tier 2 adds, and what is lost without it
+
+|                          | with tier 2             | without                                  |
+| ------------------------ | ----------------------- | ---------------------------------------- |
+| Trace id per request     | read from `traceparent` | **unavailable** — no trace jump          |
+| HTTP method              | reported                | absent (tier 1 does not expose it)       |
+| Un-instrumented requests | detected and counted    | **invisible** — the page never sees them |
+| Timings, sizes, status   | tier 1, unchanged       | tier 1, unchanged                        |
+
+Without it the footer reads `2 SW off`, the perturbation slot reads `degraded — no trace
+jump`, every request resolves to the no-span state, and **no global is patched as a
+substitute**. Patching `fetch` would change the calls it observes, miss everything issued
+before mount, and fight every other library patching the same global.
+
+### Cost
+
+The worker's own dispatch overhead, measured across 250 requests on the bench fixture:
+
+```
+p50 0.5ms    p90 3.3ms    p95 3.4ms    p99 3.5ms    max 3.6ms
+```
+
+This bounds service-worker dispatch, which any registered worker imposes. It does not yet
+attribute that cost between d0bar's handler and the browser's own machinery — that needs the
+registered-vs-not comparison, which is not built.
+
+The request log lives in the worker's IndexedDB, bounded by count and age, pruned on activate.
+It survives a reload on purpose: the request that caused the error is still there after the
+refresh someone did to go looking for it. If storage is denied or fills up, logging stops and
+the UI reports it as degraded rather than presenting a log with a hole in it as complete.
 
 **Reported vs inferred** — whether the browser stated a value or the toolbar deduced it.
 `deliveryType` reports cache status; `transferSize === 0 && encodedBodySize > 0` infers it, and
@@ -255,8 +397,13 @@ proportions.
 starting it, `on` runs it. `gated` is the honest baseline: it controls for the script download.
 
 **Fixture** — `bench/fixtures/host/`, a page that is already struggling, so the toolbar is
-measured under realistic pressure. It is the measuring *instrument* and is identical in both
+measured under realistic pressure. It is the measuring _instrument_ and is identical in both
 arms — never part of what is measured.
+
+**Δ INP** — the figure in the footer strip's right-hand slot. INP is _Interaction to Next
+Paint_, the browser's own measure of how fast the page responds to input; the delta is how much
+d0bar's presence moves it. It reads `degraded — no trace jump` instead when tier 2 is off,
+because a missing capability is the more useful thing to say.
 
 **p95, never the mean** — how deltas are compared. A toolbar that is usually free and
 occasionally costs 40 ms is not free, and a mean hides exactly that.

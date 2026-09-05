@@ -51,7 +51,7 @@ function terserOptions() {
  *
  * So `build.minify` is off and both formats are minified here, with options we control.
  */
-function minifyLibOutput(options: () => MinifyOptions): Plugin {
+function minifyLibOutput(options: () => MinifyOptions, expectedGlobal: string | null): Plugin {
   return {
     name: "d0bar:minify-lib",
     enforce: "post",
@@ -68,12 +68,21 @@ function minifyLibOutput(options: () => MinifyOptions): Plugin {
 
       /* The script-tag build's only public surface is its global. A minifier that removes it
          produces a bundle that still loads, still auto-starts, and cannot be torn down — a
-         failure with no symptom until a host tries to call `destroy()`. Fail the build. */
-      if (format === "iife" && !new RegExp(`\\b${GLOBAL_NAME}\\s*=`).test(result.code)) {
-        throw new Error(
-          `d0bar: minification dropped the \`${GLOBAL_NAME}\` global from the IIFE build. ` +
-            `The script-tag build has no other way to expose init/destroy.`,
-        );
+         failure with no symptom until a host tries to call `destroy()`. Fail the build.
+
+         Which global to expect is per artifact, because they genuinely differ: stage 1 must
+         expose `D0bar`, the importable worker module must expose `D0barSW` for the classic
+         `importScripts` path, and the standalone worker exposes nothing at all — it is a
+         side-effecting entry with no callers. `null` states that third case explicitly
+         rather than letting the check quietly not apply, so a future entry that forgets to
+         declare a global fails here instead of shipping without one. */
+      if (format === "iife" && expectedGlobal !== null) {
+        if (!new RegExp(`\\b${expectedGlobal}\\s*=`).test(result.code)) {
+          throw new Error(
+            `d0bar: minification dropped the \`${expectedGlobal}\` global from the IIFE build. ` +
+              `That build has no other way to expose its API.`,
+          );
+        }
       }
 
       return { code: result.code, map: null };
@@ -89,7 +98,26 @@ function minifyLibOutput(options: () => MinifyOptions): Plugin {
  * silently inlined back into the IIFE one, putting the panel on the critical path with no
  * error to notice. So stage 2 builds alone, as an ES module, and stage 1 loads it by URL.
  */
-const stage = process.env.D0BAR_STAGE === "2" ? 2 : 1;
+const stage: 1 | 2 | "sw" =
+  process.env.D0BAR_STAGE === "2" ? 2 : process.env.D0BAR_STAGE === "sw" ? "sw" : 1;
+
+/**
+ * The service worker is a third artifact for the same reason stage 2 is a second one: it is
+ * a separate realm with a separate entry point, and nothing about it may be inlined into the
+ * page bundle. It ships in two shapes — the standalone worker a host registers by path, and
+ * the module a host imports into a worker they already own.
+ *
+ * The standalone one is IIFE, not ESM. A module service worker needs `{ type: "module" }` at
+ * registration and is still unsupported in Firefox and Safari, and the worker is the tier
+ * whose absence the toolbar has to *report* — shipping it in a format a third of browsers
+ * cannot register would manufacture the degraded state this change exists to avoid.
+ */
+const SW_ENTRIES = {
+  standalone: { entry: "src/sw/d0bar-sw.ts", file: "d0bar-sw.js" },
+  module: { entry: "src/sw/module.ts", file: "d0bar-sw-module.js" },
+} as const;
+
+const swVariant = process.env.D0BAR_SW === "module" ? "module" : "standalone";
 
 export default defineConfig(({ mode }) => ({
   /* Read from Vite's own mode rather than process.env.NODE_ENV, which is not yet set to
@@ -98,25 +126,41 @@ export default defineConfig(({ mode }) => ({
   define: {
     __DEV__: JSON.stringify(mode !== "production"),
   },
-  plugins: [minifyLibOutput(terserOptions)],
+  plugins: [
+    minifyLibOutput(
+      terserOptions,
+      stage === "sw" ? (swVariant === "module" ? "D0barSW" : null) : GLOBAL_NAME,
+    ),
+  ],
   build: {
     target: "es2022",
-    /* Only stage 1 clears the directory; stage 2 builds into it afterwards. */
+    /* Only stage 1 clears the directory; the others build into it afterwards. */
     emptyOutDir: stage === 1,
     lib:
-      stage === 2
+      stage === "sw"
         ? {
-            entry: "src/panel/index.ts",
-            /* ES only. Stage 2 is always reached through `import()`, from either build. */
-            formats: ["es"],
-            fileName: () => "d0bar.panel.js",
+            entry: SW_ENTRIES[swVariant].entry,
+            /* A global for the classic-`importScripts` path, which has no export binding. */
+            name: "D0barSW",
+            formats: swVariant === "module" ? ["es", "iife"] : ["iife"],
+            fileName: (format: string) =>
+              format === "es"
+                ? SW_ENTRIES[swVariant].file.replace(/\.js$/, ".mjs")
+                : SW_ENTRIES[swVariant].file,
           }
-        : {
-            entry: "src/index.ts",
-            name: GLOBAL_NAME,
-            formats: ["es", "iife"],
-            fileName: (format) => (format === "es" ? "d0bar.js" : "d0bar.iife.js"),
-          },
+        : stage === 2
+          ? {
+              entry: "src/panel/index.ts",
+              /* ES only. Stage 2 is always reached through `import()`, from either build. */
+              formats: ["es"],
+              fileName: () => "d0bar.panel.js",
+            }
+          : {
+              entry: "src/index.ts",
+              name: GLOBAL_NAME,
+              formats: ["es", "iife"],
+              fileName: (format) => (format === "es" ? "d0bar.js" : "d0bar.iife.js"),
+            },
     rollupOptions: {
       output: { compact: true },
     },

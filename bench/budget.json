@@ -82,5 +82,22 @@
       "lastMeasured": null,
       "rationale": "Stage 2, fetched only on first open or by a post-settle background prefetch, so it is off the host's critical path by construction. Measured separately because it is a separate artifact: IIFE output cannot code-split, so the panel is built as its own ES module and loaded by runtime URL from either build."
     }
+  ],
+  "bundleSize": [
+    {
+      "artifact": "dist/d0bar.js / dist/d0bar.iife.js",
+      "limit": "6.5 kB",
+      "lastMeasured": "6.25 kB ESM, 6.37 kB IIFE",
+      "rationale": "Stage 1 is the only bundle on a host page's critical path, so this is the number the product's central claim rests on. Unchanged by add-sw-correlator, which cost it 0.28 kB (5.49 -> 5.77) for worker registration alone; the join and the log read deliberately live in stage 2. Unchanged by add-requests-view, which cost it 0.48 kB (5.77 -> 6.25): the ring stays in stage 1 and the panel is given a window onto it, so the boundary gained `stats`, `read`, `onBatch`, `onVisibility` and `visible` — five object-literal keys that cannot be mangled — plus the resource-batch notifier in observe.ts and the visibility reader in phase.ts. The list, the virtualizer and every row's markup are stage 2. 0.25 kB of headroom remains; the next stage-1 addition needs a measurement before it is written, not after."
+    },
+    {
+      "artifact": "dist/d0bar.panel.js",
+      "limit": "10.5 kB",
+      "previousLimit": "8 kB",
+      "lastMeasured": "9.83 kB",
+      "raisedBy": "add-requests-view",
+      "raisedRationale": "The panel gained the view it exists for. Measured before raising, and split before deciding: of the 10.79 kB gzip vite reports for the artifact, 4.40 kB is the inlined stylesheet and 6.39 kB is code (size-limit's 9.83 kB is the same bundle re-minified by esbuild, which is the number gated). add-requests-view accounts for roughly 1.2 kB of the stylesheet — the shared column template, the trace chip, the four status tones and the waterfall's segment rules, including the hatched treatment that makes an unmeasured bar look unmeasured — and roughly 0.6 kB of code across the virtualizer, the row builder, the geometry and the formatters. None of it is deferrable: a requests tab that loads its own view on tab entry would put a fetch in front of the first thing a user clicks. Verified in the same measurement that no stage-1 code followed it across: `deliveryType` and `renderBlockingStatus` appear zero times in the panel bundle. Stage 2 is fetched at background priority after settle and is never on the critical path, which is why its budget can move where stage 1's cannot.",
+      "rationale": "Raised because the panel gained a data path it did not have: the tier 1 <-> tier 2 join, the IndexedDB read of the worker's log, and tier resolution with its copy. Measured before raising rather than assumed - the four tiers' explanatory strings alone are 1,395 B gzipped against a 335 B overage, so the limit moved for content the panel exists to show, not for code that could be trimmed. The same measurement confirmed the worker-only log paths tree-shake out: `openCursor` and `readwrite` appear zero times in the panel bundle. Stage 2 is fetched at background priority after settle and is never on the critical path, which is why its budget can move where stage 1's cannot."
+    }
   ]
 }

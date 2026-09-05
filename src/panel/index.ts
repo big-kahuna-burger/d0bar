@@ -1,13 +1,26 @@
 import { bindAttr, bindClass, bindHidden, bindText, on } from "spark-signals/bind";
 import { effect, scope } from "spark-signals/signal";
 import panelCss from "./panel.css?inline";
+import { flushCorrelation } from "../collector/correlate";
+import { resolveTiers } from "./tier";
+import { requestsView } from "./views/requests";
+import type { Tier1Access, Tier2State } from "../shared/stage2";
 import {
   escape as shellEscape,
   open,
+  perturbation,
+  recallScroll,
+  rememberScroll,
   selectTab,
+  dismissTip,
+  hoverTip,
   showUntracedBadge,
   tab,
+  tier2,
+  tip,
+  unhoverTip,
   untracedCount,
+  view,
   type Tab,
 } from "./shell";
 
@@ -25,6 +38,14 @@ import {
 export interface PanelOptions {
   root: ShadowRoot;
   onClose(): void;
+  /**
+   * Tier 2's state, resolved by stage 1. Passed rather than imported: the two stages are
+   * separate bundles and do not share module state, so `sw.ts`'s registration outcome does
+   * not cross the boundary on its own.
+   */
+  tier2: Tier2State;
+  /** The ring, owned by stage 1 — see `Tier1Access`. */
+  tier1: Tier1Access;
 }
 
 export interface PanelHandle {
@@ -49,14 +70,17 @@ const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: "untraced", label: "Untraced" },
 ];
 
-/** The four observation tiers, in the order the handoff lists them. */
-const TIERS: ReadonlyArray<{ label: string; state: "live" | "off" | "planned" }> = [
-  { label: "1 PerformanceObserver", state: "live" },
-  { label: "2 SW", state: "off" },
-  /* Tiers 3 and 4 are not wired to anything and must not imply that they are. */
-  { label: "3 Server-Timing", state: "planned" },
-  { label: "4 OTel SDK", state: "planned" },
-];
+/**
+ * The four observation tiers, in the order the handoff lists them.
+ *
+ * Additive, not alternatives: each answers a question the others cannot, so a tier going dark
+ * subtracts a column rather than downgrading the whole reading.
+ *
+ * Resolved by `tier.ts` from real capability checks rather than declared here — this file
+ * only paints them. The table used to be a constant with tier 2 hardcoded to `off`, which
+ * was honest only by accident: it read correctly because tier 2 did not exist yet, and would
+ * have gone on reading `off` after it did.
+ */
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tagName: K,
@@ -67,8 +91,59 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+/**
+ * Attaches a hover tooltip to `trigger`, wrapping it in an anchor so the bubble positions
+ * against it.
+ *
+ * Deliberately not the `title` attribute. A native tooltip cannot be positioned, themed or
+ * kept inside the panel; it appears over the host page's own UI after an OS-controlled delay,
+ * and renders a sentence of explanation as unstyled grey text. Every one of these strings
+ * explains provenance — the reason a number is trustworthy — which is exactly the copy that
+ * must not look like an accident.
+ *
+ * Only one bubble is open at a time, enforced by the shared {@link tip} signal rather than by
+ * each trigger clearing its neighbours.
+ */
+function tooltip(
+  bindings: { add(dispose: () => void): void },
+  trigger: HTMLElement,
+  id: string,
+  side: "above" | "below",
+  content: { title?: string; body: string },
+  align?: "end",
+): HTMLElement {
+  const anchor = el("span", "tip-anchor");
+  trigger.replaceWith(anchor);
+  anchor.appendChild(trigger);
+
+  const bubble = el("span", "tip");
+  bubble.dataset.side = side;
+  if (align) bubble.dataset.align = align;
+  bubble.setAttribute("role", "tooltip");
+  if (content.title) {
+    const strong = el("b");
+    strong.textContent = content.title;
+    bubble.append(strong, document.createTextNode(" "));
+  }
+  bubble.appendChild(document.createTextNode(content.body));
+  anchor.appendChild(bubble);
+
+  bindings.add(bindHidden(bubble, () => tip() !== id));
+  bindings.add(on(anchor, "pointerenter", () => hoverTip(id)));
+  bindings.add(on(anchor, "pointerleave", () => unhoverTip()));
+  /* Keyboard reaches the same copy: a tooltip only a mouse can open is one a keyboard user
+     is simply not told. */
+  bindings.add(on(anchor, "focusin", () => hoverTip(id)));
+  bindings.add(on(anchor, "focusout", () => unhoverTip()));
+  return anchor;
+}
+
 export function openPanel(options: PanelOptions): PanelHandle {
   const { root, onClose } = options;
+  /* Before anything renders: the footer must never paint a stale `off` and then correct
+     itself, because the corrected state is the one the user is least likely to be looking
+     at when it changes. */
+  tier2.set(options.tier2);
   const bindings = scope();
 
   /* Adopted alongside the pill's sheet rather than replacing it — the token prelude lives
@@ -91,7 +166,6 @@ export function openPanel(options: PanelOptions): PanelHandle {
   const url = el("span", "url");
   /* Read once. A route change updates it through the epoch model, not by polling. */
   url.textContent = location.pathname + location.search;
-  url.title = location.href;
 
   const hint = el("span", "hint");
   hint.textContent = "⌘⇧0";
@@ -100,9 +174,19 @@ export function openPanel(options: PanelOptions): PanelHandle {
   close.type = "button";
   close.setAttribute("aria-label", "Close d0bar");
   close.textContent = "✕";
-  bindings.add(on(close, "click", () => open.set(false)));
+  bindings.add(
+    on(close, "click", () => {
+      /* A bubble left open would outlive the panel it explains. */
+      dismissTip();
+      open.set(false);
+    }),
+  );
 
   head.append(title, url, hint, close);
+  /* The header clips the URL from the left, so the origin is the part that goes missing —
+     and on a staging host the origin is often the only thing distinguishing two identical
+     pages. The bubble carries the whole thing. */
+  tooltip(bindings, url, "url", "below", { body: location.href });
 
   /* ── tab row ── */
   const tabs = el("div", "tabs");
@@ -130,45 +214,130 @@ export function openPanel(options: PanelOptions): PanelHandle {
     bindings.add(bindClass(button, "on", () => tab() === item.id));
     bindings.add(on(button, "click", () => selectTab(item.id)));
     tabs.appendChild(button);
+
+    if (item.id === "untraced") {
+      tooltip(bindings, button, "untraced", "below", {
+        body: "Requests that left this page with no trace context, which is usually why a trace has a hole in it. Detecting one needs tier 2 or 4; with neither, this counts nothing rather than claiming zero.",
+      });
+    }
   }
 
   const buffered = el("span", "buffered");
   buffered.textContent = "buffered: true";
-  buffered.title =
-    "Every observer is registered with buffered: true, so the toolbar receives entries from page start even though it mounted later.";
   tabs.appendChild(buffered);
+  tooltip(
+    bindings,
+    buffered,
+    "buffered",
+    "below",
+    {
+      title: "buffered: true.",
+      body: "Every observer is registered this way, so the toolbar receives entries from page start even though it mounted later — which is what lets it stay out of the load phase for free.",
+    },
+    "end",
+  );
 
   /* ── body ── */
   const body = el("div", "body");
+
+  /* The requests view is mounted once and hidden, not created on tab entry: it holds the
+     virtualizer's row pool and its scroll offset, and rebuilding both on every tab switch
+     would trade a hidden subtree for a burst of DOM work in front of the user. */
+  const requests = requestsView({ tier1: options.tier1 });
+  const showRequests = () => tab() === "requests" && view() === "list";
+  bindings.add(bindHidden(requests.el, () => !showRequests()));
+
   const empty = el("div", "empty");
   const emptyText = document.createTextNode("");
   empty.appendChild(emptyText);
+  bindings.add(bindHidden(empty, showRequests));
   bindings.add(
     bindText(emptyText, () => {
+      if (view() === "trace") return "The trace view lands with add-trace-view.";
       const which = tab();
-      if (which === "requests") return "The requests view lands with add-requests-view.";
       if (which === "vitals") return "The vitals view lands with add-vitals-view.";
-      return "The untraced view lands with add-untraced-view.";
+      if (which === "untraced") return "The untraced view lands with add-untraced-view.";
+      return "";
     }),
   );
-  body.appendChild(empty);
+  body.append(requests.el, empty);
+
+  /* Repaint on the way back in. While hidden the view drops every batch on the floor by
+     design, so returning from another tab has to catch up in one go — the next request
+     might never arrive. */
+  bindings.add(
+    effect(() => {
+      if (showRequests()) requests.refresh();
+    }),
+  );
+
+  /**
+   * Scroll memory, per tab.
+   *
+   * Tracked continuously rather than captured at the moment of leaving: by the time a tab
+   * switch or a trace push has been observed, the list it is leaving may already have been
+   * torn down, and `scrollTop` on a detached or re-populated node reads zero. Keeping the map
+   * current means the value is already right when it is needed.
+   *
+   * Passive, because the handler never calls `preventDefault` and a non-passive scroll
+   * listener on a scroller blocks the compositor from scrolling until script has run — the
+   * exact class of cost this toolbar exists not to impose.
+   */
+  bindings.add(
+    on(body, "scroll", () => rememberScroll(tab.peek(), body.scrollTop), { passive: true }),
+  );
+
+  /* Restoring on the way back in. `view()` is read so returning from a trace restores too,
+     not only a tab switch — Escape from the trace surface must land where the user left. */
+  let lastKey = "";
+  bindings.add(
+    effect(() => {
+      const key = `${view()}:${tab()}`;
+      if (view() !== "list") return;
+      if (key === lastKey) return;
+      lastKey = key;
+      /* Assigned unconditionally, including zero: arriving at a tab never scrolled must
+         reset the shared scroller, or the new tab inherits the previous one's offset. */
+      body.scrollTop = recallScroll(tab());
+    }),
+  );
 
   /* ── footer observer strip ── */
   const foot = el("div", "foot");
-  for (const tier of TIERS) {
+  /* Resolved once per tier, then bound: `tier2Live` is a signal because the scope can be
+     lost or gained after the panel has mounted — a host worker that claims the scope, or a
+     registration that has not finished when the panel is opened early. */
+  const tiers = () => resolveTiers(tier2());
+
+  for (let i = 0; i < 4; i += 1) {
+    const at = () => tiers()[i] as ReturnType<typeof resolveTiers>[number];
     const item = el("span", "tier");
-    item.dataset.state = tier.state;
     const dot = el("i", "tdot");
     const text = el("span");
-    text.textContent = tier.label;
+    const label = document.createTextNode(at().label);
+    text.appendChild(label);
     item.append(dot, text);
+
+    bindings.add(bindAttr(item, "data-state", () => at().state));
+    /* The handoff spells the degraded tier `2 SW off`, not `2 SW` — the strip states the
+       capability in the label as well as the dot, so a screenshot, a monochrome display or
+       a colour-blind reader still carries the reading. `tier.ts` supplies both spellings. */
+    bindings.add(bindText(label, () => at().label));
+    /* Every tier explains itself, including the planned ones — "not built yet" is the whole
+       content of that state and must not be left to the reader to infer from a hollow dot. */
+    tooltip(bindings, text, `tier${i}`, "above", { body: at().detail });
+
     foot.appendChild(item);
   }
 
+  /* The right-hand reading. Which of the three it shows is derived in `shell.ts`, so the
+     ladder — degraded outranks measured, and unmeasured is never rendered as zero — is
+     stated once and testable without a browser. This file only paints it. */
   const perturb = el("span", "perturb");
-  /* A measured zero until add-self-attribution supplies a real figure. It is not a claim
-     about this session — it is the slot the claim will occupy. */
-  perturb.textContent = "Δ INP 0.0ms";
+  const perturbText = document.createTextNode("");
+  perturb.appendChild(perturbText);
+  bindings.add(bindText(perturbText, () => perturbation().text));
+  bindings.add(bindAttr(perturb, "data-state", () => perturbation().state));
   foot.appendChild(perturb);
 
   panel.append(head, tabs, body, foot);
@@ -183,14 +352,73 @@ export function openPanel(options: PanelOptions): PanelHandle {
       if (isOpen === wasOpen) return;
       wasOpen = isOpen;
       try {
-        if (isOpen) panel.showPopover();
-        else panel.hidePopover();
+        if (isOpen) {
+          /* Set before the animation starts, so the promotion is in place for the first
+             frame rather than one frame late. */
+          panel.style.willChange = "transform, opacity";
+          panel.showPopover();
+        } else {
+          panel.hidePopover();
+        }
       } catch {
         /* `showPopover` throws if the element is already in that state, which can happen
            if the host page moved it. The signal remains the source of truth. */
       }
       if (isOpen) close.focus();
       else onClose();
+    }),
+  );
+
+  /**
+   * Focus trap.
+   *
+   * The panel is a top-layer popover over a page that is still fully interactive, so without
+   * this a Tab off the last control lands somewhere in the customer's own UI with the panel
+   * still open — and the way back is not discoverable. `manual` popover mode means the
+   * browser does not do this for us, unlike `<dialog>`'s modal mode, which we cannot use
+   * because it would make the host page inert.
+   *
+   * Queried per keypress rather than cached: the tab row's contents change with state, and a
+   * stale list would trap focus on a node that is no longer there.
+   */
+  const FOCUSABLE =
+    'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])';
+
+  function focusable(): HTMLElement[] {
+    return [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+      (node) => !node.hidden && node.offsetParent !== null,
+    );
+  }
+
+  bindings.add(
+    on(panel, "keydown", (event) => {
+      if (event.key !== "Tab") return;
+      const nodes = focusable();
+      if (nodes.length === 0) return;
+      const first = nodes[0]!;
+      const last = nodes[nodes.length - 1]!;
+      /* `getRootNode()` rather than `document.activeElement`, which reports the shadow host
+         from outside and would make every comparison below false. */
+      const active = (panel.getRootNode() as ShadowRoot).activeElement;
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }),
+  );
+
+  /**
+   * `will-change` promotes the panel to its own layer for the entry animation, and is removed
+   * the moment it ends. Left on permanently it is a standing instruction to the compositor to
+   * keep a layer for an element that is no longer animating — memory the host page pays for,
+   * on a page whose memory is not ours to spend.
+   */
+  bindings.add(
+    on(panel, "animationend", () => {
+      panel.style.willChange = "";
     }),
   );
 
@@ -205,6 +433,33 @@ export function openPanel(options: PanelOptions): PanelHandle {
     }),
   );
 
+  /**
+   * The correlation flush.
+   *
+   * Deliberately here and not in stage 1. Registration has to happen whether or not the
+   * panel is ever opened — the worker writes the log either way — but nothing *reads* that
+   * log until someone is looking at it, so the join, the interning of leftovers and the ring
+   * write-back all live in stage 2 and cost a page that never opens the panel nothing.
+   *
+   * Not awaited: the panel renders immediately with tier 1's data and fills in tier 2's when
+   * it arrives. A panel that waited on IndexedDB before painting would make the toolbar feel
+   * slow in exchange for a field that is meaningless on most rows anyway.
+   */
+  void flushCorrelation({
+    tier2: options.tier2,
+    since: performance.timeOrigin,
+    tier1: options.tier1,
+  })
+    .then((result) => {
+      tier2.set(result.tier2);
+      untracedCount.set(result.unjoined.length);
+    })
+    .catch(() => {
+      /* `flushCorrelation` is written not to reject; this is the belt to that braces. A
+         failed join leaves the panel showing tier 1 only, which is exactly the degraded
+         state it already knows how to render. */
+    });
+
   open.set(true);
 
   return {
@@ -216,6 +471,7 @@ export function openPanel(options: PanelOptions): PanelHandle {
     },
     destroy() {
       bindings.dispose();
+      requests.destroy();
       panel.remove();
       root.adoptedStyleSheets = root.adoptedStyleSheets.filter((s) => s !== sheet);
     },

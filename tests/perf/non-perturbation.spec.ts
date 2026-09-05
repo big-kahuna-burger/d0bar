@@ -131,16 +131,25 @@ test.describe("with the toolbar present but not enabled", () => {
 });
 
 /**
- * The toolbar registers no event listener on the host page.
+ * The toolbar's listener budget on the host page is exactly one, and it is named here.
  *
- * Load, visibility and first input all arrive as performance entries instead, so there is
- * nothing on `window` or `document` for the host to trip over, and nothing to leak if
- * teardown is ever missed. Asserted rather than commented, because a listener is exactly the
- * kind of thing that gets added back later for a good local reason.
+ * This was zero until the keyboard shortcut landed. Load, visibility and first input all
+ * arrive as performance entries, so none of them costs a listener — but there is no entry
+ * type for a keypress, and a shortcut that opens the panel before stage 2 has been fetched
+ * cannot be built without one. The trade was made deliberately; what must not happen is the
+ * budget quietly becoming "a few".
+ *
+ * So the assertion is an allow-list, not a count. `EXPECTED_LISTENERS` is the whole of what
+ * the toolbar may add, a second listener of any type fails, and `{ shortcut: false }` must
+ * still reach zero — the original property remains available to anyone who wants it more than
+ * they want the chord.
  *
  * Measured through CDP against the real listener registry, not a patched `addEventListener` —
  * patching the API under test would be the one thing this file exists to forbid.
  */
+
+/** Every listener the toolbar is permitted to register on the host, and nothing else. */
+const EXPECTED_LISTENERS = ["document:keydown"];
 test.describe("host event surface", () => {
   async function listenerTypes(page: import("@playwright/test").Page): Promise<string[]> {
     const cdp = await page.context().newCDPSession(page);
@@ -185,7 +194,19 @@ test.describe("host event surface", () => {
     return listenerTypes(page);
   }
 
-  test("adds no listener to window or document", async ({ page }) => {
+  /** What the running toolbar adds over the gated arm, which loads the same bundle inert. */
+  function added(enabled: string[], gated: string[]): string[] {
+    const baseline = [...gated];
+    const extra: string[] = [];
+    for (const type of enabled) {
+      const at = baseline.indexOf(type);
+      if (at === -1) extra.push(type);
+      else baseline.splice(at, 1);
+    }
+    return extra.sort();
+  }
+
+  test("adds exactly the shortcut listener, and nothing else", async ({ page }) => {
     /* The gated arm loads the identical bundle and starts nothing, so the difference between
        the arms is precisely the listeners the running toolbar registers. */
     const gated = await arm(page, "gated", () => true);
@@ -193,18 +214,34 @@ test.describe("host event surface", () => {
        anything, it has by now. */
     const enabled = await arm(page, "on", () => document.querySelector("d0-bar") !== null);
 
-    expect(enabled).toEqual(gated);
+    expect(added(enabled, gated)).toEqual(EXPECTED_LISTENERS);
+  });
+
+  test("adds no listener at all when the shortcut is disabled", async ({ page }) => {
+    const gated = await arm(page, "gated", () => true);
+    const enabled = await arm(
+      page,
+      "on&shortcut=off",
+      () => document.querySelector("d0-bar") !== null,
+    );
+
+    /* The zero-listener property is not gone, it is opt-in. A host that would rather have an
+       untouched event surface than a keyboard shortcut can still have it. */
+    expect(added(enabled, gated)).toEqual([]);
   });
 
   test("adds none after teardown either", async ({ page }) => {
     const gated = await arm(page, "gated", () => true);
 
     await arm(page, "on", () => document.querySelector("d0-bar") !== null);
-    await page.evaluate(() => (window as unknown as { D0bar: { destroy(): void } }).D0bar.destroy());
+    await page.evaluate(() =>
+      (window as unknown as { D0bar: { destroy(): void } }).D0bar.destroy(),
+    );
 
     /* A listener removed at teardown but balanced by one added elsewhere would pass a count
-       comparison against the running state, so both states are compared to the same baseline. */
-    expect(await listenerTypes(page)).toEqual(gated);
+       comparison against the running state, so both states are compared to the same baseline.
+       After teardown the shortcut is gone too — the budget returns to zero. */
+    expect(added(await listenerTypes(page), gated)).toEqual([]);
   });
 });
 
@@ -229,8 +266,7 @@ test("reports a real cache hit through deliveryType", async ({ page }) => {
       const hit = performance
         .getEntriesByType("resource")
         .find((e) => e.name.includes("cacheable.json")) as
-        | (PerformanceResourceTiming & { deliveryType?: string })
-        | undefined;
+        (PerformanceResourceTiming & { deliveryType?: string }) | undefined;
       return hit
         ? {
             deliveryType: hit.deliveryType,

@@ -1,4 +1,5 @@
 import { background } from "./schedule";
+import type { RequestRecord } from "./record";
 
 /**
  * The stage-2 boundary.
@@ -74,7 +75,88 @@ export interface PanelOptions {
   root: ShadowRoot;
   /** Returns focus to the pill on close. */
   onClose(): void;
+  /**
+   * Tier 2's state, resolved by stage 1 and handed over at open time.
+   *
+   * The two stages are separate bundles, so every module exists twice with its own
+   * module-level state. `sw.ts` records the registration outcome in a variable that stage 2's
+   * copy never sees — the panel read `off` for a worker that was registered, active and
+   * controlling the page. Anything stage 1 resolves and stage 2 needs has to cross here.
+   *
+   * Structural, like the rest of this interface, so stage 1 still imports none of stage 2's
+   * types: this is the shape both sides agree on, declared once, on the boundary.
+   */
+  tier2: Tier2State;
+  /**
+   * Access to the request ring, which stage 1 owns.
+   *
+   * Handed over rather than imported, for the same reason as `tier2` and with a sharper
+   * failure: `ring.ts` holds its records in a module-level typed array, so stage 2's copy of
+   * that module is a *second, empty ring*. Importing it from the panel produced a join with
+   * nothing on the tier 1 side, which reported every one of the worker's records as an
+   * untraced request — a badge reading 307 on a page where almost everything was traced.
+   *
+   * Not a data copy: `entries()` projects the three fields the join needs, and `correlate()`
+   * writes results back into the real ring in stage 1.
+   */
+  tier1: Tier1Access;
 }
+
+export interface Tier1Access {
+  /** The current ring contents, projected to what the join keys on. */
+  entries(): Array<{ index: number; url: string; startTime: number }>;
+  /** Writes tier 2's fields back. Timings and status are not passed and cannot be touched. */
+  correlate(
+    index: number,
+    fields: { method: string; contextId: number; hasSpan: boolean },
+  ): void;
+  /**
+   * Records currently retained, and how many were lost to overflow.
+   *
+   * `written` is the absolute count of everything ever recorded, which is what tells the
+   * list that the ring's base moved: on overflow every retained record's index shifts down
+   * by one, so a scroll offset and a selected index that are not adjusted by the same amount
+   * silently come to mean different rows.
+   */
+  stats(): { written: number; dropped: number; capacity: number };
+  /**
+   * Fills `out` with the record at `index`, counting from the oldest retained record.
+   * Returns false when the index is out of range.
+   *
+   * Fill-a-scratch rather than return-a-record, across the boundary as well as inside it:
+   * the list re-reads its whole window on every repaint, and a per-row object would put an
+   * allocation per row per frame on the main thread of the page being measured.
+   */
+  read(index: number, out: RequestRecord): boolean;
+  /**
+   * Notified once after each post-settle batch of resource entries. Returns a teardown.
+   *
+   * Push, not poll. The alternative — the panel checking the ring's length every frame while
+   * open — burns a frame's worth of work on every frame in which nothing happened.
+   */
+  onBatch(fn: () => void): () => void;
+  /**
+   * Document visibility, read from the `visibility-state` entry type rather than from a
+   * `visibilitychange` listener, and handed across the boundary for that reason: stage 2
+   * registering its own listener would break the zero-host-listeners property that
+   * `non-perturbation.spec.ts` asserts against the browser's real listener registry.
+   */
+  onVisibility(fn: (visible: boolean) => void): () => void;
+  visible(): boolean;
+}
+
+/** Mirrors `collector/sw.ts`. Duplicated deliberately — see the note on `PanelModule`. */
+export type Tier2State =
+  | { kind: "live"; owner: "d0bar" | "host" }
+  | {
+      kind: "off";
+      reason:
+        | "unsupported"
+        | "insecure-context"
+        | "scope-owned"
+        | "registration-failed"
+        | "not-registered";
+    };
 
 export interface PanelHandle {
   show(): void;

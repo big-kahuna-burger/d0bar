@@ -11,6 +11,27 @@
      Timing-Allow-Origin, so the browser zeroes the phase timings for these. */
   var foreign = origin.replace("127.0.0.1", "localhost");
 
+  /**
+   * A W3C `traceparent`, as an OpenTelemetry-instrumented host would send.
+   *
+   * The fixture is the instrument, so this is deliberately minimal: it puts a well-formed
+   * header on the requests a real SDK would instrument and nothing on the ones it would not.
+   * `fetch` gets one, `XMLHttpRequest` does not — which is the same split the untraced view
+   * exists to surface, and is already why the XHR branch below is here.
+   *
+   * Inert for the benchmark: it is a header on a request the fixture was issuing anyway, and
+   * both arms issue it identically, so the on/off comparison stays controlled.
+   */
+  function hex(n) {
+    var out = "";
+    for (var k = 0; k < n; k++) out += ((Math.random() * 16) | 0).toString(16);
+    return out;
+  }
+
+  function traceparent() {
+    return "00-" + hex(32) + "-" + hex(16) + "-01";
+  }
+
   function fire(i) {
     var crossOrigin = i % 5 === 0;
     var base = crossOrigin ? foreign : origin;
@@ -25,7 +46,14 @@
       xhr.send();
       return;
     }
-    fetch(base + "/api/resource?i=" + i + "&delay=" + delay + "&status=" + status)
+    /* Same-origin only. A custom header on a cross-origin request triggers a CORS
+       preflight, which would add an OPTIONS round trip the fixture never had and change the
+       traffic shape the budget is measured against. Real propagators are allowlisted for the
+       same reason, so this is faithful rather than a workaround. */
+    fetch(
+      base + "/api/resource?i=" + i + "&delay=" + delay + "&status=" + status,
+      crossOrigin ? undefined : { headers: { traceparent: traceparent() } },
+    )
       .then(function (r) {
         /* The body must be drained. An unread body holds the connection open, and the
            browser's six-per-origin limit then throttles the storm to a trickle. */
@@ -43,7 +71,7 @@
     if (next >= TOTAL) clearInterval(pump);
   }, 60);
 
-  fetch("/api/hero?delay=800")
+  fetch("/api/hero?delay=800", { headers: { traceparent: traceparent() } })
     .then(function (r) {
       return r.text();
     })

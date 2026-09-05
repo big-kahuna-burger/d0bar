@@ -2,9 +2,9 @@
   "config": {
     "argv": [
       "/Users/bkb/.n/bin/node",
-      "/Users/bkb/d/dash0/d0bar/node_modules/.pnpm/@playwright+test@1.62.1/node_modules/@playwright/test/cli.js",
+      "/Users/bkb/d/dash0/d0bar/node_modules/@playwright/test/cli.js",
       "test",
-      "tests/perf/non-perturbation.spec.ts"
+      "tests/perf/requests-view.spec.ts"
     ],
     "configFile": "/Users/bkb/d/dash0/d0bar/playwright.config.ts",
     "rootDir": "/Users/bkb/d/dash0/d0bar/tests/perf",
@@ -65,26 +65,26 @@
     "webServer": {
       "command": "node bench/fixtures/server.mjs",
       "url": "http://127.0.0.1:8732/health",
-      "reuseExistingServer": true,
+      "reuseExistingServer": false,
       "stdout": "ignore"
     }
   },
   "suites": [
     {
-      "title": "non-perturbation.spec.ts",
-      "file": "non-perturbation.spec.ts",
+      "title": "requests-view.spec.ts",
+      "file": "requests-view.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [],
       "suites": [
         {
-          "title": "with the toolbar enabled",
-          "file": "non-perturbation.spec.ts",
-          "line": 26,
+          "title": "windowing",
+          "file": "requests-view.spec.ts",
+          "line": 46,
           "column": 6,
           "specs": [
             {
-              "title": "leaves fetch and XMLHttpRequest strictly unpatched",
+              "title": "keeps the row count proportional to the viewport, not to the record count",
               "ok": true,
               "tags": [],
               "tests": [
@@ -99,12 +99,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1822,
+                      "duration": 1942,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-04T23:05:26.899Z",
+                      "startTime": "2026-09-05T18:35:42.140Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -112,13 +112,13 @@
                   "status": "expected"
                 }
               ],
-              "id": "fedc85524d6fbb490aaa-887e012e839215cfd84a",
-              "file": "non-perturbation.spec.ts",
-              "line": 32,
+              "id": "602c609c3fd960fe26e3-37f3b18b0eec92ed0aa2",
+              "file": "requests-view.spec.ts",
+              "line": 47,
               "column": 3
             },
             {
-              "title": "adds no rule to the host document",
+              "title": "creates no new rows while scrolling the whole list",
               "ok": true,
               "tags": [],
               "tests": [
@@ -133,12 +133,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1666,
+                      "duration": 3466,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-04T23:05:28.905Z",
+                      "startTime": "2026-09-05T18:35:44.312Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -146,13 +146,13 @@
                   "status": "expected"
                 }
               ],
-              "id": "fedc85524d6fbb490aaa-f17e53d03043a2a4f999",
-              "file": "non-perturbation.spec.ts",
-              "line": 51,
+              "id": "602c609c3fd960fe26e3-37a31303a4beb8c2028b",
+              "file": "requests-view.spec.ts",
+              "line": 72,
               "column": 3
             },
             {
-              "title": "mounts exactly one element, and only after the load phase",
+              "title": "scrolling the full list costs no long frame",
               "ok": true,
               "tags": [],
               "tests": [
@@ -167,12 +167,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1657,
+                      "duration": 12528,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-04T23:05:30.579Z",
+                      "startTime": "2026-09-05T18:35:47.788Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -180,55 +180,21 @@
                   "status": "expected"
                 }
               ],
-              "id": "fedc85524d6fbb490aaa-c5ba3a82d44b1a839e53",
-              "file": "non-perturbation.spec.ts",
-              "line": 67,
-              "column": 3
-            },
-            {
-              "title": "records nothing into the host page's own storage",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 600000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1654,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-09-04T23:05:32.241Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "fedc85524d6fbb490aaa-df151b9d0b48fd0761bd",
-              "file": "non-perturbation.spec.ts",
-              "line": 83,
+              "id": "602c609c3fd960fe26e3-a0a73e20203d810db336",
+              "file": "requests-view.spec.ts",
+              "line": 94,
               "column": 3
             }
           ]
         },
         {
-          "title": "with the toolbar present but not enabled",
-          "file": "non-perturbation.spec.ts",
-          "line": 94,
+          "title": "bar geometry",
+          "file": "requests-view.spec.ts",
+          "line": 137,
           "column": 6,
           "specs": [
             {
-              "title": "does nothing at all",
+              "title": "arrives as two custom properties on the row",
               "ok": true,
               "tags": [],
               "tests": [
@@ -243,12 +209,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1659,
+                      "duration": 1758,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-04T23:05:33.900Z",
+                      "startTime": "2026-09-05T18:36:00.321Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -256,21 +222,55 @@
                   "status": "expected"
                 }
               ],
-              "id": "fedc85524d6fbb490aaa-70c6f83efae5744a82f4",
-              "file": "non-perturbation.spec.ts",
-              "line": 95,
+              "id": "602c609c3fd960fe26e3-26a9196d4e6cdb4d9046",
+              "file": "requests-view.spec.ts",
+              "line": 138,
+              "column": 3
+            },
+            {
+              "title": "draws an undifferentiated bar where the browser reported no phases",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 600000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1739,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-05T18:36:02.085Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "602c609c3fd960fe26e3-c6287bdd8699c1ff2d38",
+              "file": "requests-view.spec.ts",
+              "line": 160,
               "column": 3
             }
           ]
         },
         {
-          "title": "host event surface",
-          "file": "non-perturbation.spec.ts",
-          "line": 145,
+          "title": "streaming",
+          "file": "requests-view.spec.ts",
+          "line": 184,
           "column": 6,
           "specs": [
             {
-              "title": "adds no listener to window or document",
+              "title": "appending does not move the viewport or drop the selection",
               "ok": false,
               "tags": [],
               "tests": [
@@ -284,50 +284,66 @@
                     {
                       "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "timedOut",
-                      "duration": 600054,
+                      "status": "failed",
+                      "duration": 2396,
                       "error": {
-                        "message": "\u001b[31mTest timeout of 600000ms exceeded.\u001b[39m",
-                        "stack": "\u001b[31mTest timeout of 600000ms exceeded.\u001b[39m"
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m-210\u001b[39m\nReceived: \u001b[31m0\u001b[39m",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m-210\u001b[39m\nReceived: \u001b[31m0\u001b[39m\n    at /Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:220:29",
+                        "location": {
+                          "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
+                          "column": 29,
+                          "line": 220
+                        },
+                        "snippet": "  218 |        of leaving `scrollTop` alone. */\n  219 |     expect(before.label).not.toBeNull();\n> 220 |     expect(after.scrollTop).toBe(before.scrollTop - 10 * 21);\n      |                             ^\n  221 |   });\n  222 | });\n  223 |"
                       },
                       "errors": [
                         {
-                          "message": "\u001b[31mTest timeout of 600000ms exceeded.\u001b[39m"
-                        },
-                        {
                           "location": {
-                            "file": "/Users/bkb/d/dash0/d0bar/tests/perf/non-perturbation.spec.ts",
-                            "column": 16,
-                            "line": 171
+                            "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
+                            "column": 29,
+                            "line": 220
                           },
-                          "message": "Error: page.waitForFunction: Test timeout of 600000ms exceeded.\n\n  169 |     await page.evaluate(() => window.__fixtureReady);\n  170 |     /* Past settle: if the toolbar were going to register anything, it has by now. */\n> 171 |     await page.waitForFunction(() => document.querySelector(\"d0bar-pill\") !== null);\n      |                ^\n  172 |     const enabled = await listenerTypes(page);\n  173 |\n  174 |     expect(enabled).toEqual(gated);\n    at /Users/bkb/d/dash0/d0bar/tests/perf/non-perturbation.spec.ts:171:16"
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m-210\u001b[39m\nReceived: \u001b[31m0\u001b[39m\n\n  218 |        of leaving `scrollTop` alone. */\n  219 |     expect(before.label).not.toBeNull();\n> 220 |     expect(after.scrollTop).toBe(before.scrollTop - 10 * 21);\n      |                             ^\n  221 |   });\n  222 | });\n  223 |\n    at /Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts:220:29"
                         }
                       ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-04T23:05:35.564Z",
+                      "startTime": "2026-09-05T18:36:03.829Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "error-context",
                           "contentType": "text/markdown",
-                          "path": "/Users/bkb/d/dash0/d0bar/test-results/non-perturbation-host-even-c533a-tener-to-window-or-document-chromium/error-context.md"
+                          "path": "/Users/bkb/d/dash0/d0bar/test-results/requests-view-streaming-ap-f2976-wport-or-drop-the-selection-chromium/error-context.md"
                         }
-                      ]
+                      ],
+                      "errorLocation": {
+                        "file": "/Users/bkb/d/dash0/d0bar/tests/perf/requests-view.spec.ts",
+                        "column": 29,
+                        "line": 220
+                      }
                     }
                   ],
                   "status": "unexpected"
                 }
               ],
-              "id": "fedc85524d6fbb490aaa-0cb5aafccf9ce0f2aa13",
-              "file": "non-perturbation.spec.ts",
-              "line": 161,
+              "id": "602c609c3fd960fe26e3-7ea6abe80c7290447b37",
+              "file": "requests-view.spec.ts",
+              "line": 185,
               "column": 3
-            },
+            }
+          ]
+        },
+        {
+          "title": "keyboard",
+          "file": "requests-view.spec.ts",
+          "line": 224,
+          "column": 6,
+          "specs": [
             {
-              "title": "adds none after teardown either",
-              "ok": false,
+              "title": "gives the list one tab stop and opens a row with Enter",
+              "ok": true,
               "tags": [],
               "tests": [
                 {
@@ -340,45 +356,57 @@
                     {
                       "workerIndex": 1,
                       "parallelIndex": 0,
-                      "status": "timedOut",
-                      "duration": 600043,
-                      "error": {
-                        "message": "\u001b[31mTest timeout of 600000ms exceeded.\u001b[39m",
-                        "stack": "\u001b[31mTest timeout of 600000ms exceeded.\u001b[39m"
-                      },
-                      "errors": [
-                        {
-                          "message": "\u001b[31mTest timeout of 600000ms exceeded.\u001b[39m"
-                        },
-                        {
-                          "location": {
-                            "file": "/Users/bkb/d/dash0/d0bar/tests/perf/non-perturbation.spec.ts",
-                            "column": 16,
-                            "line": 184
-                          },
-                          "message": "Error: page.waitForFunction: Test timeout of 600000ms exceeded.\n\n  182 |     await page.goto(\"/?d0bar=on\", { waitUntil: \"load\" });\n  183 |     await page.evaluate(() => window.__fixtureReady);\n> 184 |     await page.waitForFunction(() => document.querySelector(\"d0bar-pill\") !== null);\n      |                ^\n  185 |     await page.evaluate(() => (window as unknown as { D0bar: { destroy(): void } }).D0bar.destroy());\n  186 |\n  187 |     /* A listener removed at teardown but balanced by one added elsewhere would pass a count\n    at /Users/bkb/d/dash0/d0bar/tests/perf/non-perturbation.spec.ts:184:16"
-                        }
-                      ],
+                      "status": "passed",
+                      "duration": 1756,
+                      "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-09-04T23:15:35.827Z",
+                      "startTime": "2026-09-05T18:36:06.444Z",
                       "annotations": [],
-                      "attachments": [
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/Users/bkb/d/dash0/d0bar/test-results/non-perturbation-host-even-8da0b--none-after-teardown-either-chromium/error-context.md"
-                        }
-                      ]
+                      "attachments": []
                     }
                   ],
-                  "status": "unexpected"
+                  "status": "expected"
                 }
               ],
-              "id": "fedc85524d6fbb490aaa-a1e5732e69aaa458b2e8",
-              "file": "non-perturbation.spec.ts",
-              "line": 177,
+              "id": "602c609c3fd960fe26e3-4a79315d0f6f73413892",
+              "file": "requests-view.spec.ts",
+              "line": 225,
+              "column": 3
+            },
+            {
+              "title": "names every row for a screen reader",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 600000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1745,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-05T18:36:08.274Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "602c609c3fd960fe26e3-6ca2d8499bf7e5e31c4a",
+              "file": "requests-view.spec.ts",
+              "line": 251,
               "column": 3
             }
           ]
@@ -388,11 +416,11 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-09-04T23:05:26.558Z",
-    "duration": 1209448.792,
-    "expected": 5,
+    "startTime": "2026-09-05T18:35:41.715Z",
+    "duration": 28338.44,
+    "expected": 7,
     "skipped": 0,
-    "unexpected": 2,
+    "unexpected": 1,
     "flaky": 0
   }
 }

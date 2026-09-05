@@ -37,7 +37,19 @@
         var script = document.createElement("script");
         script.src = "/dist/d0bar.iife.js";
         script.defer = true;
-        if (arm === "on") script.setAttribute("data-d0bar-enabled", "");
+        if (arm === "on") {
+          script.setAttribute("data-d0bar-enabled", "");
+          /* Tier 2. Served from the root so the worker's scope covers the whole origin —
+             see the `/d0bar-sw.js` route in server.mjs for why that is a constraint and not
+             a preference. `?sw=off` runs the `on` arm with tier 2 deliberately absent, which
+             is the degraded path the footer has to render honestly. */
+          var sw = new URLSearchParams(location.search).get("sw");
+          if (sw !== "off") script.setAttribute("data-d0bar-sw", "/d0bar-sw.js");
+        }
+        /* `?shortcut=off` exercises the opt-out that returns the host's event surface to
+           untouched — asserted in `non-perturbation.spec.ts`. */
+        var shortcut = new URLSearchParams(location.search).get("shortcut");
+        if (shortcut) script.setAttribute("data-d0bar-shortcut", shortcut);
         document.head.appendChild(script);
       })();
     </script>

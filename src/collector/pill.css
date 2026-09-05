@@ -123,3 +123,28 @@
     transition: none;
   }
 }
+
+/* Waiting on stage 2. Visible only on a cold or throttled fetch — after a warm prefetch the
+   panel opens in the same frame and this never paints. The mark is the only thing that moves:
+   the pill's own numbers must stay readable, since ambient status is what it still promises
+   if the panel never arrives. */
+.pill.pending .mark {
+  animation: d0-pending 1s ease-in-out infinite;
+}
+
+@keyframes d0-pending {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill.pending .mark {
+    animation: none;
+    opacity: 0.6;
+  }
+}

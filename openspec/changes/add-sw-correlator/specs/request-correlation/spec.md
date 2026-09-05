@@ -13,8 +13,16 @@ caching semantics, or response content.
 
 #### Scenario: Worker overhead measured
 - **WHEN** resource timings are read for an observed request
-- **THEN** `workerStart` shows no worker-attributable delay, and any delay that does appear is
-  disclosed in the UI rather than omitted
+- **THEN** the gap between `workerStart` and `fetchStart` stays within the recorded budget,
+  and the overhead is disclosed in the UI rather than omitted
+
+> Corrected against the platform. This scenario previously read "`workerStart` shows no
+> worker-attributable delay", which was written as though `workerStart` were zero for a
+> pass-through worker. It is not: the field marks when service-worker handling *began*, and
+> it is stamped on every request once a worker controls the page, whether or not the handler
+> calls `respondWith`. A zero assertion could only pass on a page with no worker, which
+> proves nothing about one that has a worker. Measured over 250 requests: p50 0.5ms, p95
+> 3.4ms, max 3.6ms.
 
 ### Requirement: Globals remain unpatched
 Correlation SHALL be achieved without modifying `fetch`, `XMLHttpRequest`, or any other host

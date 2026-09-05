@@ -1,7 +1,9 @@
 import { ABSENT, intern, str } from "../shared/intern";
+import { scratch, type RequestRecord } from "../shared/record";
 import {
   F_CACHED,
   F_CACHE_INFERRED,
+  F_HAS_SPAN,
   F_NO_PHASES,
   F_RENDER_BLOCKING,
   F_STATUS_UNKNOWN,
@@ -96,46 +98,9 @@ interface ResourceTimingExtras {
   deliveryType?: "" | "cache" | "navigational-prefetch";
 }
 
-/** A caller-owned scratch record. {@link read} fills one rather than allocating. */
-export interface RequestRecord {
-  startTime: number;
-  duration: number;
-  connectStart: number;
-  requestStart: number;
-  responseStart: number;
-  responseEnd: number;
-  transferSize: number;
-  encodedBodySize: number;
-  url: string;
-  initiator: string;
-  method: string;
-  status: number;
-  flags: number;
-  /** Which epoch this request belongs to. `0` means the document itself. */
-  epochId: number;
-  /** Handle into the trace-context side table, or {@link ABSENT}. */
-  contextId: number;
-}
-
-export function scratch(): RequestRecord {
-  return {
-    startTime: 0,
-    duration: 0,
-    connectStart: 0,
-    requestStart: 0,
-    responseStart: 0,
-    responseEnd: 0,
-    transferSize: 0,
-    encodedBodySize: 0,
-    url: "",
-    initiator: "",
-    method: "",
-    status: 0,
-    flags: 0,
-    epochId: 0,
-    contextId: ABSENT,
-  };
-}
+/* `RequestRecord` and `scratch()` moved to `shared/record.ts`: stage 2 reads records across
+   the bundle boundary and cannot import this module, whose typed arrays are stage 1's. */
+export { scratch, type RequestRecord };
 
 /**
  * The epoch and trace context subsequent records are written into.
@@ -243,6 +208,36 @@ export function read(index: number, out: RequestRecord): RequestRecord | undefin
   out.epochId = col.epochId[slot] as number;
   out.contextId = col.contextId[slot] as number;
   return out;
+}
+
+/**
+ * Attaches tier 2's findings to a record tier 1 already wrote.
+ *
+ * The join cannot happen at push time: the worker's records are read from IndexedDB once,
+ * after settle, long after the resource entries were observed. So correlation is a write
+ * back into existing slots rather than a field set on the way in.
+ *
+ * Only the fields tier 2 owns are touched. Timings and status are tier 1's and are not
+ * passed here at all — the type is the enforcement, so a future caller cannot overwrite a
+ * measured duration with a worker's guess at one.
+ *
+ * `method` is the interesting case: the browser reports no method on a resource entry, so
+ * `pushResource` deliberately leaves it {@link ABSENT} rather than assuming GET. This is
+ * where it stops being absent.
+ */
+export function correlate(
+  index: number,
+  fields: { method: string; contextId: number; hasSpan: boolean },
+): boolean {
+  const count = size();
+  if (index < 0 || index >= count) return false;
+  const base = written < CAPACITY ? 0 : written - CAPACITY;
+  const slot = (base + index) & MASK;
+
+  if (fields.method) col.methodId[slot] = intern(fields.method);
+  col.contextId[slot] = fields.contextId;
+  if (fields.hasSpan) col.flags[slot] = (col.flags[slot] as number) | F_HAS_SPAN;
+  return true;
 }
 
 /** Test seam. */

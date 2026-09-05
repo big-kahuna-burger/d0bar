@@ -1,4 +1,14 @@
 {
   "extends": "./tsconfig.base.json",
-  "include": ["src", "tests", "bench", "scripts", "packages", "*.config.ts"]
+  "include": [
+    "src",
+    "tests",
+    "bench",
+    "scripts",
+    "packages",
+    "*.config.ts"
+  ],
+  "exclude": [
+    "src/sw"
+  ]
 }

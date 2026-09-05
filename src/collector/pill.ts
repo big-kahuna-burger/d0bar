@@ -24,7 +24,6 @@ const TAG = "d0-bar";
 /** Coalescing floor for text updates, per the handoff's ambient-not-twitchy intent. */
 const REFRESH_MS = 500;
 
-
 let sheet: CSSStyleSheet | undefined;
 
 function styleSheet(): CSSStyleSheet {
@@ -46,6 +45,14 @@ export interface PillHandle {
   root(): ShadowRoot | undefined;
   /** Returns focus to the pill when the panel closes. */
   focus(): void;
+  /**
+   * Marks the pill as waiting on stage 2.
+   *
+   * Only ever visible on a slow or cold fetch — on a warm prefetch the panel opens in the
+   * same frame and this never paints. Without it a click on a throttled connection looks
+   * like the pill is broken.
+   */
+  setPending(pending: boolean): void;
 }
 
 interface PillNodes {
@@ -100,7 +107,15 @@ function build(root: ShadowRoot, onActivate: () => void): PillNodes {
   button.append(mark, count, sep, vitalWrap, untraced, dropped);
   root.appendChild(button);
 
-  return { count: countText, dot, vitalWrap, vitalText: vitalTextNode, untraced, dropped, droppedText };
+  return {
+    count: countText,
+    dot,
+    vitalWrap,
+    vitalText: vitalTextNode,
+    untraced,
+    dropped,
+    droppedText,
+  };
 }
 
 /**
@@ -203,6 +218,14 @@ export function mountPill(onActivate: () => void): PillHandle {
     refreshNow: refresh,
     root: () => shadow,
     focus: () => button?.focus(),
+    setPending(pending: boolean) {
+      if (!button) return;
+      button.classList.toggle("pending", pending);
+      /* The pill stays operable — a second click while stage 2 is in flight is ignored by
+         the caller, not by a disabled control the user cannot focus. `aria-busy` says so
+         without removing it from the tab order. */
+      button.setAttribute("aria-busy", pending ? "true" : "false");
+    },
     destroy() {
       destroyed = true;
       stopClock();

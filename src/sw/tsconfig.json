@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    /* `WebWorker` and `DOM` cannot both be loaded: they redeclare the same globals with
+       different types (`self`, `fetch`, `caches`, the whole event map), and every one of
+       those becomes a duplicate-identifier error. So the worker sources typecheck under
+       their own lib — which is also the honest description of where they run. `src/sw/**`
+       executes in a ServiceWorkerGlobalScope and has no `document` and no `window`, so the
+       split is what turns a stray DOM reference in worker code into a compile error rather
+       than a runtime one.
+
+       This file lives beside the sources rather than at the repo root on purpose: an editor
+       resolves a file against the *nearest* tsconfig, so a root-level `tsconfig.sw.json`
+       typechecks correctly in CI while every worker file still shows `Cannot find name
+       'ServiceWorkerGlobalScope'` in the editor. Same config, wrong place. */
+    "lib": ["ES2022", "WebWorker", "WebWorker.Iterable"],
+    "types": ["vite/client"]
+  },
+  "include": [".", "../env.d.ts"]
+}
