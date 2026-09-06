@@ -220,7 +220,7 @@ export async function flushCorrelation(options: {
   };
 }
 
-/** Test seam. */
+/** Called by `destroy()`, so a later `init()` measures the page rather than two pages. */
 export function resetCorrelation(): void {
   contexts.length = 1;
 }

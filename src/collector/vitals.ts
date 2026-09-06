@@ -298,7 +298,7 @@ export function worstVital(): WorstVital | undefined {
   return worst;
 }
 
-/** Test seam. */
+/** Called by `destroy()`, so a later `init()` measures the page rather than two pages. */
 export function resetVitals(): void {
   lcp = -1;
   ttfb = -1;

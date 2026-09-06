@@ -251,7 +251,7 @@ export function readSpan(index: number, out: SpanRow): boolean {
   return true;
 }
 
-/** Test seam. Not reachable from the public entry point. */
+/** Called by `destroy()`, so a later `init()` measures the page rather than two pages. */
 export function resetSpanSink(): void {
   written = 0;
   dropped = 0;

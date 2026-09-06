@@ -231,7 +231,7 @@ function unwrap(provider: ProxyLike | undefined): unknown {
   }
 }
 
-/** Test seam. */
+/** Called by `destroy()`, so a later `init()` measures the page rather than two pages. */
 export function resetOtel(): void {
   state = { kind: "off", reason: "no-sdk" };
   sink = undefined;

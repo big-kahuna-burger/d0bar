@@ -3,19 +3,30 @@ import {
   currentPhase,
   isVisible,
   onVisibility,
+  resetPhase,
   whenSettled,
 } from "./phase";
 import { activeEntryTypes, onResourceBatch, onVitalsBatch, startObserving } from "./observe";
 import { definePill, mountPill } from "./pill";
 import { scheduleMode } from "../shared/schedule";
-import { internStats } from "../shared/intern";
-import { adoptSpan, correlate, flagConflict, read, scratch, size, stats } from "./ring";
-import { readSpan, spanCount, spanScratch } from "./otel-sink";
+import { internStats, resetIntern } from "../shared/intern";
+import {
+  adoptSpan,
+  correlate,
+  flagConflict,
+  read,
+  resetRing,
+  scratch,
+  size,
+  stats,
+} from "./ring";
+import { readSpan, resetSpanSink, spanCount, spanScratch } from "./otel-sink";
+import { resetCorrelation } from "./correlate";
 import { loadStage2, prefetchStage2, type PanelHandle } from "../shared/stage2";
 import { installShortcut } from "./shortcut";
-import { snapshot as vitalsSnapshot } from "./vitals";
-import { startTier2, tier2State, type SwConfig, type Tier2State } from "./sw";
-import { detectOtel, otelState, type OtelState } from "./otel";
+import { resetVitals, snapshot as vitalsSnapshot } from "./vitals";
+import { resetTier2, startTier2, tier2State, type SwConfig, type Tier2State } from "./sw";
+import { detectOtel, otelState, resetOtel, type OtelState } from "./otel";
 
 /**
  * Stage 1 — the only part of the toolbar on a host page's critical path.
@@ -91,6 +102,27 @@ const inert: D0barHandle = {
 };
 
 let live: D0barHandle | undefined;
+let liveConfig: D0barConfig | undefined;
+/* Once per page. A host reinitialising in a loop must not turn a diagnostic into a flood. */
+let warnedAboutReinit = false;
+
+/**
+ * Whether a second `init()` asked for something the running toolbar is not doing.
+ *
+ * Only the fields that change behaviour, compared the way `init()` itself reads them:
+ * `shortcut` through its default, and `sw` field by field — a fresh object literal with
+ * identical contents is the ordinary case for a host that reinitialises, and is not a
+ * difference. Runs at most once per page, off the critical path.
+ */
+function differs(next: D0barConfig, prev: D0barConfig | undefined): boolean {
+  if (!prev) return false;
+  if ((next.shortcut ?? "Mod+Shift+0") !== (prev.shortcut ?? "Mod+Shift+0")) return true;
+  const a = (next.sw ?? {}) as Record<string, unknown>;
+  const b = (prev.sw ?? {}) as Record<string, unknown>;
+  for (const key in a) if (a[key] !== b[key]) return true;
+  for (const key in b) if (a[key] !== b[key]) return true;
+  return false;
+}
 
 /**
  * Starts the toolbar. Calling this without `enabled: true` returns an inert handle and does
@@ -98,7 +130,24 @@ let live: D0barHandle | undefined;
  */
 export function init(config: D0barConfig): D0barHandle {
   if (!config || config.enabled !== true) return inert;
-  if (live) return live;
+  if (live) {
+    /* A second `init()` cannot apply the new configuration — the shortcut is registered, the
+       worker path is captured, and re-registering observers would double-count. Returning the
+       running handle is therefore right; returning it *silently* was not. A host that changed
+       `sw` or `shortcut` and saw nothing happen had no way to learn why. */
+    if (differs(config, liveConfig)) {
+      const message =
+        "d0bar: init() was called again with a different configuration while the toolbar was " +
+        "already running. The running configuration is kept; call destroy() first to change it.";
+      if (__DEV__) throw new Error(message);
+      if (!warnedAboutReinit) {
+        warnedAboutReinit = true;
+        console.warn(message);
+      }
+    }
+    return live;
+  }
+  liveConfig = config;
 
   const stopPhase = beginPhaseTracking();
   const stopObserving = startObserving();
@@ -247,6 +296,19 @@ export function init(config: D0barConfig): D0barHandle {
 
   live = {
     enabled: true,
+    /**
+     * Teardown, including the toolbar's own accumulated state.
+     *
+     * The state reset is not tidiness — without it a second `init()` reports numbers that
+     * describe two pages. Observers register with `buffered: true`, so re-registering
+     * re-delivers every entry the page ever produced: each resource is pushed into a ring
+     * that still holds the first copy, each layout shift joins a CLS session that already
+     * contains it, and `loafCount` doubles. A host doing this is not exotic — module reload
+     * in development and an SPA test harness both do exactly it.
+     *
+     * The observer disconnects come first, so nothing can write into a module that is being
+     * reset half-way through.
+     */
     destroy() {
       cancelPrefetch?.();
       stopShortcut();
@@ -255,7 +317,16 @@ export function init(config: D0barConfig): D0barHandle {
       pill.destroy();
       stopObserving();
       stopPhase();
+      resetPhase();
+      resetRing();
+      resetVitals();
+      resetIntern();
+      resetCorrelation();
+      resetSpanSink();
+      resetOtel();
+      resetTier2();
       live = undefined;
+      liveConfig = undefined;
     },
     diagnostics() {
       const ring = stats();

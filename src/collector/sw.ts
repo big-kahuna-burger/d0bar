@@ -107,7 +107,7 @@ export function noteWorkerRecords(present: boolean): void {
   }
 }
 
-/** Test seam. */
+/** Called by `destroy()`, so a later `init()` measures the page rather than two pages. */
 export function resetTier2(): void {
   state = { kind: "off", reason: "not-registered" };
 }

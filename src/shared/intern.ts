@@ -49,7 +49,7 @@ export function internStats(): { size: number; capacity: number; overflows: numb
   return { size: table.length, capacity: CAPACITY, overflows };
 }
 
-/** Test seam. Not reachable from the public entry point. */
+/** Called by `destroy()`, so a later `init()` measures the page rather than two pages. */
 export function resetIntern(): void {
   table = ["", "«saturated»"];
   index = new Map([

@@ -269,7 +269,7 @@ export function flagConflict(index: number): boolean {
   return true;
 }
 
-/** Test seam. */
+/** Called by `destroy()`, so a later `init()` measures the page rather than two pages. */
 export function resetRing(options?: {
   statusSupported?: boolean;
   deliverySupported?: boolean;
