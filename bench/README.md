@@ -5,11 +5,11 @@ that stops being a claim.
 
 ## What runs
 
-| Suite | Asserts |
-| --- | --- |
-| `tests/perf/ab.spec.ts` | The same fixture, toolbar on vs off, n≥20 alternating runs. Compares p95 deltas against committed thresholds. |
+| Suite                                 | Asserts                                                                                                                                                                                                    |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/perf/ab.spec.ts`               | The same fixture, toolbar on vs off, n≥20 alternating runs. Compares p95 deltas against committed thresholds.                                                                                              |
 | `tests/perf/non-perturbation.spec.ts` | Properties a timing budget cannot express: `fetch` and `XMLHttpRequest` strictly unpatched, no rule added to the host document, nothing written to host storage, and total inertness when the gate is off. |
-| `tests/perf/moratorium.spec.ts` | The toolbar touches nothing in the host document until after the load phase has settled. |
+| `tests/perf/moratorium.spec.ts`       | The toolbar touches nothing in the host document until after the load phase has settled.                                                                                                                   |
 
 ```bash
 pnpm build && pnpm test:perf
@@ -19,10 +19,10 @@ pnpm build && pnpm test:perf
 
 The suite is split into two Playwright projects, and CI runs them as two jobs on two runners:
 
-| project | tests | how it runs | why |
-| --- | --- | --- | --- |
-| `timing` | 7, tagged `@timing` | one worker, alone on the machine | they compare durations against each other, so anything else on the runner is noise |
-| `behaviour` | 62 | every core | they assert ordering, DOM state, storage and console output — nothing that cares who else is running |
+| project     | tests               | how it runs                      | why                                                                                                  |
+| ----------- | ------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `timing`    | 7, tagged `@timing` | one worker, alone on the machine | they compare durations against each other, so anything else on the runner is noise                   |
+| `behaviour` | 62                  | every core                       | they assert ordering, DOM state, storage and console output — nothing that cares who else is running |
 
 `pnpm test:perf:timing` and `pnpm test:perf:behaviour` run one each; `pnpm test:perf` runs both
 serially, which is what one machine should do. Measured on CI before the split: 317 s of the

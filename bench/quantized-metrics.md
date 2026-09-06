@@ -10,18 +10,18 @@ wrong, why the obvious fixes do not work, and how the INP row is compared now.
 
 CI, `ubuntu-24.04`, 20 alternating runs per arm:
 
-| row | `off` | `gated` | `on` | threshold | outcome |
-| --- | --- | --- | --- | --- | --- |
-| `inpP95` | 88 | 88 | **96** | Δ ≤ 2 ms | failed at Δ = 8 |
-| `longTasksP95` | 7 | **6** | 7 | Δ ≤ 0.5 tasks | would have failed at Δ = 1 |
-| `tbtP95` | 241 | 241 | 243 | Δ ≤ 5 ms | passed |
-| `clsMax` | 0.006726 | 0.006726 | 0.006726 | Δ ≤ 0.001 | passed |
-| `attributedFrameMsP95` | 0 | 3.21 | 4.159 | ≤ 8 ms | passed |
+| row                    | `off`    | `gated`  | `on`     | threshold     | outcome                    |
+| ---------------------- | -------- | -------- | -------- | ------------- | -------------------------- |
+| `inpP95`               | 88       | 88       | **96**   | Δ ≤ 2 ms      | failed at Δ = 8            |
+| `longTasksP95`         | 7        | **6**    | 7        | Δ ≤ 0.5 tasks | would have failed at Δ = 1 |
+| `tbtP95`               | 241      | 241      | 243      | Δ ≤ 5 ms      | passed                     |
+| `clsMax`               | 0.006726 | 0.006726 | 0.006726 | Δ ≤ 0.001     | passed                     |
+| `attributedFrameMsP95` | 0        | 3.21     | 4.159    | ≤ 8 ms        | passed                     |
 
 Neither failing row is reporting a toolbar that got slower. Both are reporting an instrument
 that cannot resolve the question being asked of it.
 
-**Long tasks.** `on` scored 7 and `off` scored 7 — identical. The *baseline* scored 6, below an
+**Long tasks.** `on` scored 7 and `off` scored 7 — identical. The _baseline_ scored 6, below an
 arm that loads no bundle at all. A baseline cannot meaningfully beat "load nothing"; that is
 noise, and the delta was manufactured out of it.
 
@@ -54,17 +54,17 @@ which is the smallest non-zero value the metric can take.
 ```
 
 That is `sorted[18]` — **the second largest of twenty samples**. For a continuous metric with a
-long tail, that is the right thing and the reason this file's header says *"p95, never the
-mean"*: a mean hides a toolbar that is usually free and occasionally expensive.
+long tail, that is the right thing and the reason this file's header says _"p95, never the
+mean"_: a mean hides a toolbar that is usually free and occasionally expensive.
 
-For a quantized metric it inverts. The p95 of an integer count *is* a single sample from the
+For a quantized metric it inverts. The p95 of an integer count _is_ a single sample from the
 tail, and its noise floor is one whole unit:
 
-| row | threshold | metric resolution | can express Δ < threshold? |
-| --- | --- | --- | --- |
-| `longTaskCount`, as a mean of 20 | 0.5 tasks | 0.05 tasks | yes |
-| `longTaskCount`, as a p95 of 20 | 0.5 tasks | 1 task | **no** |
-| `inpP95` | 2 ms | 8 ms | **no** |
+| row                              | threshold | metric resolution | can express Δ < threshold? |
+| -------------------------------- | --------- | ----------------- | -------------------------- |
+| `longTaskCount`, as a mean of 20 | 0.5 tasks | 0.05 tasks        | yes                        |
+| `longTaskCount`, as a p95 of 20  | 0.5 tasks | 1 task            | **no**                     |
+| `inpP95`                         | 2 ms      | 8 ms              | **no**                     |
 
 The long-task row had been a mean and was changed to a p95 by `enforce-non-perturbation`,
 citing the header rule. The rule was right; it was applied to the one row where it inverts. It
@@ -81,11 +81,11 @@ compared does not add resolution that the underlying values do not have.
 
 Three fixes that do not work:
 
-| fix | why not |
-| --- | --- |
-| Raise the threshold to 8 ms | Gates nothing. Any regression a developer would notice is more than one quantum, and one quantum is the noise floor. |
-| More runs | Narrows the noise band around each arm's percentile. It does not make the percentile able to take a value between 88 and 96. |
-| Compare means of the raw values | The mean of quantized values *is* finer-grained, but it weights a single boundary-straddling run by 1/n and is dominated by the fixture's own INP (~88 ms), so a 0.5 ms toolbar cost is a 0.6% shift on a number with several ms of run-to-run spread. |
+| fix                             | why not                                                                                                                                                                                                                                                |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Raise the threshold to 8 ms     | Gates nothing. Any regression a developer would notice is more than one quantum, and one quantum is the noise floor.                                                                                                                                   |
+| More runs                       | Narrows the noise band around each arm's percentile. It does not make the percentile able to take a value between 88 and 96.                                                                                                                           |
+| Compare means of the raw values | The mean of quantized values _is_ finer-grained, but it weights a single boundary-straddling run by 1/n and is dominated by the fixture's own INP (~88 ms), so a 0.5 ms toolbar cost is a 0.6% shift on a number with several ms of run-to-run spread. |
 
 ---
 
@@ -116,8 +116,8 @@ The argument:
             scatter both ways
 ```
 
-So the question stops being *"how many milliseconds"* — which the metric cannot answer — and
-becomes *"is `on` worse more often than chance explains"*, which twenty paired comparisons can
+So the question stops being _"how many milliseconds"_ — which the metric cannot answer — and
+becomes _"is `on` worse more often than chance explains"_, which twenty paired comparisons can
 answer well below one quantum of resolution.
 
 ### The computation
@@ -134,7 +134,7 @@ Ties carry no information about direction and are dropped — the standard treat
 test. On a fast machine almost every run ties, which correctly makes the test unable to fire:
 no evidence, no verdict.
 
-Under the null hypothesis *"the toolbar changes nothing"*, each decisive pair is a coin flip.
+Under the null hypothesis _"the toolbar changes nothing"_, each decisive pair is a coin flip.
 So the number of `worse` runs is Binomial(`m`, ½) where `m = worse + better`, and the one-sided
 p-value is the upper tail:
 
@@ -148,7 +148,7 @@ p-value is the upper tail:
                   k = worse
 ```
 
-One-sided deliberately: a toolbar that makes the host *faster* is not a budget failure.
+One-sided deliberately: a toolbar that makes the host _faster_ is not a budget failure.
 
 ```ts
 const trials = worse + better;
@@ -169,7 +169,7 @@ function choose(n: number, k: number): number {
 }
 ```
 
-The division happens *inside* the loop, keeping the running value near the final magnitude
+The division happens _inside_ the loop, keeping the running value near the final magnitude
 rather than climbing through `n!` and back down. Each partial product `result * (n - i) / (i + 1)`
 is exact in binomial arithmetic, and at the sizes this runs at (n ≤ a few hundred) the result
 is exact in a double.
@@ -190,11 +190,11 @@ project accepts a one-in-ten false-pass rate, not a plausible-looking increment.
 
 ### What it costs
 
-| | |
-| --- | --- |
-| Sensitivity | With n = 20 and no ties, 15 of 20 worse gives p ≈ 0.021 — fails. 14 of 20 gives p ≈ 0.058 — passes. So the test needs a fairly consistent direction, which is the intended strictness. |
-| Blind spot | It reports direction, not magnitude. A toolbar that added 200 ms to *one* run of twenty and nothing to the rest would pass this row. That is what `tbtP95` and `attributedFrameMsP95` are for — both are continuous and both are gated at p95. |
-| Tie-heavy runs | On fast hardware `m` is small and the test cannot reach significance. That is honest — it means the machine could not resolve the question — but it also means a green run on a fast machine says less than a green run on CI. |
+|                |                                                                                                                                                                                                                                                |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sensitivity    | With n = 20 and no ties, 15 of 20 worse gives p ≈ 0.021 — fails. 14 of 20 gives p ≈ 0.058 — passes. So the test needs a fairly consistent direction, which is the intended strictness.                                                         |
+| Blind spot     | It reports direction, not magnitude. A toolbar that added 200 ms to _one_ run of twenty and nothing to the rest would pass this row. That is what `tbtP95` and `attributedFrameMsP95` are for — both are continuous and both are gated at p95. |
+| Tie-heavy runs | On fast hardware `m` is small and the test cannot reach significance. That is honest — it means the machine could not resolve the question — but it also means a green run on a fast machine says less than a green run on CI.                 |
 
 ---
 
@@ -237,8 +237,8 @@ one at least moved.
 
 ### The cause is the fixture, not the statistic
 
-`bench/README.md` describes *"an 84 ms blocking click handler, so INP has something real to
-measure"*. That is right for a page that is supposed to be struggling and wrong as the place to
+`bench/README.md` describes _"an 84 ms blocking click handler, so INP has something real to
+measure"_. That is right for a page that is supposed to be struggling and wrong as the place to
 look for a toolbar:
 
 ```
@@ -265,7 +265,7 @@ It is **counted, not timed**, and that is a platform constraint rather than a pr
 > 16 ms**. An interaction cheaper than that produces no entry at all.
 
 So there is no way to ask the browser how long an 8 ms interaction took. What is observable is
-whether a tap *crossed* the floor:
+whether a tap _crossed_ the floor:
 
 ```
    five taps per run, twenty runs
