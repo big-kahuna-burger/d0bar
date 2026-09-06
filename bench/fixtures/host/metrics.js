@@ -14,20 +14,23 @@
     inp: 0,
     interactions: [],
     /**
-     * The cheap interaction target, counted rather than timed.
+     * The cheap interaction target, counted above the reporting floor.
      *
-     * `PerformanceObserver`'s `event` type clamps `durationThreshold` to a minimum of 16 ms, so
-     * an interaction cheaper than that produces no entry at all — there is no way to ask the
-     * browser how long an 8 ms interaction took. That floor is what makes a duration the wrong
-     * thing to record here.
+     * `PerformanceObserver`'s `event` type clamps `durationThreshold` to a minimum of 16 ms and
+     * Chrome quantizes durations to 8 ms, so 16 is both the smallest observable value and the
+     * bucket everything cheap lands in. Measured on CI: 297 of ~300 delivered entries in every
+     * arm sat at exactly 16, identically for `off`, `gated` and `on` — counting entries that
+     * *reached* the floor saturates and says nothing.
      *
-     * So this counts how many taps on `#cheap-tap` were slow enough to be reported at all. A
-     * tap that does nothing but flip an attribute sits below the floor and is invisible; a tap
-     * that something pushed over 16 ms appears. The count is the metric, and it has no quantum
-     * problem: 0 to 5 per run, pooled across runs.
+     * So this counts entries strictly *above* it. A cheap tap has to gain a full 8 ms quantum
+     * to appear here, which makes a non-zero count a real statement: something added at least
+     * a quantum to an interaction that otherwise costs nothing. Zero in all three arms is the
+     * present reading, and it bounds d0bar's cost on a cheap interaction at under one quantum.
      */
-    cheapTapsOverFloor: 0,
-    /** The worst reported cheap tap, for reading. 0 means none crossed the floor. */
+    cheapTapsOverQuantum: 0,
+    /** Every cheap-tap entry delivered at all, for reading. Saturates; do not gate on it. */
+    cheapTapEntries: 0,
+    /** The worst reported cheap tap. 16 means every one sat on the floor. */
     cheapTapMax: 0,
     d0barMountedAt: -1,
     /* The LCP the browser had reported at the moment the pill was inserted. The final LCP is
@@ -151,13 +154,17 @@
       if (e.duration > m.inp) m.inp = e.duration;
       /* `target` is null once the element is gone; both fixture buttons outlive the run. */
       if (e.target && e.target.id === "cheap-tap") {
-        m.cheapTapsOverFloor++;
+        /* Entries, not taps: one click emits several — pointerdown, pointerup, click — sharing
+           an `interactionId`. An earlier version called this count "taps" and reported 297 for
+           what were 100 clicks. */
+        m.cheapTapEntries++;
+        if (e.duration > 16) m.cheapTapsOverQuantum++;
         if (e.duration > m.cheapTapMax) m.cheapTapMax = e.duration;
       }
     },
     /* 16 is the floor the spec allows; anything lower is clamped to it. Stated rather than
-       left as a magic number, because the clamp is the whole reason `cheapTapsOverFloor`
-       counts instead of timing. */
+       left as a magic number, because the clamp is the whole reason `cheapTapsOverQuantum`
+       counts instead of timing, and the value everything cheap is pinned to. */
     { durationThreshold: 16 },
   );
 })();

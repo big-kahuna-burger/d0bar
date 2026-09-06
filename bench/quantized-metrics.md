@@ -264,22 +264,52 @@ It is **counted, not timed**, and that is a platform constraint rather than a pr
 > `PerformanceObserver`'s `event` entry type clamps `durationThreshold` to a **minimum of
 > 16 ms**. An interaction cheaper than that produces no entry at all.
 
-So there is no way to ask the browser how long an 8 ms interaction took. What is observable is
-whether a tap _crossed_ the floor:
+So there is no way to ask the browser how long a sub-16 ms interaction took. What is observable
+is only that an entry _exceeded_ the floor.
+
+The first version of this row counted taps that **reached** the floor, at a provisional
+threshold of five per twenty-run arm pool. CI falsified it in one run:
 
 ```
-   five taps per run, twenty runs
-
-     arm pool:   0 .. 100 taps over the floor
-     resolution: one tap
-     no quantum, no order statistic, no floor below the threshold
+   cheap taps over the 16 ms floor: { off: 297, gated: 297, on: 297, budget: 5 }
+   worst cheap tap p95 (ms):        { off: 16,  gated: 16,  on: 16 }
 ```
 
-The threshold is **5, and provisional** — a fifth of one arm's pool, chosen before the first
-calibration run rather than after it, and recorded in `budget.json` as unvalidated. The number
-to replace it with is whatever `gated`'s own run-to-run spread turns out to be on CI. Setting it
-from the first green run would be tuning a threshold until CI agrees, which is the thing this
-repository refuses.
+Two mistakes, both worth keeping written down:
+
+|                     |                                                                                                                                                                                                                 |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Wrong unit**      | 297 is `event` _entries_, not taps. One click emits pointerdown, pointerup and click sharing an `interactionId`. 100 clicks, ~300 entries.                                                                      |
+| **Wrong direction** | Everything cheap is pinned _at_ the floor by the clamp, so "reached the floor" saturates for every arm including the two that run no toolbar. Green by vacuity again, one row over from where it was diagnosed. |
+
+The signal is **strictly above** the floor. Chrome quantizes to 8 ms, so an entry lands there
+only by gaining a whole quantum on an interaction that otherwise costs nothing:
+
+```
+   entry duration:   (no entry)  |  16  |  24  |  32 ...
+                     -----------ceiling-------------------
+                      invisible  | floor|  <-- the readable range
+                                 |      |
+                     everything cheap   one whole quantum above
+                     saturates here     the cheapest observable
+```
+
+```
+   ~15 entries per run, twenty runs
+
+     arm pool:   0 .. ~300 entries above the floor
+     resolution: one entry
+     threshold:  0, in every arm
+```
+
+Zero is not a tuned threshold. It is the measurement — `off`, `gated` and `on` all read zero —
+and it bounds d0bar's cost on a cheap interaction _below one quantum_, which is the first real
+statement this fixture has made about interaction latency.
+
+It is gated **absolutely and in every arm**, not as a delta against `gated`. An entry above the
+floor is not "worse than the baseline"; it is a cheap interaction that cost a whole quantum. And
+`off` scoring one would mean the fixture or the runner did it, which a row that only fails in
+`on` could not tell apart.
 
 `inpSignificance` is kept. It is correct, and it will report a real shift if one ever appears.
 It is simply no longer where the claim about d0bar's interaction cost rests.

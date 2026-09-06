@@ -41,9 +41,11 @@ interface Sample {
   attributedFrameMs: number;
   /** d0bar-attributed script time across the whole run, in ms. */
   attributedTotalMs: number;
-  /** Taps on the fixture's cheap target that were slow enough to be reported at all, of 5. */
-  cheapTapsOverFloor: number;
-  /** The worst reported cheap tap, in ms. 0 means none crossed the 16 ms reporting floor. */
+  /** Cheap-tap `event` entries that exceeded the 16 ms reporting floor — a whole quantum. */
+  cheapTapsOverQuantum: number;
+  /** Every cheap-tap entry delivered at all. Saturates at the floor; reported, never gated. */
+  cheapTapEntries: number;
+  /** The worst reported cheap tap, in ms. 16 means every one of them sat on the floor. */
   cheapTapMax: number;
 }
 
@@ -53,7 +55,7 @@ interface Budget {
   tbtP95: number;
   longTaskCount: number;
   attributedFrameMs: number;
-  cheapTapsOverFloor: number;
+  cheapTapsOverQuantum: number;
 }
 
 /** Committed thresholds. Raising one requires reviewer sign-off in the PR body. */
@@ -76,21 +78,27 @@ const BUDGET: Budget = {
    */
   attributedFrameMs: 8,
   /**
-   * How many more of the twenty runs' cheap taps may cross the 16 ms reporting floor in `on`
-   * than in `gated`, summed across the run.
+   * How many cheap-tap `event` entries may exceed the 16 ms reporting floor, summed across an
+   * arm's runs. **Zero** — and zero is not a tuned threshold, it is the measurement.
    *
-   * Five taps per run, twenty runs, so the pool is 0-100 per arm and the resolution is one
-   * tap. This is the row that answers the question `inp` cannot: `#confirm-hold` blocks for
-   * 84 ms deliberately, which quantizes to 88 on every run of every arm — sixty CI runs
-   * returned 88 sixty times — so a toolbar costing single-digit milliseconds is invisible
-   * inside it. `#cheap-tap` flips an attribute and nothing else, so it sits just under the
-   * floor and anything that pushes it over is visible as a count.
+   * This is the row that answers the question `inp` cannot: `#confirm-hold` blocks for 84 ms
+   * deliberately, which quantizes to 88 on every run of every arm — sixty CI runs returned 88
+   * sixty times — so a toolbar costing single-digit milliseconds is invisible inside it.
+   * `#cheap-tap` flips an attribute and nothing else.
    *
-   * Five is provisional and marked as such in `bench/budget.json`: it is a fifth of one arm's
-   * pool, chosen before the first calibration run rather than after it. The number to replace
-   * it with is whatever `gated`'s own run-to-run spread turns out to be on CI.
+   * The first version of this row counted entries that *reached* the floor and saturated the
+   * other way: CI measured 297 in `off`, 297 in `gated` and 297 in `on`, every one at exactly
+   * 16 ms. `durationThreshold` clamps to a 16 ms minimum, so a cheap interaction cannot be
+   * timed — only observed to have exceeded. Above the floor is therefore where the whole
+   * signal is, and Chrome's 8 ms quantum means an entry lands there only by gaining a full
+   * quantum on an interaction that otherwise costs nothing.
+   *
+   * All three arms read zero today, which bounds d0bar's cost on a cheap interaction below one
+   * quantum. Gated per arm and absolutely, not as a delta against `gated`: an entry here is
+   * not "worse than the baseline", it is a cheap interaction that cost a whole quantum, and
+   * the baseline scoring it too would mean the bundle's mere presence did it.
    */
-  cheapTapsOverFloor: 5,
+  cheapTapsOverQuantum: 0,
 };
 
 type Arm = "off" | "gated" | "on";
@@ -210,7 +218,7 @@ async function measure(page: Page, arm: Arm): Promise<Sample> {
        Two targets, measuring two different things. `#confirm-hold` blocks 84 ms and gives the
        fixture the poor INP it is supposed to have; two clicks are enough, because with fewer
        than fifty interactions INP is simply the slowest one. `#cheap-tap` does almost nothing
-       and is where a toolbar cost is actually visible — see `cheapTapsOverFloor`. */
+       and is where a toolbar cost is actually visible — see `cheapTapsOverQuantum`. */
     for (let i = 0; i < 2; i++) {
       await page.click("#confirm-hold");
       await page.waitForTimeout(120);
@@ -230,7 +238,8 @@ async function measure(page: Page, arm: Arm): Promise<Sample> {
       tbt: metrics.tbt,
       longTasks: metrics.longTasks,
       inp: metrics.inp,
-      cheapTapsOverFloor: metrics.cheapTapsOverFloor,
+      cheapTapsOverQuantum: metrics.cheapTapsOverQuantum,
+      cheapTapEntries: metrics.cheapTapEntries,
       cheapTapMax: metrics.cheapTapMax,
     };
   });
@@ -337,15 +346,22 @@ test(
         attributedFrameMsP95: { ...row("attributedFrameMs"), budget: BUDGET.attributedFrameMs },
         attributedTotalMsP95: row("attributedTotalMs"),
         /**
-         * Summed across runs, not aggregated at a percentile — the per-run value is 0 to 5 and
-         * a percentile of it has the same resolution problem as the long-task row did. The sum
-         * over twenty runs is 0 to 100 per arm and its resolution is one tap.
+         * Summed across runs, not aggregated at a percentile — the per-run value is a small
+         * integer and a percentile of one has the same resolution problem the long-task row
+         * had. A sum has resolution one entry, at any count.
          */
-        cheapTapsOverFloor: {
-          off: sum(pick("off", "cheapTapsOverFloor")),
-          gated: sum(pick("gated", "cheapTapsOverFloor")),
-          on: sum(pick("on", "cheapTapsOverFloor")),
-          budget: BUDGET.cheapTapsOverFloor,
+        cheapTapsOverQuantum: {
+          off: sum(pick("off", "cheapTapsOverQuantum")),
+          gated: sum(pick("gated", "cheapTapsOverQuantum")),
+          on: sum(pick("on", "cheapTapsOverQuantum")),
+          budget: BUDGET.cheapTapsOverQuantum,
+        },
+        /* For reading, never gated: saturates at the floor — CI measured 297/297/297 — so it
+         says the taps happened and the observer was listening, and nothing more. */
+        cheapTapEntries: {
+          off: sum(pick("off", "cheapTapEntries")),
+          gated: sum(pick("gated", "cheapTapEntries")),
+          on: sum(pick("on", "cheapTapEntries")),
         },
         /* For reading: what a cheap tap actually cost when it did cross the floor. */
         cheapTapMaxP95: row("cheapTapMax"),
@@ -364,7 +380,6 @@ test(
       tbtP95: against("tbtP95"),
       cls: against("clsMax"),
       longTasksMean: against("longTasksMean"),
-      cheapTapsOverFloor: against("cheapTapsOverFloor"),
       lcpP95: against("lcpP95"),
       /* Deliberately absent: `attributedFrameMsP95` is not a difference, and INP is not
        compared as one — see `inpSign`. */
@@ -380,7 +395,8 @@ test(
 
     console.log("observer-effect deltas (on − gated):", deltas);
     console.log("attributed d0bar main-thread time:", result.metrics.attributedFrameMsP95);
-    console.log("cheap taps over the 16 ms floor:", result.metrics.cheapTapsOverFloor);
+    console.log("cheap-tap entries over the 16 ms floor:", result.metrics.cheapTapsOverQuantum);
+    console.log("cheap-tap entries delivered:", result.metrics.cheapTapEntries);
     console.log("worst cheap tap p95 (ms):", result.metrics.cheapTapMaxP95);
     console.log("INP per arm (median / p95):", {
       off: result.metrics.inp.off,
@@ -419,15 +435,38 @@ test(
       "p95 of the worst d0bar-attributed task",
     ).toBeLessThanOrEqual(BUDGET.attributedFrameMs);
 
-    /* The controls, and the first of them corrected a wrong expectation of this file's author:
-     `gated` is not zero and should not be. That arm loads the bundle and evaluates it — the
-     IIFE body runs, reads the opt-in attribute, finds nothing and returns — which is real
-     d0bar script time and is exactly the cost the gated baseline exists to hold constant.
-     Measured at 0.287 ms p95 over four runs. `off` loads no bundle at all, so it is zero. */
-    expect(
-      result.metrics.attributedFrameMsP95.gated,
-      "the gated arm evaluates the bundle and does nothing else",
-    ).toBeLessThanOrEqual(2);
+    /**
+     * The control, singular.
+     *
+     * `off` loads no bundle, so its attributed time is exactly zero. That is a statement about
+     * whether the instrument works at all — a non-zero reading there means the URL matcher is
+     * catching something that is not d0bar — and zero is not a threshold, it is the only
+     * correct value.
+     *
+     * `gated` used to be gated here too, at `<= 2` ms, and that assertion was wrong twice
+     * over. It was written from a laptop reading of 0.287 ms, and across three CI runs the
+     * same number came back 1.32, 3.21 and 2.586 — a threshold finer than the metric's own
+     * run-to-run spread, which is the exact defect `bench/quantized-metrics.md` was written
+     * about. It also gated the wrong thing: the gated arm's cost is the bundle's download and
+     * evaluation, which a host pays for having the script on the page at all and which is not
+     * the observer effect. It is a reading, reported in `bench/last-budget.json`, not a gate.
+     */
     expect(result.metrics.attributedFrameMsP95.off, "the off arm loads no d0bar").toBe(0);
+
+    /**
+     * The cheap target, gated in every arm.
+     *
+     * An interaction that flips one attribute must never cost a whole 8 ms quantum more than
+     * the browser's own event-to-paint path — and `off` and `gated` are held to it as well,
+     * because a count above zero there is the fixture or the runner misbehaving rather than
+     * anything d0bar did, and a row that only fails in `on` cannot tell the two apart.
+     */
+    for (const arm of ARMS) {
+      expect(
+        result.metrics.cheapTapsOverQuantum[arm],
+        `${arm}: ${result.metrics.cheapTapsOverQuantum[arm]} of ` +
+          `${result.metrics.cheapTapEntries[arm]} cheap-tap entries exceeded 16 ms`,
+      ).toBeLessThanOrEqual(BUDGET.cheapTapsOverQuantum);
+    }
   },
 );

@@ -142,15 +142,20 @@ runner. `bench/quantized-metrics.md` carries the failure, the arithmetic and the
       deliberately and there is no variance to read
 - [x] 8.2 `#cheap-tap` in the fixture — one attribute flip, no block, no layout thrash, no
       network. Inert unless clicked, like every other opt-in in `bench/fixtures/host/`
-- [x] 8.3 `metrics.js` counts taps that crossed the `event` type's 16 ms `durationThreshold`
-      floor rather than timing them: an 8 ms interaction produces no entry at all, so there is
-      no duration to read. The count has no quantum and no order statistic
+- [x] 8.3 `metrics.js` counts cheap-tap `event` entries **strictly above** the type's 16 ms
+      `durationThreshold` floor rather than timing them: a sub-16 ms interaction produces no
+      entry at all, so there is no duration to read. The count has no quantum and no order
+      statistic
 - [x] 8.4 `ab.spec.ts` — two `#confirm-hold` clicks (INP is the slowest interaction below fifty,
-      so two preserve the fixture's poor INP) plus five `#cheap-tap` clicks. `cheapTapsOverFloor`
-      summed across runs, gated against `gated`
-- [x] 8.5 `budget.json` and `quantized-metrics.md` record the vacuity finding and mark the new
-      threshold **provisional** — 5 was chosen before any calibration run
-- [ ] 8.6 Calibrate the threshold on CI from `gated`'s own spread. Setting it from the first
-      green run would be tuning until CI agrees
+      so two preserve the fixture's poor INP) plus five `#cheap-tap` clicks.
+      `cheapTapsOverQuantum` summed across runs, gated absolutely in every arm
+- [x] 8.5 `budget.json` and `quantized-metrics.md` record the vacuity finding
+- [x] 8.6 Calibrated on CI, and the first calibration falsified the row: counting entries that
+      *reached* the floor read off 297, gated 297, on 297, every entry at exactly 16 ms — the
+      same vacuity in the other direction, and 297 was entries not taps (one click emits
+      pointerdown, pointerup and click). Rewritten to count entries above the floor, where the
+      signal is; measured 0/0/0, so the threshold is 0 — the measurement, not a tuned number.
+      **The 0/0/0 reading is from the previous CI run's saturation data; the rewritten row has
+      not itself been run on CI yet**
 - [ ] 8.7 Only once the row resolves: the pill-clock probe from 7.7, which was unrunnable
       against an instrument that returned 88 either way
