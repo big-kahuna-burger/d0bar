@@ -44,7 +44,7 @@ interface Sample {
 }
 
 interface Budget {
-  inpP95: number;
+  inpSignificance: number;
   cls: number;
   tbtP95: number;
   longTaskCount: number;
@@ -53,10 +53,16 @@ interface Budget {
 
 /** Committed thresholds. Raising one requires reviewer sign-off in the PR body. */
 const BUDGET: Budget = {
-  inpP95: 2,
   cls: 0.001,
   tbtP95: 5,
   longTaskCount: 0.5,
+  /**
+   * The confidence at which a paired directional shift in INP counts as real. Not a
+   * millisecond figure: INP is quantized to 8 ms, so no millisecond threshold below 8 is
+   * expressible and any threshold at or above 8 gates nothing a developer would notice. See
+   * `signTest`.
+   */
+  inpSignificance: 0.05,
   /**
    * Absolute, not a delta: provenance makes the subtraction unnecessary, because every
    * millisecond counted here ran d0bar's own code. Eight milliseconds is the same figure
@@ -74,6 +80,94 @@ function percentile(values: number[], p: number): number {
   const sorted = [...values].sort((a, b) => a - b);
   const rank = Math.ceil((p / 100) * sorted.length) - 1;
   return sorted[Math.min(Math.max(rank, 0), sorted.length - 1)] as number;
+}
+
+function mean(values: number[]): number {
+  return values.reduce((a, b) => a + b, 0) / (values.length || 1);
+}
+
+function median(values: number[]): number {
+  return percentile(values, 50);
+}
+
+/**
+ * A metric a budget row may gate on must be able to express a value smaller than its own
+ * threshold. Two rows in this file violated that and both were caught by one CI run on a
+ * two-core runner:
+ *
+ * | row              | threshold | metric resolution | outcome                          |
+ * | ---------------- | --------- | ----------------- | -------------------------------- |
+ * | `longTaskCount`  | 0.5 tasks | 1 task (p95 of an integer count) | failed on ±1 noise |
+ * | `inpP95`         | 2 ms      | 8 ms (Chrome's INP quantum)      | failed on one boundary crossing |
+ *
+ * `percentile(values, 95)` at n = 20 is `sorted[18]` — the *second largest of twenty*. That is
+ * the right aggregation for a continuous metric with a long tail and the wrong one for a
+ * quantized one, where it is a single noisy sample and its noise floor is a whole quantum.
+ *
+ * Long tasks go back to the mean, whose resolution at n = 20 is 0.05 tasks — finer than the
+ * 0.5 threshold. This file's header says "never at the mean", and that rule is about not
+ * hiding a tail; for an integer count over twenty runs the p95 *is* one sample from the tail,
+ * so the rule was being applied to the one row where it inverts.
+ *
+ * INP cannot be fixed by choosing a different order statistic, because every order statistic
+ * of a quantized metric is quantized. It is compared as a paired sign test instead — see
+ * {@link signTest}.
+ */
+
+interface SignTest {
+  /** Runs where `on` was worse than `gated`. */
+  worse: number;
+  /** Runs where `on` was better. */
+  better: number;
+  /** Runs where the two landed in the same quantum. */
+  ties: number;
+  /** One-sided binomial probability of seeing this many `worse` runs by chance. */
+  p: number;
+}
+
+/**
+ * Paired comparison of two arms, run by run.
+ *
+ * The arms alternate within each iteration of the measurement loop, so run `i` of `on` and run
+ * `i` of `gated` are neighbours in time on the same machine — which is what makes pairing them
+ * legitimate and what makes this robust to the drift a single order statistic is at the mercy
+ * of.
+ *
+ * The resolution argument: one p95 comparison of a quantized metric can only ever report a
+ * multiple of the quantum, so it cannot distinguish "0.1 ms of cost that crossed a boundary"
+ * from "8 ms of cost". Twenty paired comparisons can: a toolbar that costs a fraction of a
+ * quantum pushes *some* runs over a boundary and none back, and that shows up as a consistent
+ * direction long before it shows up as a shifted percentile. A toolbar that costs nothing
+ * scatters both ways.
+ *
+ * Reported as a probability rather than gated against a hand-picked count, so the threshold is
+ * a stated confidence rather than a number someone tuned until CI went green.
+ */
+function signTest(on: number[], gated: number[]): SignTest {
+  let worse = 0;
+  let better = 0;
+  let ties = 0;
+  for (let i = 0; i < Math.min(on.length, gated.length); i++) {
+    const a = on[i] as number;
+    const b = gated[i] as number;
+    if (a > b) worse++;
+    else if (a < b) better++;
+    else ties++;
+  }
+
+  /* P(X >= worse) for X ~ Binomial(worse + better, 0.5). Ties carry no information about
+     direction and are excluded, which is the standard treatment. */
+  const trials = worse + better;
+  if (trials === 0) return { worse, better, ties, p: 1 };
+  let tail = 0;
+  for (let k = worse; k <= trials; k++) tail += choose(trials, k);
+  return { worse, better, ties, p: tail / 2 ** trials };
+}
+
+function choose(n: number, k: number): number {
+  let result = 1;
+  for (let i = 0; i < k; i++) result = (result * (n - i)) / (i + 1);
+  return result;
 }
 
 async function measure(page: Page, arm: Arm): Promise<Sample> {
@@ -147,7 +241,34 @@ test("the toolbar does not perturb what it measures", async ({ browser }) => {
        delta below is `on − gated`, not `on − off`. */
     baseline: "gated",
     metrics: {
-      inpP95: { ...row("inp"), budget: BUDGET.inpP95 },
+      /**
+       * Reported per arm, gated by `inpSign` below rather than by a delta between these.
+       *
+       * The median is the arm's typical quantum and the p95 is its tail; both are useful to
+       * read and neither can be compared against a 2 ms threshold, because the smallest
+       * difference either can express is 8 ms. Raw per-run values travel with them so a
+       * future reader of `bench/last-budget.json` can re-analyse without re-running.
+       */
+      inp: {
+        off: { median: median(pick("off", "inp")), p95: p95("off", "inp") },
+        gated: { median: median(pick("gated", "inp")), p95: p95("gated", "inp") },
+        on: { median: median(pick("on", "inp")), p95: p95("on", "inp") },
+        runs: {
+          off: pick("off", "inp"),
+          gated: pick("gated", "inp"),
+          on: pick("on", "inp"),
+        },
+      },
+      /* The gate. `on` against `gated`, paired run by run. */
+      inpSign: {
+        ...signTest(pick("on", "inp"), pick("gated", "inp")),
+        budget: BUDGET.inpSignificance,
+      },
+      /* The same test against `off`, reported and not gated. It answers a different question
+         — what the whole bundle costs, download and parse included — and it is here because
+         the CI run that prompted this rewrite showed `off` and `gated` scoring identically on
+         INP, which is worth being able to see again. */
+      inpSignAgainstOff: signTest(pick("on", "inp"), pick("off", "inp")),
       tbtP95: { ...row("tbt"), budget: BUDGET.tbtP95 },
       clsMax: {
         off: Math.max(...pick("off", "cls")),
@@ -155,9 +276,23 @@ test("the toolbar does not perturb what it measures", async ({ browser }) => {
         on: Math.max(...pick("on", "cls")),
         budget: BUDGET.cls,
       },
-      /* p95, not the mean. The header of this file has said "never at the mean" since it was
-         written, and this row was a mean until `enforce-non-perturbation`. */
-      longTasksP95: { ...row("longTasks"), budget: BUDGET.longTaskCount },
+      /**
+       * The mean, deliberately, and this row went p95 and back within one change.
+       *
+       * The file header's "never at the mean" is about not hiding a tail. Long tasks are an
+       * integer count, so at twenty runs the p95 is `sorted[18]` — one sample, with a noise
+       * floor of a whole task against a threshold of half of one. CI measured `off` 7,
+       * `gated` 6, `on` 7: the `on` arm tied with the arm that loads no bundle, while the
+       * baseline scored *below* both, which is not a direction a baseline can meaningfully
+       * take. The mean's resolution at n = 20 is 0.05 tasks, finer than the threshold, which
+       * is the property the row needs.
+       */
+      longTasksMean: {
+        off: mean(pick("off", "longTasks")),
+        gated: mean(pick("gated", "longTasks")),
+        on: mean(pick("on", "longTasks")),
+        budget: BUDGET.longTaskCount,
+      },
       /* Absolute rather than a delta: provenance makes the subtraction unnecessary. `gated`
          is the bundle's own evaluation and `off` is zero; both are asserted as controls. */
       attributedFrameMsP95: { ...row("attributedFrameMs"), budget: BUDGET.attributedFrameMs },
@@ -174,12 +309,12 @@ test("the toolbar does not perturb what it measures", async ({ browser }) => {
   };
 
   const deltas = {
-    inpP95: against("inpP95"),
     tbtP95: against("tbtP95"),
     cls: against("clsMax"),
-    longTasksP95: against("longTasksP95"),
+    longTasksMean: against("longTasksMean"),
     lcpP95: against("lcpP95"),
-    /* Deliberately absent from the deltas: `attributedFrameMsP95` is not a difference. */
+    /* Deliberately absent: `attributedFrameMsP95` is not a difference, and INP is not
+       compared as one — see `inpSign`. */
   };
 
   writeFileSync(
@@ -188,13 +323,39 @@ test("the toolbar does not perturb what it measures", async ({ browser }) => {
     "utf8",
   );
 
+  const sign = result.metrics.inpSign;
+
   console.log("observer-effect deltas (on − gated):", deltas);
   console.log("attributed d0bar main-thread time:", result.metrics.attributedFrameMsP95);
+  console.log("INP per arm (median / p95):", {
+    off: result.metrics.inp.off,
+    gated: result.metrics.inp.gated,
+    on: result.metrics.inp.on,
+  });
+  console.log(
+    `INP paired sign test (on vs gated): ${sign.worse} worse, ${sign.better} better, ` +
+      `${sign.ties} tied, p=${sign.p.toFixed(4)}`,
+  );
 
-  expect(deltas.inpP95, "Δp95 INP").toBeLessThanOrEqual(BUDGET.inpP95);
   expect(deltas.tbtP95, "Δp95 TBT").toBeLessThanOrEqual(BUDGET.tbtP95);
   expect(deltas.cls, "Δ CLS").toBeLessThanOrEqual(BUDGET.cls);
-  expect(deltas.longTasksP95, "Δp95 long-task count").toBeLessThanOrEqual(BUDGET.longTaskCount);
+  expect(deltas.longTasksMean, "Δ mean long-task count").toBeLessThanOrEqual(
+    BUDGET.longTaskCount,
+  );
+
+  /**
+   * INP, as a direction rather than a magnitude.
+   *
+   * Fails when `on` lands in a worse quantum than `gated` more consistently than chance would
+   * explain. A toolbar costing a fraction of a quantum tips some runs over a boundary and
+   * none back, which this sees; a toolbar costing nothing scatters both ways, which it does
+   * not. See `signTest` for why no millisecond threshold is expressible here.
+   */
+  expect(
+    sign.p,
+    `INP regressed in ${sign.worse} of ${sign.worse + sign.better} decisive runs ` +
+      `(${sign.ties} tied); p=${sign.p.toFixed(4)}`,
+  ).toBeGreaterThan(BUDGET.inpSignificance);
 
   /* The row with provenance. Not a delta and not floored: this is d0bar's own script time in
      the worst top-level task of a run, at p95 across runs. */

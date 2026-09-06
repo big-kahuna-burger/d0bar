@@ -112,6 +112,14 @@ scripts, at a resolution finer than the platform's long-task threshold.
   dominates every aggregate the suite compares
 
 #### Scenario: Aggregating across runs
-- **WHEN** a metric is compared between the enabled and disabled arms across many runs
+- **WHEN** a continuous metric is compared between the enabled and disabled arms across many
+  runs
 - **THEN** it is compared at a high percentile, because a toolbar that is usually free and
   occasionally expensive is not free
+
+#### Scenario: A metric coarser than the threshold it gates
+- **WHEN** a budget row gates on a value the platform reports in quanta, or on an integer count
+  aggregated at an order statistic
+- **THEN** the row compares something the instrument can actually resolve — a direction, a rate,
+  or a count of regressions — rather than a difference smaller than one step of the underlying
+  metric, which can only ever report zero or a full step

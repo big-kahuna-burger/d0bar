@@ -106,3 +106,31 @@ Four findings, ordered so each one's verification exists before the next one lea
       touched by this change. It has **not** been observed green on GitHub Actions, because
       nothing has been pushed. The `readme.md` sentences are left exactly as they were, per
       this task: they become true when the workflow runs, not when they are edited
+
+## 7. The budget rows resolve finer than their thresholds
+
+Found by CI, which is the point: both rows below passed on a laptop and failed on a two-core
+runner. `bench/quantized-metrics.md` carries the failure, the arithmetic and the replacement.
+
+- [x] 7.1 `longTaskCount` back to a mean. §3.3 moved it to a p95 citing "never at the mean";
+      that rule guards against a hidden tail and inverts for an integer count, whose p95 at
+      n=20 is one sample with a noise floor of a whole task against a 0.5 threshold. CI: off 7,
+      gated 6, on 7 — `on` tied with the arm that loads nothing, and the baseline scored below
+      both
+- [x] 7.2 INP compared as a paired sign test rather than a p95 delta. Chrome quantizes INP to
+      8 ms, so no millisecond threshold is expressible; CI failed at Δ = 8, the smallest
+      non-zero value the metric can take. `off` and `gated` both scored 88, so the baseline
+      swap was not the cause
+- [x] 7.3 `bench/budget.json` — both rows rewritten with the CI arms that forced them and the
+      resolution argument
+- [x] 7.4 `bench/quantized-metrics.md` — the writeup, linked from `bench/README.md` and
+      `CLAUDE.md`
+- [x] 7.5 `CLAUDE.md` — CI calibrates and checks, local runs one targeted spec briefly. Two
+      failures established this: a `tier2` p95 of 5.60 ms locally that passed on CI, and an
+      INP row that could not fail on hardware fast enough to tie every run
+- [ ] 7.6 Calibrate on CI. The reworked rows are **implemented, not exercised** — typecheck
+      and lint pass and nothing has been run. Push and read the run
+- [ ] 7.7 If the sign test reports a real directional cost, probe the pill's 500 ms refresh
+      clock: it writes a text node and fires a pulse animation while the A/B test clicks five
+      times at 120 ms spacing, and style/layout from d0bar's writes is the blind spot
+      `attribution.ts` documents

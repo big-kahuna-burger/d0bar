@@ -5,15 +5,17 @@
   "environment": "Apple Silicon, headless Chromium, no CPU throttling",
   "observerEffect": [
     {
-      "metric": "inpP95",
-      "threshold": 2,
-      "unit": "ms",
-      "lastMeasured": 0,
+      "metric": "inpSignificance",
+      "threshold": 0.05,
+      "unit": "p-value, one-sided",
+      "lastMeasured": null,
       "arms": {
         "off": 88,
-        "on": 88
+        "gated": 88,
+        "on": 96
       },
-      "rationale": "Interaction latency is the metric the footer makes a claim about. Two milliseconds is below the 8ms quantum Chrome reports INP in, so any real regression shows up as a whole quantum."
+      "rationale": "Not a millisecond figure, because no millisecond figure is expressible: Chrome reports INP quantized to 8 ms, so a threshold below 8 cannot be measured and a threshold at or above 8 gates nothing a developer would notice. The previous row was `\u0394p95 INP <= 2 ms` and it failed on CI at exactly 8 \u2014 one quantum, the smallest non-zero value the metric can take, and equally consistent with a 0.1 ms cost that crossed a boundary or with a real 8 ms one. `off` and `gated` both scored 88, so the baseline change was not the cause. The row now compares the arms run by run: the arms alternate within each loop iteration, so pairing is legitimate, and a toolbar costing a fraction of a quantum tips some runs over a boundary and none back. That direction is visible far below one quantum of resolution. Fails when the one-sided binomial probability of seeing this many worse runs by chance falls below 0.05 \u2014 at n=20 with no ties, 15 worse gives p=0.0207 and fails, 14 gives p=0.0577 and passes. Blind to magnitude by construction: a toolbar that cost 200 ms on one run of twenty would pass this row, which is what tbtP95 and attributedFrameMs are for. `bench/quantized-metrics.md` carries the derivation.",
+      "instrument": "Paired sign test over per-run INP, `on` against `gated` \u2014 tests/perf/ab.spec.ts"
     },
     {
       "metric": "tbtP95",
@@ -38,15 +40,16 @@
       "rationale": "The pill is fixed-position and `contain: layout paint style`, so its correct contribution is exactly zero. The threshold exists only to absorb float noise."
     },
     {
-      "metric": "longTaskCountP95",
+      "metric": "longTaskCountMean",
       "threshold": 0.5,
       "unit": "tasks per run",
       "lastMeasured": 0,
       "arms": {
-        "off": 6,
-        "on": 6
+        "off": 7,
+        "gated": 6,
+        "on": 7
       },
-      "rationale": "Half a task per run means a regression that adds a long task to even one run in two fails. This counts tasks, and does not attribute them: it is a difference between two arms of the same fixture, which is what makes it meaningful without provenance. The claim that attributing a long task to d0bar 'needs long-animation-frame script attribution, which arrives with add-self-attribution' was wrong on its second half and is corrected here \u2014 CDP tracing attributes script time by URL with no 50 ms floor, which is what requestsView's two rows now use, and add-self-attribution is about d0bar reporting its own cost to the user in the panel, not about a test being able to see it. Compared at p95 rather than at the mean as of enforce-non-perturbation: `ab.spec.ts`'s own header has said \"never at the mean\" since it was written, and this row was the one place it did not hold. The baseline arm is now `gated` rather than `off`, so the comparison controls for the bundle's download and parse."
+      "rationale": "Half a task per run means a regression that adds a long task to even one run in two fails. This counts tasks, and does not attribute them: it is a difference between two arms of the same fixture, which is what makes it meaningful without provenance. The claim that attributing a long task to d0bar 'needs long-animation-frame script attribution, which arrives with add-self-attribution' was wrong on its second half and is corrected here \u2014 CDP tracing attributes script time by URL with no 50 ms floor, which is what requestsView's two rows now use, and add-self-attribution is about d0bar reporting its own cost to the user in the panel, not about a test being able to see it. Aggregated as a mean, and this row went to a p95 and back within one change. `ab.spec.ts`'s header rule is 'never at the mean', which exists to stop a tail being hidden; for an integer count over 20 runs the p95 is `sorted[18]` \u2014 one sample, noise floor of a whole task, against a threshold of half of one. CI measured off 7, gated 6, on 7: the `on` arm tied with the arm that loads no bundle while the baseline scored below both, which is not a direction a baseline can meaningfully take. The mean's resolution at n=20 is 0.05 tasks, finer than the threshold, which is the property the row needs. See `bench/quantized-metrics.md`."
     },
     {
       "metric": "attributedFrameMs",

@@ -128,8 +128,22 @@ A comment claiming a property is not a property. If it can regress silently, ass
 - **Measure, don't assume.** Write a throwaway probe spec, run it, delete it. Several
   architectural decisions in `openspec/changes/add-epoch-model/design.md` exist because a probe
   contradicted the plan.
-- **p95, never the mean.** A toolbar that is usually free and occasionally costs 40 ms is not
-  free, and a mean hides exactly that.
+- **CI calibrates and checks. Local never does.** A benchmark number produced on the dev
+  machine is not evidence and must not be quoted as one — the machine is fast, and it is busy
+  with the build that produced the artifact under test. The A/B suite, any threshold
+  calibration, and any claim about a perf number come from CI. Two failures found this the hard
+  way: a `tier2` p95 of 5.60 ms against a 5 ms gate that passed cleanly on CI (the local run had
+  a build and a push underneath it), and an INP row that could never fail on a laptop fast
+  enough to land both arms in the same 8 ms quantum. Push it and read the run.
+- **Local runs one targeted spec, briefly.** `pnpm exec playwright test tests/perf/<one>.spec.ts`
+  to see whether something is wired up, or a throwaway probe. Not the suite, not `test:perf`,
+  and never a timing figure that gets written down.
+- **p95, never the mean — but the metric must resolve finer than its threshold.** A toolbar that
+  is usually free and occasionally costs 40 ms is not free, and a mean hides exactly that. The
+  rule inverts for a quantized value: the p95 of an integer count over 20 runs is one sample
+  with a noise floor of a whole unit, and INP is reported in 8 ms quanta, so neither can express
+  a difference smaller than a threshold worth setting. `bench/quantized-metrics.md` has the
+  failure, the arithmetic and the paired sign test that replaced the INP comparison.
 - **`gated` is the baseline, not `off`.** The gated arm loads the identical bundle and starts
   nothing, so a comparison against it controls for the script download.
 - **The fixture is the instrument.** `bench/fixtures/host/` is never part of what is measured.

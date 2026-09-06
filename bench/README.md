@@ -49,6 +49,16 @@ measurement taken against them.
 Deltas are compared at **p95, never at the mean**. A toolbar that is usually free and
 occasionally costs 40 ms is not free, and a mean hides exactly that.
 
+That rule holds for continuous metrics and inverts for quantized ones — an integer long-task
+count, or INP, which Chrome reports in 8 ms steps. A p95 of twenty integers is one sample with
+a noise floor of a whole unit, and no millisecond threshold below 8 is expressible for INP at
+all. Both rows failed on CI for that reason and neither was reporting a slower toolbar.
+[`quantized-metrics.md`](./quantized-metrics.md) has the failure, the arithmetic, and the
+paired sign test that replaced the INP comparison.
+
+**Numbers come from CI, never from a dev machine.** A laptop is fast enough to land both arms
+in the same INP quantum, which is why the row above could never fail locally.
+
 ## Changing a threshold
 
 A threshold is a claim about the product. Raising one is a decision, not a fix:
