@@ -72,17 +72,29 @@ const BUDGET: Budget = {
    */
   attributedFrameMs: 8,
   /**
-   * Cheap-tap `event` entries above the 16 ms floor, summed per arm. **Zero, and zero is the
-   * measurement rather than a tuned threshold** — CI reads 0/0/0, bounding d0bar's cost on a cheap
-   * interaction below one 8 ms quantum.
+   * How many more cheap-tap `event` entries may exceed the 16 ms floor in `on` than in `gated`,
+   * summed over an arm's runs (~300 entries each).
    *
    * The row `inp` cannot be: `#confirm-hold` blocks 84 ms, quantizing to 88 on every run of every
    * arm, so single-digit milliseconds are invisible inside it. `#cheap-tap` flips an attribute.
    * Counted, not timed, because `durationThreshold` clamps to 16 ms — a cheap interaction can only
-   * be observed to have exceeded. Gated absolutely and per arm; an earlier version counted entries
-   * that *reached* the floor and saturated at 297/297/297. Full history in `bench/budget.json`.
+   * be observed to have exceeded.
+   *
+   * **A delta, after two wrong versions of this row.** The first counted entries that *reached* the
+   * floor and saturated at 297/297/297, because the clamp pins everything cheap there. The second
+   * counted entries above the floor and gated each arm at zero — set from two CI runs of 0/0/0, and
+   * the third read `off` 0, `gated` 3, `on` 3. A gate at zero against a metric whose per-arm noise
+   * is three entries is a threshold finer than its own spread, which is the third time that defect
+   * has appeared in this file.
+   *
+   * `gated` scoring exactly what `on` scored is the answer, not the problem: that arm loads the
+   * bundle and starts nothing, so three shared entries are the two-core runner and cannot be the
+   * toolbar. The absolutes are still reported — they are what shows the metric is live rather than
+   * saturated — but the gate is the difference, which noise hitting both arms cancels out of. Three
+   * is the largest per-arm count seen, so the delta must clear a full swing of it; that puts this
+   * row's resolution at about 1% of cheap interactions gaining a quantum.
    */
-  cheapTapsOverQuantum: 0,
+  cheapTapsOverQuantum: 3,
 };
 
 type Arm = "off" | "gated" | "on";
@@ -341,6 +353,7 @@ test(
       cls: against("clsMax"),
       longTasksMean: against("longTasksMean"),
       lcpP95: against("lcpP95"),
+      cheapTapsOverQuantum: against("cheapTapsOverQuantum"),
       /* Deliberately absent: `attributedFrameMsP95` is not a difference, and INP is not
        compared as one — see `inpSign`. */
     };
@@ -404,17 +417,16 @@ test(
     expect(result.metrics.attributedFrameMsP95.off, "the off arm loads no d0bar").toBe(0);
 
     /**
-     * The cheap target, gated in every arm: an attribute flip must never cost a whole quantum more
-     * than the browser's own event-to-paint path. `off` and `gated` are held to it too — a count
-     * there is the fixture or the runner misbehaving, and a row that only fails in `on` cannot tell
-     * the two apart.
+     * The cheap target: an attribute flip must not cost a whole 8 ms quantum more often with the
+     * toolbar running than with it merely loaded. Compared against `gated`, because a count that
+     * appears in the baseline too is the runner — see the note on the budget entry.
      */
-    for (const arm of ARMS) {
-      expect(
-        result.metrics.cheapTapsOverQuantum[arm],
-        `${arm}: ${result.metrics.cheapTapsOverQuantum[arm]} of ` +
-          `${result.metrics.cheapTapEntries[arm]} cheap-tap entries exceeded 16 ms`,
-      ).toBeLessThanOrEqual(BUDGET.cheapTapsOverQuantum);
-    }
+    expect(
+      deltas.cheapTapsOverQuantum,
+      `over the 16 ms floor: off ${result.metrics.cheapTapsOverQuantum.off}, ` +
+        `gated ${result.metrics.cheapTapsOverQuantum.gated}, ` +
+        `on ${result.metrics.cheapTapsOverQuantum.on} ` +
+        `of ~${result.metrics.cheapTapEntries.on} entries per arm`,
+    ).toBeLessThanOrEqual(BUDGET.cheapTapsOverQuantum);
   },
 );

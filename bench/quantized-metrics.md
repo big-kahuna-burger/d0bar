@@ -299,17 +299,25 @@ only by gaining a whole quantum on an interaction that otherwise costs nothing:
 
      arm pool:   0 .. ~300 entries above the floor
      resolution: one entry
-     threshold:  0, in every arm
+     gate:       (on − gated) <= 3
 ```
 
-Zero is not a tuned threshold. It is the measurement — `off`, `gated` and `on` all read zero —
-and it bounds d0bar's cost on a cheap interaction _below one quantum_, which is the first real
-statement this fixture has made about interaction latency.
+Two CI runs then read 0/0/0, the threshold was set to zero — and the third read `off` 0, `gated` 3,
+`on` 3.
 
-It is gated **absolutely and in every arm**, not as a delta against `gated`. An entry above the
-floor is not "worse than the baseline"; it is a cheap interaction that cost a whole quantum. And
-`off` scoring one would mean the fixture or the runner did it, which a row that only fails in
-`on` could not tell apart.
+That is the same defect a third time: a gate at zero against a metric whose per-arm noise is three
+entries is finer than its own spread. And the shape of the failure carries its own answer. `gated`
+loads the bundle and starts nothing, so three entries appearing there **and** in `on`, in equal
+number, are the two-core runner and cannot be the toolbar.
+
+So the gate is the **difference**, `on` minus `gated`, which noise hitting both arms cancels out of;
+the absolutes stay in the report, where they show the metric is live rather than saturated. The
+threshold is 3 — the largest per-arm count seen — because the delta must clear a full swing of it,
+which puts the row's resolution at roughly 1% of cheap interactions gaining a quantum.
+
+The earlier reasoning for gating absolutely — "an entry above the floor is not worse than the
+baseline, it is a cheap interaction that cost a whole quantum" — was wrong, and wrong instructively:
+it treats the two arms as independent measurements when they share a machine.
 
 `inpSignificance` is kept. It is correct, and it will report a real shift if one ever appears.
 It is simply no longer where the claim about d0bar's interaction cost rests.
