@@ -52,19 +52,19 @@ Four findings, ordered so each one's verification exists before the next one lea
 
 ## 3. The budget measures d0bar
 
-- [ ] 3.1 `ab.spec.ts` — add an attributed row using CDP per-task script attribution, the
+- [x] 3.1 `ab.spec.ts` — add an attributed row using CDP per-task script attribution, the
       instrument already in `tests/perf/attribution.ts`. No 50 ms floor, and it names whose
       the work was
-- [ ] 3.2 Keep `longtask` and the arm delta. They answer a real question; they are simply not
+- [x] 3.2 Keep `longtask` and the arm delta. They answer a real question; they are simply not
       the question "what did d0bar cost"
-- [ ] 3.3 Long-task count becomes p95, not the mean — the file's own header already says
+- [x] 3.3 Long-task count becomes p95, not the mean — the file's own header already says
       "never at the mean"
-- [ ] 3.4 Add the `gated` arm to this comparison, per the working agreement that `gated` is the
+- [x] 3.4 Add the `gated` arm to this comparison, per the working agreement that `gated` is the
       baseline rather than `off`
-- [ ] 3.5 Record the new row in `bench/budget.json` with instrument, spread and exclusions.
+- [x] 3.5 Record the new row in `bench/budget.json` with instrument, spread and exclusions.
       **Coordinate with `extract-bench-harness`**, which makes that file the thing that gates —
       whichever lands second adopts the other's shape
-- [ ] 3.6 Verify it fails: inject a 40 ms block into a dev-only branch of stage 1, confirm red,
+- [x] 3.6 Verify it fails: inject a 40 ms block into a dev-only branch of stage 1, confirm red,
       remove it
 
 ## 4. `destroy()` restores state
@@ -96,10 +96,13 @@ Four findings, ordered so each one's verification exists before the next one lea
 
 ## 6. CI
 
-- [ ] 6.1 `.github/workflows/ci.yml` — pnpm, `pnpm build`, `pnpm test`, `pnpm size`
-- [ ] 6.2 `pnpm test:perf` in the same workflow, with the Playwright browser install
-- [ ] 6.3 Pin the browser version, and note in the workflow that bundled Chromium, Playwright's
+- [x] 6.1 `.github/workflows/ci.yml` — pnpm, `pnpm build`, `pnpm test`, `pnpm size`
+- [x] 6.2 `pnpm test:perf` in the same workflow, with the Playwright browser install
+- [x] 6.3 Pin the browser version, and note in the workflow that bundled Chromium, Playwright's
       Chromium and stable Chrome have different `supportedEntryTypes` — a green CI on one says
       nothing about the others
-- [ ] 6.4 Only after it is green: the three places in `readme.md` saying "asserted in CI" become
-      true. Do not correct them by editing the sentence
+- [~] 6.4 The workflow exists and every command in it has been run locally and observed
+      passing — `pnpm lint`, `pnpm size` (5/5 gates), `pnpm test` (407), and each perf spec
+      touched by this change. It has **not** been observed green on GitHub Actions, because
+      nothing has been pushed. The `readme.md` sentences are left exactly as they were, per
+      this task: they become true when the workflow runs, not when they are edited

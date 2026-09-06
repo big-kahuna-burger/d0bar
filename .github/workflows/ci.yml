@@ -1,0 +1,64 @@
+# The three claims readme.md makes about CI, made true.
+#
+# `readme.md` said "asserted in CI" in three places and `observation-core`'s budget scenario
+# said "THEN CI fails", against a repository with no `.github`, no `.gitlab-ci.yml` and no
+# `.circleci`. The correction is this file, not an edit to those sentences.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      # pnpm only. An `npx` or `npm ci` anywhere in this file would resolve a different tree
+      # than the committed `pnpm-lock.yaml`.
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm lint
+
+      # `pnpm size` runs the build itself, so the build is not a separate step: a size number
+      # measured against anything but the artifacts of this commit is not a size number.
+      - run: pnpm size
+
+      - run: pnpm test
+
+      # Playwright's own Chromium, pinned by the `@playwright/test` version in the lockfile
+      # rather than by a floating channel.
+      #
+      # Browser version skew is real and this job does not eliminate it. The bundled Chromium
+      # (148), Playwright's Chromium (151) and stable Chrome (152) have different
+      # `supportedEntryTypes`, so a green run here says the modern path works — it says nothing
+      # about the fallback tiers a user on an older browser gets. Those are covered by unit
+      # tests against a stubbed capability set, not here.
+      - run: pnpm exec playwright install --with-deps chromium
+
+      # The perturbation suite. `bench/fixtures/server.mjs` is started by Playwright's own
+      # `webServer` config with `reuseExistingServer: false`, so nothing stale can serve it.
+      - run: pnpm test:perf
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-results
+          path: |
+            bench/last-budget.json
+            test-results/
+          retention-days: 14
+          if-no-files-found: ignore
