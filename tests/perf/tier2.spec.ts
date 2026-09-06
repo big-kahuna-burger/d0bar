@@ -127,6 +127,11 @@ test.describe("registration", () => {
   });
 });
 
+/**
+ * Service-worker dispatch, p95. Raised from 5 ms on CI evidence — see the note at the assertion.
+ */
+const DISPATCH_BUDGET_MS = 25;
+
 test.describe("observation without interception", () => {
   test("adds no measurable worker-attributable delay", { tag: "@timing" }, async ({ page }) => {
     await loadControlled(page);
@@ -140,33 +145,41 @@ test.describe("observation without interception", () => {
 
     /* The task originally said "assert workerStart is 0". Measured, it is non-zero for every
        request once a worker controls the page — the field marks when service-worker handling
-       *began*, whether or not the handler responds, so a pass-through worker and an
-       intercepting one both stamp it. A zero assertion would only ever have passed on a page
-       with no worker at all, which proves nothing about this one.
-       
-       What is actually claimable, and what the design says, is that the overhead is bounded
-       and disclosed: the gap between `workerStart` and `fetchStart` is the worker's own
-       dispatch cost. Measured across 250 requests on this fixture:
+       *began*, whether or not the handler responds — so a zero assertion would only ever have
+       passed on a page with no worker, which proves nothing about this one.
 
-           p50 0.5ms   p90 3.3ms   p95 3.4ms   p99 3.5ms   max 3.6ms
+       What is claimable is that the overhead is bounded and disclosed: `fetchStart - workerStart`
+       is the worker's dispatch cost.
 
-       A tight tail, not a long one. The threshold is 5ms — above the measured maximum with
-       headroom, low enough that a regression that doubled dispatch cost would fail.
-       Deliberately p95 rather than the mean: a toolbar that is usually free and occasionally
-       costs milliseconds is not free, and a mean hides exactly that.
+           dev laptop      p50 0.5   p90 3.3   p95 3.4   p99 3.5   max 3.6
+           CI, 2026-09-06                      p95 16.10           (n=250, one run)
 
-       Note what this does *not* establish. It bounds service-worker dispatch, which any
-       registered worker imposes; it does not attribute that cost to d0bar's handler versus
-       the browser's own machinery. Separating those is `worker-perturbation.spec.ts`, which
-       compares `?d0bar=on` against `?d0bar=on&sw=off` — the identical bundle and toolbar with
-       and without a registration, so everything but the worker cancels. Measured across 1458
-       requests per arm: p50 identical, p95 +1.6ms. */
+       THE THRESHOLD IS 25 ms AND IT IS CALIBRATED FROM ONE CI RUN. The old 5 ms was set from the
+       laptop column and failed on CI at 16.10 — not a regression but a two-core shared runner
+       dispatching a service worker, which is the machine every number this project quotes comes
+       from (`CLAUDE.md`: CI calibrates, local never does). 25 leaves ~55% headroom over the single
+       reading, which is honest about not knowing the spread yet, and still fails on a dispatch cost
+       that doubles. The distribution is printed on every run so the next few give a real spread to
+       narrow it against.
+
+       Note what this does *not* establish. It bounds service-worker dispatch, which any registered
+       worker imposes; it does not attribute that to d0bar's handler versus the browser's own
+       machinery. `worker-perturbation.spec.ts` does, comparing `?d0bar=on` against
+       `?d0bar=on&sw=off` — identical bundle and toolbar, with and without a registration — and
+       measured p50 identical, p95 +1.6 ms across 1458 requests per arm. That row still gates at
+       12 ms and passed on the same CI run this one failed, which is the evidence that 16.10 is the
+       runner and not the toolbar. */
     expect(deltas.length).toBeGreaterThan(0);
-    const p95 = deltas[Math.floor(deltas.length * 0.95)] ?? 0;
-    expect(
-      p95,
-      `p95 worker overhead was ${p95.toFixed(2)}ms across ${deltas.length} requests`,
-    ).toBeLessThan(5);
+    const at = (p: number): number =>
+      deltas[Math.min(Math.floor(deltas.length * p), deltas.length - 1)] ?? 0;
+    const p95 = at(0.95);
+    const report =
+      `worker dispatch over ${deltas.length} requests: ` +
+      `p50 ${at(0.5).toFixed(2)} p90 ${at(0.9).toFixed(2)} p95 ${p95.toFixed(2)} ` +
+      `p99 ${at(0.99).toFixed(2)} max ${(deltas[deltas.length - 1] ?? 0).toFixed(2)} ms ` +
+      `(budget ${DISPATCH_BUDGET_MS} ms)`;
+    console.log(report);
+    expect(p95, report).toBeLessThan(DISPATCH_BUDGET_MS);
   });
 
   test("logs the traceparent the page cannot see", async ({ page }) => {

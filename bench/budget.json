@@ -90,6 +90,15 @@
         "on": 1572
       },
       "rationale": "Reported, not gated. The 4ms difference is the host's own request for the bundle, which a host pays deliberately. LCP on this fixture is dominated by a fixed server delay and its run-to-run spread is wider than any toolbar effect, so gating it would be noise."
+    },
+    {
+      "metric": "swDispatchP95",
+      "threshold": 25,
+      "unit": "ms between `workerStart` and `fetchStart`, p95 over one load's requests",
+      "lastMeasured": 16.1,
+      "spread": "CI 2026-09-06: p95 16.10 over 250 requests, ONE RUN. Dev laptop, for contrast: p50 0.5 / p90 3.3 / p95 3.4 / p99 3.5 / max 3.6",
+      "instrument": "PerformanceResourceTiming.fetchStart - workerStart on a controlled page \u2014 tests/perf/tier2.spec.ts",
+      "rationale": "RAISED FROM 5 ms ON CI EVIDENCE, 2026-09-06. The old threshold was set from the dev-laptop column above, which is the mistake `CLAUDE.md` now names outright: CI calibrates, local never does. It failed on CI at 16.10 ms, and that is not a regression \u2014 it is a two-core shared GitHub runner dispatching a service worker, which is the machine every number this project quotes comes from. 25 leaves roughly 55% headroom over the single reading, which is what one sample deserves, and still fails on a dispatch cost that doubles. THE CALIBRATION IS n=1: the spec now prints p50/p90/p95/p99/max on every run so the next few give a real spread to narrow this against, and narrowing it then needs no rationale. What this row bounds is service-worker *dispatch*, a cost any registered worker imposes; it does not attribute that cost to d0bar's handler. `swDeltaP95` does, and it passed at 12 ms on the same CI run this row failed \u2014 which is the evidence that 16.10 is the runner rather than the toolbar."
     }
   ],
   "bundle": [
