@@ -128,9 +128,9 @@ test.describe("registration", () => {
 });
 
 /**
- * Service-worker dispatch, p95. Raised from 5 ms on CI evidence — see the note at the assertion.
+ * Service-worker dispatch, p95. Raised from 5 ms, then from 25 — see the note at the assertion.
  */
-const DISPATCH_BUDGET_MS = 25;
+const DISPATCH_BUDGET_MS = 35;
 
 test.describe("observation without interception", () => {
   test("adds no measurable worker-attributable delay", { tag: "@timing" }, async ({ page }) => {
@@ -151,18 +151,27 @@ test.describe("observation without interception", () => {
        What is claimable is that the overhead is bounded and disclosed: `fetchStart - workerStart`
        is the worker's dispatch cost.
 
-           dev laptop      p50 0.5   p90 3.3   p95 3.4   p99 3.5   max 3.6
-           CI, 2026-09-06                      p95 16.10           (n=250, one run)
+           dev laptop      p50 0.5   p90 3.3    p95 3.4    p99 3.5    max 3.6
+           CI run 1                              p95 16.10             (n=250)
+           CI run 2                              p95 9.10              (n=250)
+           CI run 3        p50 1.50  p90 14.40  p95 19.90  p99 23.20  max 23.40
 
-       THE THRESHOLD IS 25 ms AND IT IS CALIBRATED FROM ONE CI RUN. The old 5 ms was set from the
-       laptop column and failed on CI at 16.10 — not a regression but a two-core shared runner
-       dispatching a service worker, which is the machine every number this project quotes comes
-       from (`CLAUDE.md`: CI calibrates, local never does). 25 leaves ~55% headroom over the single
-       reading, which is honest about not knowing the spread yet, and still fails on a dispatch cost
-       that doubles. The distribution is printed on every run so the next few give a real spread to
-       narrow it against.
+       THE THRESHOLD IS 35 ms. The old 5 ms was set from the laptop column and failed on CI at
+       16.10 — not a regression but a two-core shared runner dispatching a service worker, which is
+       the machine every number this project quotes comes from (`CLAUDE.md`: CI calibrates, local
+       never does). 25 replaced it, from that one sample, and was itself too fine: the p95 has since
+       ranged 9.10 to 19.90, a 10.8 ms spread against a gate 5.1 ms above the highest reading. A
+       threshold finer than its metric's own spread is what the `attributedFrameMsP95.gated <= 2`
+       control was deleted for. 35 clears the highest observed p95 by more than the spread and still
+       fails on a dispatch cost that doubles.
 
-       Note what this does *not* establish. It bounds service-worker dispatch, which any registered
+       THE SHAPE IS THE REAL FINDING. p50 1.50 against p95 19.90 is bimodal, and the tail is almost
+       certainly worker cold start — the first requests after registration pay for booting the
+       thread and evaluating the script, and steady-state dispatch is the p50. So this row gates
+       largely on how many cold requests a run happened to catch. Gating steady state and reporting
+       cold start separately is the correct row, and is not built.
+
+              Note what this does *not* establish. It bounds service-worker dispatch, which any registered
        worker imposes; it does not attribute that to d0bar's handler versus the browser's own
        machinery. `worker-perturbation.spec.ts` does, comparing `?d0bar=on` against
        `?d0bar=on&sw=off` — identical bundle and toolbar, with and without a registration — and
