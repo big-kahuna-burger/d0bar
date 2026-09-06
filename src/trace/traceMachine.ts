@@ -32,13 +32,13 @@
  * drives a query that resolves after the selection has moved and asserts the panel never
  * sees it.
  *
- * ## What is not built
+ * ## The query is injected, not owned
  *
- * {@link TraceQuery} is a boundary with **no default implementation**. Issuing the query
- * needs a credential, and `add-credential-broker` — which this change blocks — supplies it.
- * A machine constructed without a query does not pretend: it resolves to
- * {@link TraceState `unqueryable`}, which is a statement about d0bar's own backlog in the
- * same sense as `tier.ts`'s `planned`, and is deliberately distinct from all three of the
+ * {@link TraceQuery} is still a boundary — this file never issues a request — but it is no
+ * longer an unimplemented one. `src/trace/query.ts` implements it against the service-worker
+ * broker and `src/panel/index.ts` passes it in. A machine constructed *without* a query does
+ * not pretend: it resolves to {@link TraceState `unqueryable`}, which is now what a selection
+ * means when no token is connected, and is deliberately distinct from all three of the
  * outcomes the spec forbids conflating.
  */
 
@@ -187,7 +187,7 @@ export type TraceQueryOutcome =
   | { kind: "error"; message: string };
 
 /**
- * The query boundary. **No implementation ships with this change.**
+ * The query boundary. Implemented by `src/trace/query.ts`; nothing here issues a request.
  *
  * An implementation must hand the response body to the layout worker as *text* and return
  * the worker's summary — parsing a four-thousand-span trace with `JSON.parse` on the main

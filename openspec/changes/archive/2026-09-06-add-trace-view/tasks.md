@@ -35,7 +35,7 @@
 - [x] 1.3 404 → `waiting`; other errors → `failed`; success → `found`
 - [x] 1.4 `waiting` → `fetching` after backoff; exponential, ceiling 5 attempts, then `exhausted`
 - [x] 1.5 One machine per inspected request; selecting another aborts the previous query and cancels any scheduled retry
-- [x] 1.6 Machine tests, no browser: ingest-lag path, click-away-mid-fetch, retry exhaustion, immediate success — `tests/unit/trace-machine.test.ts`, 20 tests
+- [x] 1.6 Machine tests, no browser: ingest-lag path, click-away-mid-fetch, retry exhaustion, immediate success — `tests/unit/trace-machine.test.ts`, 22 tests
 
 ## 2. Query
 
@@ -47,8 +47,9 @@
 
 ## 3. State 7a — trace found
 
-> Reachable only through an injected summary — nothing in shipped code produces one until the
-> layout worker exists. Every item below is exercised against a fake in `trace-view.test.ts`.
+> Shipped code produces a summary now: `src/trace/query.ts` → layout worker → `SpanRows`. The
+> header above this file said the opposite until the worker landed. Every item below is still
+> exercised against a fake in `trace-view.test.ts`, so the view is testable without either worker.
 
 - [x] 3.1 Sub-header: back button, `METHOD /path` ellipsized, trace id right-aligned in mono
 - [x] 3.2 Meta row: span count, service count, log count, `timeRange ±2s`, and the worker-cost claim rendered **only** from a measured value — a `mainThreadMs` of `null` prints nothing
@@ -83,4 +84,8 @@
       outside the shadow root, and Escape silently stopped popping. `traceView` now exposes
       `focus()` and the panel calls it on entry. Guarded by a unit test and by the Chromium
       assertion in `tests/perf/requests-view.spec.ts`, both run.
-- [ ] 6.3 View Transitions between list and trace — **deliberately not done.** `document.startViewTransition` is document-scoped: it freezes and snapshots the _entire host page_, not the panel's shadow subtree. Paying a full-page snapshot on a customer's page to cross-fade a toolbar surface is the exact trade this project refuses. If it lands later it needs a scoped API, not this one.
+
+> **Dropped from scope: View Transitions between list and trace.** `document.startViewTransition`
+> is document-scoped — it freezes and snapshots the _entire host page_, not the panel's shadow
+> subtree. Paying a full-page snapshot on a customer's page to cross-fade a toolbar surface is the
+> exact trade this project refuses. If it lands later it needs a scoped API, not this one.
