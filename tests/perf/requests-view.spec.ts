@@ -100,9 +100,7 @@ test.describe("windowing", () => {
     await openPanel(page);
     await quiet(page);
 
-    const before = await page.evaluate(
-      () => window.__d0root!.querySelectorAll(".row").length,
-    );
+    const before = await page.evaluate(() => window.__d0root!.querySelectorAll(".row").length);
 
     await page.evaluate(async () => {
       const scroll = window.__d0root!.querySelector(".rows-scroll") as HTMLElement;
@@ -119,7 +117,7 @@ test.describe("windowing", () => {
     expect(after).toBeGreaterThanOrEqual(before);
   });
 
-  test("scrolling the full list costs no long frame", async ({ page }) => {
+  test("scrolling the full list costs no long frame", { tag: "@timing" }, async ({ page }) => {
     await openPanel(page);
     await quiet(page);
 
@@ -173,49 +171,53 @@ test.describe("windowing", () => {
    * worst task and is what the budget gates; `maxAnyTaskMs` is that task-vs-any-task context,
    * reported so a regression in the gap between them is visible rather than silent.
    */
-  test("spends under 8 ms of toolbar time in any frame of a full scroll", async ({ page }) => {
-    await openPanel(page);
-    await quiet(page);
+  test(
+    "spends under 8 ms of toolbar time in any frame of a full scroll",
+    { tag: "@timing" },
+    async ({ page }) => {
+      await openPanel(page);
+      await quiet(page);
 
-    const attributed = await attributedDuring(page, isD0bar, async () => {
-      await page.evaluate(async () => {
-        const scroll = window.__d0root!.querySelector(".rows-scroll") as HTMLElement;
-        const max = scroll.scrollHeight - scroll.clientHeight;
-        for (let pass = 0; pass < 3; pass += 1) {
-          for (let offset = 0; offset <= max; offset += 21) {
-            scroll.scrollTop = offset;
-            await new Promise((resolve) => requestAnimationFrame(resolve));
+      const attributed = await attributedDuring(page, isD0bar, async () => {
+        await page.evaluate(async () => {
+          const scroll = window.__d0root!.querySelector(".rows-scroll") as HTMLElement;
+          const max = scroll.scrollHeight - scroll.clientHeight;
+          for (let pass = 0; pass < 3; pass += 1) {
+            for (let offset = 0; offset <= max; offset += 21) {
+              scroll.scrollTop = offset;
+              await new Promise((resolve) => requestAnimationFrame(resolve));
+            }
           }
-        }
+        });
       });
-    });
 
-    /* A scroll that attributed nothing to d0bar measured nothing at all — the tracing
+      /* A scroll that attributed nothing to d0bar measured nothing at all — the tracing
        category could have changed name, or the bundle URL could have. Fail rather than pass
        a budget on an empty set. */
-    expect(
-      attributed.totalMs,
-      "no d0bar script was attributed during the scroll — the instrument, not the toolbar",
-    ).toBeGreaterThan(0);
+      expect(
+        attributed.totalMs,
+        "no d0bar script was attributed during the scroll — the instrument, not the toolbar",
+      ).toBeGreaterThan(0);
 
-    /* Recorded rather than only printed on failure: `bench/last-run.json` is the run's own
+      /* Recorded rather than only printed on failure: `bench/last-run.json` is the run's own
        record, and a budget row in `bench/budget.json` has to come from a number someone can
        find again. */
-    test.info().annotations.push({
-      type: "d0bar-scroll",
-      description:
-        `max ${attributed.maxTaskMs.toFixed(2)} ms in one frame, ` +
-        `${attributed.totalMs.toFixed(1)} ms total over ${attributed.taskMs.length} frames, ` +
-        `longest task of any origin ${attributed.maxAnyTaskMs.toFixed(2)} ms`,
-    });
+      test.info().annotations.push({
+        type: "d0bar-scroll",
+        description:
+          `max ${attributed.maxTaskMs.toFixed(2)} ms in one frame, ` +
+          `${attributed.totalMs.toFixed(1)} ms total over ${attributed.taskMs.length} frames, ` +
+          `longest task of any origin ${attributed.maxAnyTaskMs.toFixed(2)} ms`,
+      });
 
-    expect(
-      attributed.maxTaskMs,
-      `worst frame's d0bar work ${attributed.maxTaskMs.toFixed(2)} ms; ` +
-        `top frames ${JSON.stringify(attributed.taskMs.slice(0, 5).map((ms) => +ms.toFixed(2)))}; ` +
-        `longest task of any origin ${attributed.maxAnyTaskMs.toFixed(2)} ms`,
-    ).toBeLessThan(FRAME_BUDGET_MS);
-  });
+      expect(
+        attributed.maxTaskMs,
+        `worst frame's d0bar work ${attributed.maxTaskMs.toFixed(2)} ms; ` +
+          `top frames ${JSON.stringify(attributed.taskMs.slice(0, 5).map((ms) => +ms.toFixed(2)))}; ` +
+          `longest task of any origin ${attributed.maxAnyTaskMs.toFixed(2)} ms`,
+      ).toBeLessThan(FRAME_BUDGET_MS);
+    },
+  );
 });
 
 test.describe("bar geometry", () => {
@@ -319,59 +321,63 @@ test.describe("streaming", () => {
    * Only measurable at all since the `onResourceBatch` listener slot became a list: before
    * that, an open list received no appends, and this bench would have measured a static view.
    */
-  test("spends under 8 ms of toolbar time in any frame of an append storm", async ({ page }) => {
-    await openPanel(page);
-    const settled = await quiet(page);
+  test(
+    "spends under 8 ms of toolbar time in any frame of an append storm",
+    { tag: "@timing" },
+    async ({ page }) => {
+      await openPanel(page);
+      const settled = await quiet(page);
 
-    const attributed = await attributedDuring(page, isD0bar, async () => {
-      await page.evaluate(async () => {
-        const pending: Array<Promise<unknown>> = [];
-        for (let i = 0; i < 300; i += 1) {
-          pending.push(fetch(`/api/resource?storm=${i}&delay=5`).then((r) => r.text()));
-          await new Promise((resolve) => setTimeout(resolve, 10));
-        }
-        await Promise.all(pending);
-        await new Promise((resolve) => setTimeout(resolve, 300));
+      const attributed = await attributedDuring(page, isD0bar, async () => {
+        await page.evaluate(async () => {
+          const pending: Array<Promise<unknown>> = [];
+          for (let i = 0; i < 300; i += 1) {
+            pending.push(fetch(`/api/resource?storm=${i}&delay=5`).then((r) => r.text()));
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+          await Promise.all(pending);
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        });
       });
-    });
 
-    const after = await page.evaluate(() => {
-      const root = window.__d0root!;
-      const spacer = root.querySelector(".rows-spacer") as HTMLElement;
-      return {
-        records: Math.round(parseFloat(spacer.style.height) / 21),
-        rows: root.querySelectorAll(".row:not([hidden])").length,
-        dropped: (root.querySelector(".rows-dropped") as HTMLElement).hidden,
-      };
-    });
+      const after = await page.evaluate(() => {
+        const root = window.__d0root!;
+        const spacer = root.querySelector(".rows-spacer") as HTMLElement;
+        return {
+          records: Math.round(parseFloat(spacer.style.height) / 21),
+          rows: root.querySelectorAll(".row:not([hidden])").length,
+          dropped: (root.querySelector(".rows-dropped") as HTMLElement).hidden,
+        };
+      });
 
-    /* The storm landed. Without this the budget below would pass on a list nothing appended
+      /* The storm landed. Without this the budget below would pass on a list nothing appended
        to — which is exactly how the regression this bench now covers went unnoticed. */
-    expect(after.records, `list held ${settled} before the storm`).toBeGreaterThan(settled);
-    /* Past capacity, so eviction ran and said so. */
-    expect(after.records).toBe(512);
-    expect(after.dropped, "records were evicted and the list did not report it").toBe(false);
-    /* And the window is still a window — 300 appends did not grow the row pool. */
-    expect(after.rows).toBeLessThanOrEqual(27);
+      expect(after.records, `list held ${settled} before the storm`).toBeGreaterThan(settled);
+      /* Past capacity, so eviction ran and said so. */
+      expect(after.records).toBe(512);
+      expect(after.dropped, "records were evicted and the list did not report it").toBe(false);
+      /* And the window is still a window — 300 appends did not grow the row pool. */
+      expect(after.rows).toBeLessThanOrEqual(27);
 
-    /* Recorded rather than only printed on failure: `bench/last-run.json` is the run's own
+      /* Recorded rather than only printed on failure: `bench/last-run.json` is the run's own
        record, and a budget row in `bench/budget.json` has to come from a number someone can
        find again. */
-    test.info().annotations.push({
-      type: "d0bar-append-storm",
-      description:
-        `max ${attributed.maxTaskMs.toFixed(2)} ms in one frame, ` +
-        `${attributed.totalMs.toFixed(1)} ms total over ${attributed.taskMs.length} frames, ` +
-        `longest task of any origin ${attributed.maxAnyTaskMs.toFixed(2)} ms`,
-    });
+      test.info().annotations.push({
+        type: "d0bar-append-storm",
+        description:
+          `max ${attributed.maxTaskMs.toFixed(2)} ms in one frame, ` +
+          `${attributed.totalMs.toFixed(1)} ms total over ${attributed.taskMs.length} frames, ` +
+          `longest task of any origin ${attributed.maxAnyTaskMs.toFixed(2)} ms`,
+      });
 
-    expect(
-      attributed.maxTaskMs,
-      `worst frame's d0bar work ${attributed.maxTaskMs.toFixed(2)} ms; ` +
-        `top frames ${JSON.stringify(attributed.taskMs.slice(0, 5).map((ms) => +ms.toFixed(2)))}; ` +
-        `${attributed.totalMs.toFixed(1)} ms total over ${attributed.taskMs.length} frames`,
-    ).toBeLessThan(FRAME_BUDGET_MS);
-  });
+      expect(
+        attributed.maxTaskMs,
+        `worst frame's d0bar work ${attributed.maxTaskMs.toFixed(2)} ms; ` +
+          `top frames ${JSON.stringify(attributed.taskMs.slice(0, 5).map((ms) => +ms.toFixed(2)))}; ` +
+          `${attributed.totalMs.toFixed(1)} ms total over ${attributed.taskMs.length} frames`,
+      ).toBeLessThan(FRAME_BUDGET_MS);
+    },
+  );
 
   test("appending does not move the viewport or drop the selection", async ({ page }) => {
     await openPanel(page);
@@ -468,9 +474,7 @@ test.describe("keyboard", () => {
        document, so it only fires while focus is inside the panel; the row that had focus is
        now hidden, which drops focus to `<body>` and silently breaks Escape. Observed in
        Chromium before it was fixed, which is why it is asserted here rather than trusted. */
-    const focused = await page.evaluate(
-      () => window.__d0root!.activeElement?.className ?? "",
-    );
+    const focused = await page.evaluate(() => window.__d0root!.activeElement?.className ?? "");
     expect(focused).toContain("trace-back");
 
     await page.keyboard.press("Escape");

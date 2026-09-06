@@ -172,7 +172,8 @@ test("has the badge right before the tab has ever been opened", async ({ page })
     return {
       badge: Number(root.querySelector(".badge")!.textContent),
       /* Still on the requests tab — the untraced view has never been shown. */
-      onRequests: root.querySelector(".coverage") === null ||
+      onRequests:
+        root.querySelector(".coverage") === null ||
         (root.querySelector(".coverage") as HTMLElement).hidden,
     };
   });
@@ -230,7 +231,9 @@ test("gives the tab one tooltip, carrying the current count", async ({ page }) =
     const root = window.__d0root!;
     const tabs = [...root.querySelectorAll<HTMLElement>(".tab")];
     const untraced = tabs.find((t) => t.textContent?.startsWith("Untraced"))!;
-    const anchors = [...root.querySelectorAll(".tip-anchor")].filter((a) => a.contains(untraced));
+    const anchors = [...root.querySelectorAll(".tip-anchor")].filter((a) =>
+      a.contains(untraced),
+    );
     const bubbles = [...root.querySelectorAll<HTMLElement>(".tip")].filter(
       (b) => !b.hidden && anchors.some((a) => a.contains(b)),
     );
@@ -243,8 +246,6 @@ test("gives the tab one tooltip, carrying the current count", async ({ page }) =
   });
 
   expect(shown.visible, "exactly one bubble is showing for this tab").toBe(1);
-  expect(shown.text, "which leads with the reading").toContain(
-    `${shown.badge} of `,
-  );
+  expect(shown.text, "which leads with the reading").toContain(`${shown.badge} of `);
   expect(shown.text, "and still explains what the tab is").toContain("trace context");
 });

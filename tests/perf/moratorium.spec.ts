@@ -59,9 +59,10 @@ test("touches nothing in the host document until the load phase has settled", as
    * [1588, 1580, 1580, 1564, 1568] ms and `gated` gave [1560, 1560, 1568, 1564, 1580] — the
    * same number within the fixture's own spread. `ab.spec.ts` is where that comparison lives.
    */
-  expect(timing.lcpAtMount, "the page had reported an LCP before the pill mounted").toBeGreaterThan(
-    0,
-  );
+  expect(
+    timing.lcpAtMount,
+    "the page had reported an LCP before the pill mounted",
+  ).toBeGreaterThan(0);
   expect(
     timing.mountedAt,
     "mounted after every LCP candidate the browser had produced",

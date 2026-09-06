@@ -17,6 +17,18 @@ pnpm build && pnpm test:perf
 
 `D0BAR_RUNS=4 pnpm test:perf` shortens the A/B run while iterating. CI uses the default.
 
+The suite is split into two Playwright projects, and CI runs them as two jobs on two runners:
+
+| project | tests | how it runs | why |
+| --- | --- | --- | --- |
+| `timing` | 7, tagged `@timing` | one worker, alone on the machine | they compare durations against each other, so anything else on the runner is noise |
+| `behaviour` | 62 | every core | they assert ordering, DOM state, storage and console output — nothing that cares who else is running |
+
+`pnpm test:perf:timing` and `pnpm test:perf:behaviour` run one each; `pnpm test:perf` runs both
+serially, which is what one machine should do. Measured on CI before the split: 317 s of the
+suite was timing-sensitive and 158 s was not, and the second 158 s was running one test at a
+time because it shared a config with the first.
+
 ## The fixture
 
 `fixtures/host/` is a page that is already struggling, so the toolbar is measured under

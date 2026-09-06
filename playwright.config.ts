@@ -1,9 +1,22 @@
 import { defineConfig } from "@playwright/test";
 
 /**
- * The observer-effect budget is a correctness test, not a nicety, so it runs serially on
- * one worker: two arms of the same fixture compared against each other cannot share a
- * machine with other tests without the comparison becoming noise.
+ * Two projects, because this directory holds two kinds of test and only one of them cares who
+ * else is on the machine.
+ *
+ * The observer-effect budget is a correctness test, not a nicety: two arms of the same fixture
+ * compared against each other cannot share a machine with anything without the comparison
+ * becoming noise. That is seven tests, tagged `@timing`, and they run alone on one worker.
+ *
+ * The other sixty-odd assert ordering, DOM state, storage contents and console output. They
+ * inherited the serial constraint from the seven and were paying for it: measured on CI,
+ * 317 s of the suite is timing-sensitive and 158 s is not, and the second 158 s was running one
+ * test at a time for no reason.
+ *
+ * Worker counts live in the scripts rather than here, because `workers` is a global option
+ * that a project cannot override — `pnpm test:perf:timing` pins one, `pnpm test:perf:behaviour`
+ * takes the machine. Running `pnpm test:perf` runs both serially, which is what a single
+ * machine should do.
  */
 export default defineConfig({
   testDir: "tests/perf",
@@ -29,5 +42,20 @@ export default defineConfig({
     reuseExistingServer: false,
     stdout: "ignore",
   },
-  projects: [{ name: "chromium", use: { browserName: "chromium" } }],
+  projects: [
+    /* Alone on the machine. `ab.spec.ts` is 228 s of this on its own. */
+    {
+      name: "timing",
+      grep: /@timing/,
+      fullyParallel: false,
+      use: { browserName: "chromium" },
+    },
+    /* Everything else. Nothing here compares two durations against each other. */
+    {
+      name: "behaviour",
+      grepInvert: /@timing/,
+      fullyParallel: true,
+      use: { browserName: "chromium" },
+    },
+  ],
 });

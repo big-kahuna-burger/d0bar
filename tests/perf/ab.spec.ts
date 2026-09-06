@@ -205,173 +205,177 @@ async function measure(page: Page, arm: Arm): Promise<Sample> {
   };
 }
 
-test("the toolbar does not perturb what it measures", async ({ browser }) => {
-  const samples: Record<Arm, Sample[]> = { off: [], gated: [], on: [] };
+test(
+  "the toolbar does not perturb what it measures",
+  { tag: "@timing" },
+  async ({ browser }) => {
+    const samples: Record<Arm, Sample[]> = { off: [], gated: [], on: [] };
 
-  /* One warm-up per arm, discarded: the first load of a fresh browser pays costs that have
+    /* One warm-up per arm, discarded: the first load of a fresh browser pays costs that have
      nothing to do with any arm. */
-  for (const arm of ARMS) {
-    const page = await browser.newPage();
-    await measure(page, arm);
-    await page.close();
-  }
-
-  /* Arms alternate rather than running in blocks, so machine drift over the run cannot land
-     entirely on one of them. */
-  for (let i = 0; i < RUNS; i++) {
     for (const arm of ARMS) {
       const page = await browser.newPage();
-      samples[arm].push(await measure(page, arm));
+      await measure(page, arm);
       await page.close();
     }
-  }
 
-  const pick = (arm: Arm, key: keyof Sample) => samples[arm].map((s) => s[key]);
-  const p95 = (arm: Arm, key: keyof Sample) => percentile(pick(arm, key), 95);
-  const row = (key: keyof Sample) => ({
-    off: p95("off", key),
-    gated: p95("gated", key),
-    on: p95("on", key),
-  });
+    /* Arms alternate rather than running in blocks, so machine drift over the run cannot land
+     entirely on one of them. */
+    for (let i = 0; i < RUNS; i++) {
+      for (const arm of ARMS) {
+        const page = await browser.newPage();
+        samples[arm].push(await measure(page, arm));
+        await page.close();
+      }
+    }
 
-  const result = {
-    runs: RUNS,
-    generatedAt: new Date().toISOString(),
-    /* Recorded so a reader of `bench/last-budget.json` does not have to know this file: every
+    const pick = (arm: Arm, key: keyof Sample) => samples[arm].map((s) => s[key]);
+    const p95 = (arm: Arm, key: keyof Sample) => percentile(pick(arm, key), 95);
+    const row = (key: keyof Sample) => ({
+      off: p95("off", key),
+      gated: p95("gated", key),
+      on: p95("on", key),
+    });
+
+    const result = {
+      runs: RUNS,
+      generatedAt: new Date().toISOString(),
+      /* Recorded so a reader of `bench/last-budget.json` does not have to know this file: every
        delta below is `on − gated`, not `on − off`. */
-    baseline: "gated",
-    metrics: {
-      /**
-       * Reported per arm, gated by `inpSign` below rather than by a delta between these.
-       *
-       * The median is the arm's typical quantum and the p95 is its tail; both are useful to
-       * read and neither can be compared against a 2 ms threshold, because the smallest
-       * difference either can express is 8 ms. Raw per-run values travel with them so a
-       * future reader of `bench/last-budget.json` can re-analyse without re-running.
-       */
-      inp: {
-        off: { median: median(pick("off", "inp")), p95: p95("off", "inp") },
-        gated: { median: median(pick("gated", "inp")), p95: p95("gated", "inp") },
-        on: { median: median(pick("on", "inp")), p95: p95("on", "inp") },
-        runs: {
-          off: pick("off", "inp"),
-          gated: pick("gated", "inp"),
-          on: pick("on", "inp"),
+      baseline: "gated",
+      metrics: {
+        /**
+         * Reported per arm, gated by `inpSign` below rather than by a delta between these.
+         *
+         * The median is the arm's typical quantum and the p95 is its tail; both are useful to
+         * read and neither can be compared against a 2 ms threshold, because the smallest
+         * difference either can express is 8 ms. Raw per-run values travel with them so a
+         * future reader of `bench/last-budget.json` can re-analyse without re-running.
+         */
+        inp: {
+          off: { median: median(pick("off", "inp")), p95: p95("off", "inp") },
+          gated: { median: median(pick("gated", "inp")), p95: p95("gated", "inp") },
+          on: { median: median(pick("on", "inp")), p95: p95("on", "inp") },
+          runs: {
+            off: pick("off", "inp"),
+            gated: pick("gated", "inp"),
+            on: pick("on", "inp"),
+          },
         },
-      },
-      /* The gate. `on` against `gated`, paired run by run. */
-      inpSign: {
-        ...signTest(pick("on", "inp"), pick("gated", "inp")),
-        budget: BUDGET.inpSignificance,
-      },
-      /* The same test against `off`, reported and not gated. It answers a different question
+        /* The gate. `on` against `gated`, paired run by run. */
+        inpSign: {
+          ...signTest(pick("on", "inp"), pick("gated", "inp")),
+          budget: BUDGET.inpSignificance,
+        },
+        /* The same test against `off`, reported and not gated. It answers a different question
          — what the whole bundle costs, download and parse included — and it is here because
          the CI run that prompted this rewrite showed `off` and `gated` scoring identically on
          INP, which is worth being able to see again. */
-      inpSignAgainstOff: signTest(pick("on", "inp"), pick("off", "inp")),
-      tbtP95: { ...row("tbt"), budget: BUDGET.tbtP95 },
-      clsMax: {
-        off: Math.max(...pick("off", "cls")),
-        gated: Math.max(...pick("gated", "cls")),
-        on: Math.max(...pick("on", "cls")),
-        budget: BUDGET.cls,
-      },
-      /**
-       * The mean, deliberately, and this row went p95 and back within one change.
-       *
-       * The file header's "never at the mean" is about not hiding a tail. Long tasks are an
-       * integer count, so at twenty runs the p95 is `sorted[18]` — one sample, with a noise
-       * floor of a whole task against a threshold of half of one. CI measured `off` 7,
-       * `gated` 6, `on` 7: the `on` arm tied with the arm that loads no bundle, while the
-       * baseline scored *below* both, which is not a direction a baseline can meaningfully
-       * take. The mean's resolution at n = 20 is 0.05 tasks, finer than the threshold, which
-       * is the property the row needs.
-       */
-      longTasksMean: {
-        off: mean(pick("off", "longTasks")),
-        gated: mean(pick("gated", "longTasks")),
-        on: mean(pick("on", "longTasks")),
-        budget: BUDGET.longTaskCount,
-      },
-      /* Absolute rather than a delta: provenance makes the subtraction unnecessary. `gated`
+        inpSignAgainstOff: signTest(pick("on", "inp"), pick("off", "inp")),
+        tbtP95: { ...row("tbt"), budget: BUDGET.tbtP95 },
+        clsMax: {
+          off: Math.max(...pick("off", "cls")),
+          gated: Math.max(...pick("gated", "cls")),
+          on: Math.max(...pick("on", "cls")),
+          budget: BUDGET.cls,
+        },
+        /**
+         * The mean, deliberately, and this row went p95 and back within one change.
+         *
+         * The file header's "never at the mean" is about not hiding a tail. Long tasks are an
+         * integer count, so at twenty runs the p95 is `sorted[18]` — one sample, with a noise
+         * floor of a whole task against a threshold of half of one. CI measured `off` 7,
+         * `gated` 6, `on` 7: the `on` arm tied with the arm that loads no bundle, while the
+         * baseline scored *below* both, which is not a direction a baseline can meaningfully
+         * take. The mean's resolution at n = 20 is 0.05 tasks, finer than the threshold, which
+         * is the property the row needs.
+         */
+        longTasksMean: {
+          off: mean(pick("off", "longTasks")),
+          gated: mean(pick("gated", "longTasks")),
+          on: mean(pick("on", "longTasks")),
+          budget: BUDGET.longTaskCount,
+        },
+        /* Absolute rather than a delta: provenance makes the subtraction unnecessary. `gated`
          is the bundle's own evaluation and `off` is zero; both are asserted as controls. */
-      attributedFrameMsP95: { ...row("attributedFrameMs"), budget: BUDGET.attributedFrameMs },
-      attributedTotalMsP95: row("attributedTotalMs"),
-      /* Reported for visibility, not gated: LCP on this fixture is dominated by a fixed
+        attributedFrameMsP95: { ...row("attributedFrameMs"), budget: BUDGET.attributedFrameMs },
+        attributedTotalMsP95: row("attributedTotalMs"),
+        /* Reported for visibility, not gated: LCP on this fixture is dominated by a fixed
          server delay, so its run-to-run spread is wider than any toolbar effect. */
-      lcpP95: row("lcp"),
-    },
-  };
+        lcpP95: row("lcp"),
+      },
+    };
 
-  const against = (key: keyof typeof result.metrics): number => {
-    const metric = result.metrics[key] as { on: number; gated: number };
-    return metric.on - metric.gated;
-  };
+    const against = (key: keyof typeof result.metrics): number => {
+      const metric = result.metrics[key] as { on: number; gated: number };
+      return metric.on - metric.gated;
+    };
 
-  const deltas = {
-    tbtP95: against("tbtP95"),
-    cls: against("clsMax"),
-    longTasksMean: against("longTasksMean"),
-    lcpP95: against("lcpP95"),
-    /* Deliberately absent: `attributedFrameMsP95` is not a difference, and INP is not
+    const deltas = {
+      tbtP95: against("tbtP95"),
+      cls: against("clsMax"),
+      longTasksMean: against("longTasksMean"),
+      lcpP95: against("lcpP95"),
+      /* Deliberately absent: `attributedFrameMsP95` is not a difference, and INP is not
        compared as one — see `inpSign`. */
-  };
+    };
 
-  writeFileSync(
-    join(process.cwd(), "bench", "last-budget.json"),
-    JSON.stringify({ ...result, deltas }, null, 2),
-    "utf8",
-  );
+    writeFileSync(
+      join(process.cwd(), "bench", "last-budget.json"),
+      JSON.stringify({ ...result, deltas }, null, 2),
+      "utf8",
+    );
 
-  const sign = result.metrics.inpSign;
+    const sign = result.metrics.inpSign;
 
-  console.log("observer-effect deltas (on − gated):", deltas);
-  console.log("attributed d0bar main-thread time:", result.metrics.attributedFrameMsP95);
-  console.log("INP per arm (median / p95):", {
-    off: result.metrics.inp.off,
-    gated: result.metrics.inp.gated,
-    on: result.metrics.inp.on,
-  });
-  console.log(
-    `INP paired sign test (on vs gated): ${sign.worse} worse, ${sign.better} better, ` +
-      `${sign.ties} tied, p=${sign.p.toFixed(4)}`,
-  );
+    console.log("observer-effect deltas (on − gated):", deltas);
+    console.log("attributed d0bar main-thread time:", result.metrics.attributedFrameMsP95);
+    console.log("INP per arm (median / p95):", {
+      off: result.metrics.inp.off,
+      gated: result.metrics.inp.gated,
+      on: result.metrics.inp.on,
+    });
+    console.log(
+      `INP paired sign test (on vs gated): ${sign.worse} worse, ${sign.better} better, ` +
+        `${sign.ties} tied, p=${sign.p.toFixed(4)}`,
+    );
 
-  expect(deltas.tbtP95, "Δp95 TBT").toBeLessThanOrEqual(BUDGET.tbtP95);
-  expect(deltas.cls, "Δ CLS").toBeLessThanOrEqual(BUDGET.cls);
-  expect(deltas.longTasksMean, "Δ mean long-task count").toBeLessThanOrEqual(
-    BUDGET.longTaskCount,
-  );
+    expect(deltas.tbtP95, "Δp95 TBT").toBeLessThanOrEqual(BUDGET.tbtP95);
+    expect(deltas.cls, "Δ CLS").toBeLessThanOrEqual(BUDGET.cls);
+    expect(deltas.longTasksMean, "Δ mean long-task count").toBeLessThanOrEqual(
+      BUDGET.longTaskCount,
+    );
 
-  /**
-   * INP, as a direction rather than a magnitude.
-   *
-   * Fails when `on` lands in a worse quantum than `gated` more consistently than chance would
-   * explain. A toolbar costing a fraction of a quantum tips some runs over a boundary and
-   * none back, which this sees; a toolbar costing nothing scatters both ways, which it does
-   * not. See `signTest` for why no millisecond threshold is expressible here.
-   */
-  expect(
-    sign.p,
-    `INP regressed in ${sign.worse} of ${sign.worse + sign.better} decisive runs ` +
-      `(${sign.ties} tied); p=${sign.p.toFixed(4)}`,
-  ).toBeGreaterThan(BUDGET.inpSignificance);
+    /**
+     * INP, as a direction rather than a magnitude.
+     *
+     * Fails when `on` lands in a worse quantum than `gated` more consistently than chance would
+     * explain. A toolbar costing a fraction of a quantum tips some runs over a boundary and
+     * none back, which this sees; a toolbar costing nothing scatters both ways, which it does
+     * not. See `signTest` for why no millisecond threshold is expressible here.
+     */
+    expect(
+      sign.p,
+      `INP regressed in ${sign.worse} of ${sign.worse + sign.better} decisive runs ` +
+        `(${sign.ties} tied); p=${sign.p.toFixed(4)}`,
+    ).toBeGreaterThan(BUDGET.inpSignificance);
 
-  /* The row with provenance. Not a delta and not floored: this is d0bar's own script time in
+    /* The row with provenance. Not a delta and not floored: this is d0bar's own script time in
      the worst top-level task of a run, at p95 across runs. */
-  expect(
-    result.metrics.attributedFrameMsP95.on,
-    "p95 of the worst d0bar-attributed task",
-  ).toBeLessThanOrEqual(BUDGET.attributedFrameMs);
+    expect(
+      result.metrics.attributedFrameMsP95.on,
+      "p95 of the worst d0bar-attributed task",
+    ).toBeLessThanOrEqual(BUDGET.attributedFrameMs);
 
-  /* The controls, and the first of them corrected a wrong expectation of this file's author:
+    /* The controls, and the first of them corrected a wrong expectation of this file's author:
      `gated` is not zero and should not be. That arm loads the bundle and evaluates it — the
      IIFE body runs, reads the opt-in attribute, finds nothing and returns — which is real
      d0bar script time and is exactly the cost the gated baseline exists to hold constant.
      Measured at 0.287 ms p95 over four runs. `off` loads no bundle at all, so it is zero. */
-  expect(
-    result.metrics.attributedFrameMsP95.gated,
-    "the gated arm evaluates the bundle and does nothing else",
-  ).toBeLessThanOrEqual(2);
-  expect(result.metrics.attributedFrameMsP95.off, "the off arm loads no d0bar").toBe(0);
-});
+    expect(
+      result.metrics.attributedFrameMsP95.gated,
+      "the gated arm evaluates the bundle and does nothing else",
+    ).toBeLessThanOrEqual(2);
+    expect(result.metrics.attributedFrameMsP95.off, "the off arm loads no d0bar").toBe(0);
+  },
+);

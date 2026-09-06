@@ -3,6 +3,17 @@
 # `readme.md` said "asserted in CI" in three places and `observation-core`'s budget scenario
 # said "THEN CI fails", against a repository with no `.github`, no `.gitlab-ci.yml` and no
 # `.circleci`. The correction is this file, not an edit to those sentences.
+#
+# Three jobs, deliberately parallel and deliberately not sharing a runner:
+#
+#   check            lint, size gate, unit tests
+#   perf-timing      the seven @timing tests, one worker, alone on the machine
+#   perf-behaviour   the other sixty-two, across every core the runner has
+#
+# The split exists because only the first kind cares who else is running. Measured on one CI
+# run: 317 s of the perf suite is timing-sensitive and 158 s is not, and the second 158 s was
+# running one test at a time because it shared a config with the first. Each job builds its own
+# `dist/` rather than taking one from `check`, so none of them waits on another.
 name: ci
 
 on:
@@ -44,6 +55,24 @@ jobs:
 
       - run: pnpm test
 
+  # The observer-effect budget and the six other tests that compare durations. One worker, and
+  # nothing else on the runner — which is stricter than it was before this split, when they
+  # shared a machine with sixty-two tests that were never part of what they measure.
+  #
+  # This is the job that produces every number the project quotes. `CLAUDE.md`: CI calibrates
+  # and checks, local never does.
+  perf-timing:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
       # Playwright's own Chromium, pinned by the `@playwright/test` version in the lockfile
       # rather than by a floating channel.
       #
@@ -68,16 +97,53 @@ jobs:
       - if: steps.playwright.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium
 
-      # The perturbation suite. `bench/fixtures/server.mjs` is started by Playwright's own
-      # `webServer` config with `reuseExistingServer: false`, so nothing stale can serve it.
-      - run: pnpm test:perf
+      # `bench/fixtures/server.mjs` is started by Playwright's own `webServer` config with
+      # `reuseExistingServer: false`, so nothing stale can serve it.
+      - run: pnpm test:perf:timing
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: perf-results
+          name: perf-timing-results
           path: |
             bench/last-budget.json
+            bench/last-run.json
             test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # Everything that asserts ordering, DOM state, storage contents or console output. None of it
+  # compares two durations, so it takes every core the runner has.
+  perf-behaviour:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - uses: actions/cache@v4
+        id: playwright
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - if: steps.playwright.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - if: steps.playwright.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
+      - run: pnpm test:perf:behaviour
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-behaviour-results
+          path: test-results/
           retention-days: 14
           if-no-files-found: ignore

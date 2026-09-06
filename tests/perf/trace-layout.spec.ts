@@ -47,123 +47,127 @@ interface Measured {
   strings: number;
 }
 
-test("lays out a 4000-span trace without a long task on the main thread", async ({ page }) => {
-  test.setTimeout(120_000);
+test(
+  "lays out a 4000-span trace without a long task on the main thread",
+  { tag: "@timing" },
+  async ({ page }) => {
+    test.setTimeout(120_000);
 
-  await page.goto("/?d0bar=off", { waitUntil: "load" });
-  await page.evaluate(
-    () => (window as unknown as { __fixtureReady: Promise<void> }).__fixtureReady,
-  );
+    await page.goto("/?d0bar=off", { waitUntil: "load" });
+    await page.evaluate(
+      () => (window as unknown as { __fixtureReady: Promise<void> }).__fixtureReady,
+    );
 
-  const measured: Measured = await page.evaluate(
-    async ({ longTaskMs }) => {
-      const longTasks: number[] = [];
-      /* The browser's own reading, not a timer of ours. `buffered: true` is deliberately not
+    const measured: Measured = await page.evaluate(
+      async ({ longTaskMs }) => {
+        const longTasks: number[] = [];
+        /* The browser's own reading, not a timer of ours. `buffered: true` is deliberately not
          used — only tasks that happen *during* the layout are of interest, and the fixture's own
          load produces plenty before it. */
-      const observer = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          if (entry.duration >= longTaskMs) longTasks.push(entry.duration);
-        }
-      });
-      observer.observe({ type: "longtask", buffered: false });
-
-      /* Fetched, not inlined: the panel gets its body from the network too, and a 951 kB string
-         literal in a spec would be measured as parse time of the spec rather than of the trace. */
-      const body = await fetch("/trace-4000.json").then((response) => response.text());
-
-      const worker = new Worker("/dist/d0bar-layout-worker.js", { type: "module" });
-
-      const reply = await new Promise<Record<string, unknown>>((resolve, reject) => {
-        worker.addEventListener("error", () => reject(new Error("worker failed to load")));
-        worker.addEventListener("message", (event: MessageEvent) => {
-          /* Measured inside the handler, so `mainThreadMs` covers exactly the work this thread
-             does: receiving the reply and building the views. The wait is the worker's. */
-          const started = performance.now();
-          const data = event.data as {
-            kind: string;
-            count: number;
-            buffer: ArrayBuffer;
-            strings: string[];
-            summary: { serviceCount: number; truncated: boolean };
-            workerMs: number;
-          };
-          if (data.kind !== "layout-ok") {
-            reject(new Error(String((data as unknown as { reason: string }).reason)));
-            return;
+        const observer = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            if (entry.duration >= longTaskMs) longTasks.push(entry.duration);
           }
+        });
+        observer.observe({ type: "longtask", buffered: false });
 
-          /* The same eight views the panel builds, at the same offsets — inlined rather than
+        /* Fetched, not inlined: the panel gets its body from the network too, and a 951 kB string
+         literal in a spec would be measured as parse time of the spec rather than of the trace. */
+        const body = await fetch("/trace-4000.json").then((response) => response.text());
+
+        const worker = new Worker("/dist/d0bar-layout-worker.js", { type: "module" });
+
+        const reply = await new Promise<Record<string, unknown>>((resolve, reject) => {
+          worker.addEventListener("error", () => reject(new Error("worker failed to load")));
+          worker.addEventListener("message", (event: MessageEvent) => {
+            /* Measured inside the handler, so `mainThreadMs` covers exactly the work this thread
+             does: receiving the reply and building the views. The wait is the worker's. */
+            const started = performance.now();
+            const data = event.data as {
+              kind: string;
+              count: number;
+              buffer: ArrayBuffer;
+              strings: string[];
+              summary: { serviceCount: number; truncated: boolean };
+              workerMs: number;
+            };
+            if (data.kind !== "layout-ok") {
+              reject(new Error(String((data as unknown as { reason: string }).reason)));
+              return;
+            }
+
+            /* The same eight views the panel builds, at the same offsets — inlined rather than
              imported, because this spec measures the shipped worker artifact and must not pull
              the panel bundle onto the thread it is measuring. */
-          const n = data.count;
-          let at = 0;
-          const take = (bytes: number): number => {
-            const offset = at;
-            at += bytes * n;
-            return offset;
-          };
-          const durationNs = new Float64Array(data.buffer, take(8), n);
-          take(4); // nameId
-          take(4); // serviceId
-          take(4); // left
-          const width = new Float32Array(data.buffer, take(4), n);
-          const depth = new Uint8Array(data.buffer, take(1), n);
+            const n = data.count;
+            let at = 0;
+            const take = (bytes: number): number => {
+              const offset = at;
+              at += bytes * n;
+              return offset;
+            };
+            const durationNs = new Float64Array(data.buffer, take(8), n);
+            take(4); // nameId
+            take(4); // serviceId
+            take(4); // left
+            const width = new Float32Array(data.buffer, take(4), n);
+            const depth = new Uint8Array(data.buffer, take(1), n);
 
-          let maxDepth = 0;
-          for (let i = 0; i < n; i += 1) if (depth[i]! > maxDepth) maxDepth = depth[i]!;
-          /* Touched so the views are not optimised away, and so a wrong offset would throw here
+            let maxDepth = 0;
+            for (let i = 0; i < n; i += 1) if (depth[i]! > maxDepth) maxDepth = depth[i]!;
+            /* Touched so the views are not optimised away, and so a wrong offset would throw here
              rather than silently measure nothing. */
-          if (!(durationNs.length === n && width.length === n)) {
-            reject(new Error("view length mismatch"));
-            return;
-          }
+            if (!(durationNs.length === n && width.length === n)) {
+              reject(new Error("view length mismatch"));
+              return;
+            }
 
-          resolve({
-            workerMs: data.workerMs,
-            mainThreadMs: performance.now() - started,
-            count: n,
-            serviceCount: data.summary.serviceCount,
-            truncated: data.summary.truncated,
-            strings: data.strings.length,
-            maxDepth,
+            resolve({
+              workerMs: data.workerMs,
+              mainThreadMs: performance.now() - started,
+              count: n,
+              serviceCount: data.summary.serviceCount,
+              truncated: data.summary.truncated,
+              strings: data.strings.length,
+              maxDepth,
+            });
           });
+
+          worker.postMessage({ kind: "layout", version: 1, id: 1, body, from: 0, to: 0 });
         });
 
-        worker.postMessage({ kind: "layout", version: 1, id: 1, body, from: 0, to: 0 });
-      });
+        /* Let any task the layout provoked land before the observer is torn down. */
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        observer.disconnect();
+        worker.terminate();
 
-      /* Let any task the layout provoked land before the observer is torn down. */
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      observer.disconnect();
-      worker.terminate();
+        return { ...(reply as unknown as Measured), longTasks, detached: true };
+      },
+      { longTaskMs: LONG_TASK_MS },
+    );
 
-      return { ...(reply as unknown as Measured), longTasks, detached: true };
-    },
-    { longTaskMs: LONG_TASK_MS },
-  );
+    const report =
+      `worker      ${measured.workerMs.toFixed(1)} ms for ${measured.count} spans, ` +
+      `${measured.serviceCount} services, max depth ${measured.maxDepth}\n` +
+      `main thread ${measured.mainThreadMs.toFixed(2)} ms (budget ${HANDOFF_BUDGET_MS} ms)\n` +
+      `long tasks  ${measured.longTasks.length}` +
+      (measured.longTasks.length > 0
+        ? ` — ${measured.longTasks.map((d) => d.toFixed(0)).join(", ")} ms`
+        : "");
+    console.log(report);
 
-  const report =
-    `worker      ${measured.workerMs.toFixed(1)} ms for ${measured.count} spans, ` +
-    `${measured.serviceCount} services, max depth ${measured.maxDepth}\n` +
-    `main thread ${measured.mainThreadMs.toFixed(2)} ms (budget ${HANDOFF_BUDGET_MS} ms)\n` +
-    `long tasks  ${measured.longTasks.length}` +
-    (measured.longTasks.length > 0
-      ? ` — ${measured.longTasks.map((d) => d.toFixed(0)).join(", ")} ms`
-      : "");
-  console.log(report);
-
-  /* The fixture is what it claims to be. Asserted here as well as in the generator, because a
+    /* The fixture is what it claims to be. Asserted here as well as in the generator, because a
      budget measured against a trace that quietly shrank is not a budget. */
-  expect(measured.count).toBe(4001); // 4000 spans plus the browser web event
-  expect(measured.serviceCount).toBeGreaterThanOrEqual(40);
-  expect(measured.maxDepth).toBeGreaterThanOrEqual(12);
-  expect(measured.truncated).toBe(false);
+    expect(measured.count).toBe(4001); // 4000 spans plus the browser web event
+    expect(measured.serviceCount).toBeGreaterThanOrEqual(40);
+    expect(measured.maxDepth).toBeGreaterThanOrEqual(12);
+    expect(measured.truncated).toBe(false);
 
-  /* The claim. Not "no long task at all" — the page has its own — but none during the layout. */
-  expect(measured.longTasks, report).toHaveLength(0);
-  expect(measured.mainThreadMs, report).toBeLessThan(HANDOFF_BUDGET_MS);
-});
+    /* The claim. Not "no long task at all" — the page has its own — but none during the layout. */
+    expect(measured.longTasks, report).toHaveLength(0);
+    expect(measured.mainThreadMs, report).toBeLessThan(HANDOFF_BUDGET_MS);
+  },
+);
 
 test("transfers the row buffer rather than copying it", async ({ page }) => {
   await page.goto("/?d0bar=off", { waitUntil: "load" });

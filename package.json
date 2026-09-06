@@ -37,7 +37,9 @@
     "dev": "pnpm build && concurrently -n s1,panel,sw,serve -c cyan,blue,green,magenta \"vite build --watch\" \"D0BAR_STAGE=2 vite build --watch\" \"D0BAR_STAGE=sw vite build --watch\" \"node --watch bench/fixtures/server.mjs\"",
     "prepublishOnly": "pnpm build && pnpm test && pnpm size",
     "fixture:otel": "node scripts/build-otel-fixture.mjs",
-    "fixture:trace": "node scripts/build-trace-fixture.mjs"
+    "fixture:trace": "node scripts/build-trace-fixture.mjs",
+    "test:perf:timing": "pnpm fixture:otel && pnpm fixture:trace && playwright test --project=timing --workers=1",
+    "test:perf:behaviour": "pnpm fixture:otel && pnpm fixture:trace && playwright test --project=behaviour --workers=100%"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

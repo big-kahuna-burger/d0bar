@@ -128,7 +128,7 @@ test.describe("registration", () => {
 });
 
 test.describe("observation without interception", () => {
-  test("adds no measurable worker-attributable delay", async ({ page }) => {
+  test("adds no measurable worker-attributable delay", { tag: "@timing" }, async ({ page }) => {
     await loadControlled(page);
 
     const deltas = await page.evaluate(() =>
@@ -354,10 +354,14 @@ test.describe("the host owns the scope", () => {
        scope belongs to the host, that d0bar will not take it, and what the developer can do
        instead. It must never be replaced by a guess at a cause. */
     expect(footer.tiers[1]?.detail).toContain("belongs to the host page");
-    expect(footer.tiers[1]?.detail).toContain("never takes or unregisters someone else's scope");
+    expect(footer.tiers[1]?.detail).toContain(
+      "never takes or unregisters someone else's scope",
+    );
     expect(footer.tiers[1]?.detail).toContain("import d0bar's worker module");
-    expect(footer.tiers[1]?.detail, "the no-worker-path copy leaked into the contended state")
-      .not.toContain("No worker path is configured");
+    expect(
+      footer.tiers[1]?.detail,
+      "the no-worker-path copy leaked into the contended state",
+    ).not.toContain("No worker path is configured");
 
     expect(footer.perturbState).toBe("degraded");
     expect(footer.perturb).toBe("degraded — no trace jump");
@@ -399,7 +403,10 @@ test.describe("the host owns the scope", () => {
       };
     });
 
-    expect(reading.chips.length, "no rows rendered, so nothing was actually asserted").toBeGreaterThan(0);
+    expect(
+      reading.chips.length,
+      "no rows rendered, so nothing was actually asserted",
+    ).toBeGreaterThan(0);
     /* With no worker there is no traceparent to read, so no request can be shown as traced.
        A single `TRACE` chip here would mean the panel is claiming trace context it never saw. */
     expect(reading.traced).toBe(0);

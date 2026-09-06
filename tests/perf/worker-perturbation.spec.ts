@@ -63,35 +63,43 @@ async function sample(page: Page, query: string): Promise<number[]> {
   );
 }
 
-test("registering the worker does not move request latency", async ({ page }) => {
-  test.setTimeout(180_000);
+test(
+  "registering the worker does not move request latency",
+  { tag: "@timing" },
+  async ({ page }) => {
+    test.setTimeout(180_000);
 
-  const withWorker: number[] = [];
-  const without: number[] = [];
+    const withWorker: number[] = [];
+    const without: number[] = [];
 
-  /* Interleaved, not one arm then the other. A machine that gets busy halfway through would
+    /* Interleaved, not one arm then the other. A machine that gets busy halfway through would
      otherwise load the entire penalty onto whichever arm ran second, and the result would be
      an artefact of scheduling rather than a measurement of the worker. */
-  for (let run = 0; run < RUNS; run += 1) {
-    withWorker.push(...(await sample(page, "?d0bar=on")));
-    without.push(...(await sample(page, "?d0bar=on&sw=off")));
-  }
+    for (let run = 0; run < RUNS; run += 1) {
+      withWorker.push(...(await sample(page, "?d0bar=on")));
+      without.push(...(await sample(page, "?d0bar=on&sw=off")));
+    }
 
-  const onP95 = percentile(withWorker, 95);
-  const offP95 = percentile(without, 95);
-  const delta = onP95 - offP95;
+    const onP95 = percentile(withWorker, 95);
+    const offP95 = percentile(without, 95);
+    const delta = onP95 - offP95;
 
-  const report =
-    `worker ON  n=${withWorker.length} p50=${percentile(withWorker, 50).toFixed(1)}ms p95=${onP95.toFixed(1)}ms\n` +
-    `worker OFF n=${without.length} p50=${percentile(without, 50).toFixed(1)}ms p95=${offP95.toFixed(1)}ms\n` +
-    `delta p95  ${delta >= 0 ? "+" : ""}${delta.toFixed(1)}ms (budget ${BUDGET_MS}ms)`;
-  console.log(report);
+    const report =
+      `worker ON  n=${withWorker.length} p50=${percentile(withWorker, 50).toFixed(1)}ms p95=${onP95.toFixed(1)}ms\n` +
+      `worker OFF n=${without.length} p50=${percentile(without, 50).toFixed(1)}ms p95=${offP95.toFixed(1)}ms\n` +
+      `delta p95  ${delta >= 0 ? "+" : ""}${delta.toFixed(1)}ms (budget ${BUDGET_MS}ms)`;
+    console.log(report);
 
-  expect(withWorker.length, "the worker arm produced no requests to compare").toBeGreaterThan(20);
-  expect(without.length, "the no-worker arm produced no requests to compare").toBeGreaterThan(20);
+    expect(withWorker.length, "the worker arm produced no requests to compare").toBeGreaterThan(
+      20,
+    );
+    expect(without.length, "the no-worker arm produced no requests to compare").toBeGreaterThan(
+      20,
+    );
 
-  /* One-sided. A negative delta means the worker arm was *faster*, which is noise rather than
+    /* One-sided. A negative delta means the worker arm was *faster*, which is noise rather than
      a finding, and failing on it would make the suite flaky in the one direction that cannot
      indicate a regression. */
-  expect(delta, report).toBeLessThan(BUDGET_MS);
-});
+    expect(delta, report).toBeLessThan(BUDGET_MS);
+  },
+);
