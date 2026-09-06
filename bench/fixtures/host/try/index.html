@@ -9,8 +9,13 @@
 
       `bench/fixtures/host/` is the instrument, and nothing added to it may be live during a
       benchmark — the same rule that keeps the live-reload client behind `?live`. This file is
-      reached only by typing `/try`, is never loaded by index.html, and ships no script that
+      reached only by typing `/try/`, is never loaded by index.html, and ships no script that
       runs anywhere but here.
+
+      It lives in its own directory so its service worker can be scoped to `/try/`. A worker
+      registered at root scope from a demo page would keep controlling `/?d0bar=off` and
+      `/?d0bar=gated` in the same browser profile, and an arm with a worker under it is not the
+      arm it claims to be — visiting the demo would quietly poison every later local run.
 
       It exists because the fixture cannot imitate a real site's traffic: no third-party tags,
       no ad auction, no framework hydration, no CDN with a cold edge. The browser-skew note in
@@ -135,7 +140,21 @@
     <main>
       <h1>Try d0bar on a real page</h1>
       <p class="lede">
-        The shipped bundle, served from this dev server, loaded onto any site you have open.
+        d0bar is already running on this page, all tiers live — look bottom-right. Below is how
+        to put it on a site of your own.
+      </p>
+
+      <h2>This page, with everything on</h2>
+      <p>
+        Same origin as the dev server, so tier 2 registers and requests come back traced. The
+        worker is scoped to <code>/try/</code>, never to <code>/</code> — a demo page that
+        installed a root-scoped worker would go on controlling the benchmark arms at
+        <code>/?d0bar=off</code> and <code>/?d0bar=gated</code> in this browser profile
+        afterwards, and an arm with a worker under it is not the arm it claims to be.
+      </p>
+      <p class="row">
+        <button class="drag" id="traffic" type="button">Make some requests</button>
+        <span class="note" style="border: 0; padding: 0">then open the pill</span>
       </p>
 
       <h2>Bookmarklet</h2>
@@ -163,9 +182,11 @@
         <tr>
           <td>2 — service worker</td>
           <td>
-            <strong>Off, and the panel says so.</strong> A worker cannot be registered from
-            another origin. Requests will show as untraced. This is the degraded path working
-            correctly, not a failure.
+            <strong>Off, and the panel says so.</strong> A service worker script must be
+            same-origin as the page it controls, so one served from this dev server cannot be
+            registered onto someone else's site — no configuration changes that. Requests read
+            as untraced. This is the degraded path working correctly, not a failure. To see tier
+            2 live, use this page, or serve d0bar from your own origin.
           </td>
         </tr>
         <tr>
@@ -199,6 +220,17 @@
       </p>
     </main>
 
+    <!--
+      d0bar itself, loaded exactly as index.html loads it, with tier 2 pointed at the
+      `/try/`-scoped worker route rather than the root one.
+    -->
+    <script
+      src="/dist/d0bar.iife.js"
+      data-d0bar-enabled
+      data-d0bar-sw="/try/d0bar-sw.js"
+      defer
+    ></script>
+
     <script>
       (function () {
         /* Built from this page's own origin rather than hardcoded, so a port change here needs
@@ -217,6 +249,16 @@
           "})();";
         document.getElementById("mark").href = "javascript:" + encodeURIComponent(body);
         document.getElementById("snippet").textContent = body;
+
+        /* Something for the requests list to show. Same-origin, so the worker sees them and the
+           rows come back with a trace id rather than as untraced. */
+        document.getElementById("traffic").addEventListener("click", function () {
+          for (var i = 0; i < 12; i++) {
+            fetch("/api/demo?i=" + i + "&delay=" + (30 + i * 25) + "&t=" + Date.now()).catch(
+              function () {},
+            );
+          }
+        });
       })();
     </script>
   </body>

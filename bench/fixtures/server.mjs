@@ -241,6 +241,25 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  /**
+   * The same worker for `/try/`, scoped to `/try/` and nothing else.
+   *
+   * Deliberately *not* the root-scoped `/d0bar-sw.js`. `/try/` is a demo page, so it wants tier
+   * 2 live — but a worker it installed at root scope would go on controlling `/?d0bar=off` and
+   * `/?d0bar=gated` in the same browser profile afterwards, and a benchmark arm with a service
+   * worker under it is not the arm it claims to be. Visiting the demo would silently poison
+   * every later local run against the fixture.
+   *
+   * Serving it from `/try/` gives it a scope that covers the demo and cannot reach the arms.
+   * No `service-worker-allowed` header here for the same reason: widening is the thing to avoid.
+   */
+  if (path === "/try/d0bar-sw.js") {
+    await serveFile(res, join(repoRoot, "dist", "d0bar-sw.js"), {
+      "cache-control": "no-store",
+    });
+    return;
+  }
+
   /* The built bundle, served as a host application would serve it.
    *
    * Cross-origin allowed, for `/try` — dropping d0bar onto a real site is the only way to see
@@ -258,7 +277,10 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  const file = path === "/" ? "/index.html" : path;
+  /* `/` and any directory path resolve to their `index.html`. The trailing-slash form matters:
+     `/try/` is what registers a worker scoped to `/try/`, and `/try.html` would scope it to the
+     root — the thing the separate route above exists to prevent. */
+  const file = path.endsWith("/") ? `${path}index.html` : path;
   await serveFile(res, join(hostDir, normalize(file).replace(/^(\.\.[/\\])+/, "")));
 });
 
