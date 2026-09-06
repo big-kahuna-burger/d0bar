@@ -4,29 +4,25 @@ import { join } from "node:path";
 import { attributedDuring, isD0bar } from "./attribution";
 
 /**
- * The observer-effect budget.
+ * The observer-effect budget: the same fixture loaded with the toolbar enabled and disabled, the
+ * difference gated against a committed threshold. p95, never the mean — except where the metric is
+ * quantized, which is {@link percentile}'s note.
  *
- * d0bar's central claim is that it does not distort what it measures. This is where that
- * stops being a claim: the same fixture is loaded with the toolbar enabled and disabled, and
- * the difference between the two distributions is compared against a committed threshold.
- *
- * Deltas are compared at p95, never at the mean — a toolbar that is usually free and
- * occasionally costs 40ms is not free, and a mean hides exactly that.
- *
- * Two things about the shape of this file, both of them corrections:
+ * Two corrections are built into the shape:
  *
  * **The baseline is `gated`, not `off`.** The gated arm loads the identical bundle and starts
- * nothing, so comparing against it controls for the script download and parse — which a host
- * pays whether or not they opt in, and which is not the observer effect. `off` is kept as a
- * third arm because the difference between `off` and `gated` is itself worth seeing.
+ * nothing, so it controls for download and parse — a cost a host pays either way, and not the
+ * observer effect. `off` stays as a third arm because `off` vs `gated` is itself worth seeing.
  *
- * **The gate on d0bar's own main-thread cost is attributed, not inferred.** Every metric below
- * except `attributedFrameMs` is a difference between two arms of a fixture that deliberately
- * blocks for 240 ms, measured through `longtask`, which has a 50 ms floor. The example
- * `CLAUDE.md` opens with — a toolbar that adds 40 ms to a frame — produces no long task, no TBT
- * delta, no CLS, and an INP delta only if it collides with one of five clicks. It would have
- * passed every row here. `attributedFrameMs` reads the browser's own tracer and sums the script
- * time whose URL is d0bar's, per top-level task, with no floor at all.
+ * **The main-thread gate is attributed, not inferred.** Every row but `attributedFrameMs` is a
+ * difference between two arms of a fixture that deliberately blocks 240 ms, read through `longtask`
+ * and its 50 ms floor. `CLAUDE.md`'s opening example — a toolbar adding 40 ms to a frame — produces
+ * no long task, no TBT delta and no CLS, and would have passed every one of them.
+ * `attributedFrameMs` reads the browser's own tracer and sums d0bar-URL script time per top-level
+ * task, with no floor.
+ *
+ * Each threshold's history is `bench/budget.json`; the resolution arithmetic is
+ * `bench/quantized-metrics.md`. Neither is repeated here.
  */
 
 const RUNS = Number(process.env.D0BAR_RUNS ?? 20);
@@ -64,39 +60,27 @@ const BUDGET: Budget = {
   tbtP95: 5,
   longTaskCount: 0.5,
   /**
-   * The confidence at which a paired directional shift in INP counts as real. Not a
-   * millisecond figure: INP is quantized to 8 ms, so no millisecond threshold below 8 is
-   * expressible and any threshold at or above 8 gates nothing a developer would notice. See
-   * `signTest`.
+   * Confidence at which a paired directional shift in INP counts as real. Not a millisecond figure:
+   * INP is quantized to 8 ms, so nothing below 8 is expressible and nothing at or above it gates
+   * anything a developer would notice. See {@link signTest}.
    */
   inpSignificance: 0.05,
   /**
-   * Absolute, not a delta: provenance makes the subtraction unnecessary, because every
-   * millisecond counted here ran d0bar's own code. Eight milliseconds is the same figure
-   * `requests-view`'s two rows use — roughly half a 16 ms frame — and it is a ceiling on the
-   * *worst* task of a run, not an average.
+   * Absolute, not a delta: provenance makes the subtraction unnecessary, since every millisecond
+   * counted ran d0bar's own code. 8 ms is `requests-view`'s figure — half a frame — and it ceilings
+   * the *worst* task of a run, not an average.
    */
   attributedFrameMs: 8,
   /**
-   * How many cheap-tap `event` entries may exceed the 16 ms reporting floor, summed across an
-   * arm's runs. **Zero** — and zero is not a tuned threshold, it is the measurement.
+   * Cheap-tap `event` entries above the 16 ms floor, summed per arm. **Zero, and zero is the
+   * measurement rather than a tuned threshold** — CI reads 0/0/0, bounding d0bar's cost on a cheap
+   * interaction below one 8 ms quantum.
    *
-   * This is the row that answers the question `inp` cannot: `#confirm-hold` blocks for 84 ms
-   * deliberately, which quantizes to 88 on every run of every arm — sixty CI runs returned 88
-   * sixty times — so a toolbar costing single-digit milliseconds is invisible inside it.
-   * `#cheap-tap` flips an attribute and nothing else.
-   *
-   * The first version of this row counted entries that *reached* the floor and saturated the
-   * other way: CI measured 297 in `off`, 297 in `gated` and 297 in `on`, every one at exactly
-   * 16 ms. `durationThreshold` clamps to a 16 ms minimum, so a cheap interaction cannot be
-   * timed — only observed to have exceeded. Above the floor is therefore where the whole
-   * signal is, and Chrome's 8 ms quantum means an entry lands there only by gaining a full
-   * quantum on an interaction that otherwise costs nothing.
-   *
-   * All three arms read zero today, which bounds d0bar's cost on a cheap interaction below one
-   * quantum. Gated per arm and absolutely, not as a delta against `gated`: an entry here is
-   * not "worse than the baseline", it is a cheap interaction that cost a whole quantum, and
-   * the baseline scoring it too would mean the bundle's mere presence did it.
+   * The row `inp` cannot be: `#confirm-hold` blocks 84 ms, quantizing to 88 on every run of every
+   * arm, so single-digit milliseconds are invisible inside it. `#cheap-tap` flips an attribute.
+   * Counted, not timed, because `durationThreshold` clamps to 16 ms — a cheap interaction can only
+   * be observed to have exceeded. Gated absolutely and per arm; an earlier version counted entries
+   * that *reached* the floor and saturated at 297/297/297. Full history in `bench/budget.json`.
    */
   cheapTapsOverQuantum: 0,
 };
@@ -124,27 +108,19 @@ function median(values: number[]): number {
 }
 
 /**
- * A metric a budget row may gate on must be able to express a value smaller than its own
- * threshold. Two rows in this file violated that and both were caught by one CI run on a
- * two-core runner:
+ * **A gated metric must resolve finer than its own threshold.** Two rows here violated that, and one
+ * CI run on a two-core runner caught both:
  *
- * | row              | threshold | metric resolution | outcome                          |
- * | ---------------- | --------- | ----------------- | -------------------------------- |
- * | `longTaskCount`  | 0.5 tasks | 1 task (p95 of an integer count) | failed on ±1 noise |
- * | `inpP95`         | 2 ms      | 8 ms (Chrome's INP quantum)      | failed on one boundary crossing |
+ * | row             | threshold | resolution                       | outcome                    |
+ * | --------------- | --------- | -------------------------------- | -------------------------- |
+ * | `longTaskCount` | 0.5 tasks | 1 task (p95 of an integer count) | failed on ±1 noise         |
+ * | `inpP95`        | 2 ms      | 8 ms (Chrome's INP quantum)      | failed on a boundary cross |
  *
- * `percentile(values, 95)` at n = 20 is `sorted[18]` — the *second largest of twenty*. That is
- * the right aggregation for a continuous metric with a long tail and the wrong one for a
- * quantized one, where it is a single noisy sample and its noise floor is a whole quantum.
- *
- * Long tasks go back to the mean, whose resolution at n = 20 is 0.05 tasks — finer than the
- * 0.5 threshold. This file's header says "never at the mean", and that rule is about not
- * hiding a tail; for an integer count over twenty runs the p95 *is* one sample from the tail,
- * so the rule was being applied to the one row where it inverts.
- *
- * INP cannot be fixed by choosing a different order statistic, because every order statistic
- * of a quantized metric is quantized. It is compared as a paired sign test instead — see
- * {@link signTest}.
+ * At n = 20 this is `sorted[18]`, the second largest of twenty: right for a continuous metric with a
+ * tail, wrong for a quantized one, where it is one noisy sample with a whole-quantum noise floor.
+ * Long tasks use the mean instead (resolution 0.05 tasks). INP cannot be fixed by another order
+ * statistic — every order statistic of a quantized metric is quantized — and uses {@link signTest}.
+ * Derivation: `bench/quantized-metrics.md`.
  */
 
 interface SignTest {
@@ -159,22 +135,15 @@ interface SignTest {
 }
 
 /**
- * Paired comparison of two arms, run by run.
+ * Paired comparison of two arms, run by run. The arms alternate within each loop iteration, so run
+ * `i` of each are neighbours in time on the same machine — which makes pairing legitimate and this
+ * robust to the drift one order statistic is at the mercy of.
  *
- * The arms alternate within each iteration of the measurement loop, so run `i` of `on` and run
- * `i` of `gated` are neighbours in time on the same machine — which is what makes pairing them
- * legitimate and what makes this robust to the drift a single order statistic is at the mercy
- * of.
- *
- * The resolution argument: one p95 comparison of a quantized metric can only ever report a
- * multiple of the quantum, so it cannot distinguish "0.1 ms of cost that crossed a boundary"
- * from "8 ms of cost". Twenty paired comparisons can: a toolbar that costs a fraction of a
- * quantum pushes *some* runs over a boundary and none back, and that shows up as a consistent
- * direction long before it shows up as a shifted percentile. A toolbar that costs nothing
- * scatters both ways.
- *
- * Reported as a probability rather than gated against a hand-picked count, so the threshold is
- * a stated confidence rather than a number someone tuned until CI went green.
+ * One p95 of a quantized metric can only report a multiple of the quantum, so it cannot separate
+ * "0.1 ms that crossed a boundary" from "8 ms". Twenty paired comparisons can: a fractional cost
+ * pushes *some* runs over and none back, which reads as a direction long before it reads as a
+ * shifted percentile. Reported as a probability, so the threshold is a stated confidence rather than
+ * a count tuned until CI went green.
  */
 function signTest(on: number[], gated: number[]): SignTest {
   let worse = 0;
@@ -212,13 +181,10 @@ async function measure(page: Page, arm: Arm): Promise<Sample> {
       () => (window as unknown as { __fixtureReady: Promise<void> }).__fixtureReady,
     );
 
-    /* Real input events, so the browser produces genuine `event` entries with interaction ids
-       rather than synthetic ones that never reach INP.
-
-       Two targets, measuring two different things. `#confirm-hold` blocks 84 ms and gives the
-       fixture the poor INP it is supposed to have; two clicks are enough, because with fewer
-       than fifty interactions INP is simply the slowest one. `#cheap-tap` does almost nothing
-       and is where a toolbar cost is actually visible — see `cheapTapsOverQuantum`. */
+    /* Real input events, so the browser emits genuine `event` entries with interaction ids.
+       `#confirm-hold` blocks 84 ms and gives the fixture its poor INP — two clicks suffice, since
+       below fifty interactions INP is just the slowest. `#cheap-tap` does almost nothing, and is
+       where a toolbar cost is visible: see `cheapTapsOverQuantum`. */
     for (let i = 0; i < 2; i++) {
       await page.click("#confirm-hold");
       await page.waitForTimeout(120);
@@ -290,12 +256,10 @@ test(
       baseline: "gated",
       metrics: {
         /**
-         * Reported per arm, gated by `inpSign` below rather than by a delta between these.
-         *
-         * The median is the arm's typical quantum and the p95 is its tail; both are useful to
-         * read and neither can be compared against a 2 ms threshold, because the smallest
-         * difference either can express is 8 ms. Raw per-run values travel with them so a
-         * future reader of `bench/last-budget.json` can re-analyse without re-running.
+         * Reported per arm, gated by `inpSign` rather than a delta between these: the median is the
+         * arm's typical quantum and the p95 its tail, and neither can express a difference under
+         * 8 ms. Raw per-run values travel with them, so `bench/last-budget.json` can be re-analysed
+         * without re-running.
          */
         inp: {
           off: { median: median(pick("off", "inp")), p95: p95("off", "inp") },
@@ -325,15 +289,11 @@ test(
           budget: BUDGET.cls,
         },
         /**
-         * The mean, deliberately, and this row went p95 and back within one change.
-         *
-         * The file header's "never at the mean" is about not hiding a tail. Long tasks are an
-         * integer count, so at twenty runs the p95 is `sorted[18]` — one sample, with a noise
-         * floor of a whole task against a threshold of half of one. CI measured `off` 7,
-         * `gated` 6, `on` 7: the `on` arm tied with the arm that loads no bundle, while the
-         * baseline scored *below* both, which is not a direction a baseline can meaningfully
-         * take. The mean's resolution at n = 20 is 0.05 tasks, finer than the threshold, which
-         * is the property the row needs.
+         * The mean, deliberately — this row went p95 and back within one change. "Never at the mean"
+         * is about not hiding a tail, but for an integer count the p95 at n = 20 *is* one tail
+         * sample, with a whole-task noise floor against a half-task threshold. CI read `off` 7,
+         * `gated` 6, `on` 7: `on` tied with the arm that loads no bundle and the baseline scored
+         * below both. The mean resolves to 0.05 tasks, which is the property the row needs.
          */
         longTasksMean: {
           off: mean(pick("off", "longTasks")),
@@ -415,12 +375,9 @@ test(
     );
 
     /**
-     * INP, as a direction rather than a magnitude.
-     *
-     * Fails when `on` lands in a worse quantum than `gated` more consistently than chance would
-     * explain. A toolbar costing a fraction of a quantum tips some runs over a boundary and
-     * none back, which this sees; a toolbar costing nothing scatters both ways, which it does
-     * not. See `signTest` for why no millisecond threshold is expressible here.
+     * INP as a direction rather than a magnitude: fails when `on` lands in a worse quantum than
+     * `gated` more consistently than chance explains. A fractional cost tips some runs over a
+     * boundary and none back; a free one scatters both ways. See {@link signTest}.
      */
     expect(
       sign.p,
@@ -436,30 +393,21 @@ test(
     ).toBeLessThanOrEqual(BUDGET.attributedFrameMs);
 
     /**
-     * The control, singular.
+     * The control, singular. `off` loads no bundle, so zero is the only correct value rather than a
+     * threshold — a non-zero reading means the URL matcher is catching something that is not d0bar.
      *
-     * `off` loads no bundle, so its attributed time is exactly zero. That is a statement about
-     * whether the instrument works at all — a non-zero reading there means the URL matcher is
-     * catching something that is not d0bar — and zero is not a threshold, it is the only
-     * correct value.
-     *
-     * `gated` used to be gated here too, at `<= 2` ms, and that assertion was wrong twice
-     * over. It was written from a laptop reading of 0.287 ms, and across three CI runs the
-     * same number came back 1.32, 3.21 and 2.586 — a threshold finer than the metric's own
-     * run-to-run spread, which is the exact defect `bench/quantized-metrics.md` was written
-     * about. It also gated the wrong thing: the gated arm's cost is the bundle's download and
-     * evaluation, which a host pays for having the script on the page at all and which is not
-     * the observer effect. It is a reading, reported in `bench/last-budget.json`, not a gate.
+     * `gated` was gated here too at `<= 2` ms, and was wrong twice: written from a laptop's 0.287 ms
+     * and returning 1.32, 3.21 and 2.586 across three CI runs — a threshold finer than the metric's
+     * own spread — and gating download-and-evaluation, which is not the observer effect. It is a
+     * reading in `bench/last-budget.json` now, not a gate.
      */
     expect(result.metrics.attributedFrameMsP95.off, "the off arm loads no d0bar").toBe(0);
 
     /**
-     * The cheap target, gated in every arm.
-     *
-     * An interaction that flips one attribute must never cost a whole 8 ms quantum more than
-     * the browser's own event-to-paint path — and `off` and `gated` are held to it as well,
-     * because a count above zero there is the fixture or the runner misbehaving rather than
-     * anything d0bar did, and a row that only fails in `on` cannot tell the two apart.
+     * The cheap target, gated in every arm: an attribute flip must never cost a whole quantum more
+     * than the browser's own event-to-paint path. `off` and `gated` are held to it too — a count
+     * there is the fixture or the runner misbehaving, and a row that only fails in `on` cannot tell
+     * the two apart.
      */
     for (const arm of ARMS) {
       expect(
