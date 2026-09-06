@@ -109,6 +109,15 @@ function fakeRing(records: RequestRecord[]): Tier1Access {
        reading rather than cast away, so a field added to `VitalsReading` fails here instead
        of being silently absent. */
     vitals: () => ({
+      self: {
+        mode: "unavailable",
+        totalMs: 0,
+        longestFrameMs: 0,
+        frames: 0,
+        namedFrames: 0,
+        loadPhaseMs: 0,
+        top: [],
+      },
       lcp: -1,
       cls: 0,
       inp: -1,

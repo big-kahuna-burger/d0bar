@@ -607,6 +607,13 @@
   opacity: 0.62;
 }
 
+/* A measured, non-zero self cost. The same colour as a missing capability, and deliberately so:
+   the toolbar having charged the page something is the finding this panel exists to disclose, and
+   rendering it in the colour of a healthy reading would bury the one number a reader came for. */
+.perturb[data-state="warn"] {
+  color: var(--d0-warning-inline);
+}
+
 /* ── motion ─────────────────────────────────────────────────────────────────── */
 
 @keyframes d0-rise {
@@ -1655,4 +1662,18 @@
 
 .conn-state {
   color: var(--d0-text-subtle);
+}
+
+/* The dev self-report. Present only in a `__DEV__` build — see views/vitals/index.ts. */
+.vself {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border: 1px dashed var(--d0-stroke);
+  border-radius: 8px;
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--d0-text-dim);
+  white-space: pre;
 }

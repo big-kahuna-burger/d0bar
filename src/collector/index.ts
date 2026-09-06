@@ -23,11 +23,13 @@ import {
 } from "./ring";
 import { readSpan, resetSpanSink, spanCount, spanScratch } from "./otel-sink";
 import { resetCorrelation } from "./correlate";
+import { resetSelfCost, selfCost } from "./selfcost";
 import { loadStage2, prefetchStage2, type PanelHandle } from "../shared/stage2";
 import { installShortcut } from "./shortcut";
 import { resetVitals, snapshot as vitalsSnapshot } from "./vitals";
 import { resetTier2, startTier2, tier2State, type SwConfig, type Tier2State } from "./sw";
 import { detectOtel, otelState, resetOtel, type OtelState } from "./otel";
+import type { SelfCost } from "./selfcost";
 
 /**
  * Stage 1 — the only part of the toolbar on the host's critical path. Everything here is the opt-in
@@ -73,6 +75,8 @@ export interface Diagnostics {
   tier2: Tier2State;
   /** Whether tier 4 is live, who owns the attachment, and if it is off, why. */
   otel: OtelState;
+  /** What d0bar's own script cost this page, and by which attribution method. */
+  self: SelfCost;
   requests: number;
   dropped: number;
   interned: number;
@@ -89,6 +93,15 @@ const inert: D0barHandle = {
       entryTypes: [],
       tier2: { kind: "off", reason: "not-registered" },
       otel: { kind: "off", reason: "no-sdk" },
+      self: {
+        mode: "unavailable",
+        totalMs: 0,
+        longestFrameMs: 0,
+        frames: 0,
+        namedFrames: 0,
+        loadPhaseMs: 0,
+        top: [],
+      },
       requests: 0,
       dropped: 0,
       interned: 0,
@@ -237,6 +250,7 @@ export function init(config: D0barConfig): D0barHandle {
             vitals() {
               const reading = vitalsSnapshot();
               reading.entryTypes = activeEntryTypes();
+              reading.self = selfCost();
               return reading;
             },
             onVitals: onVitalsBatch,
@@ -317,6 +331,7 @@ export function init(config: D0barConfig): D0barHandle {
       resetVitals();
       resetIntern();
       resetCorrelation();
+      resetSelfCost();
       resetSpanSink();
       resetOtel();
       resetTier2();
@@ -329,6 +344,7 @@ export function init(config: D0barConfig): D0barHandle {
       return {
         phase: currentPhase(),
         entryTypes: activeEntryTypes(),
+        self: selfCost(),
         tier2: tier2State(),
         otel: otelState(),
         requests: size(),
@@ -345,4 +361,16 @@ export function init(config: D0barConfig): D0barHandle {
 /** Tears down a running toolbar. Safe to call when nothing is running. */
 export function destroy(): void {
   live?.destroy();
+}
+
+/**
+ * The running toolbar's diagnostics, without holding its handle.
+ *
+ * The IIFE build starts itself from its script tag, so nobody holds the handle `init()` returned
+ * and there was no way to ask a self-started toolbar what it is made of. Reaching it through a
+ * second `init()` is not the answer: with a different config that throws under `__DEV__`, and with
+ * the same one it makes a read look like a start.
+ */
+export function diagnostics(): Diagnostics {
+  return (live ?? inert).diagnostics();
 }

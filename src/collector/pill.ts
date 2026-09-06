@@ -3,6 +3,8 @@ import { size, stats } from "./ring";
 import { PRELUDE, V } from "./tokens.gen";
 import pillCss from "./pill.css?inline";
 import { assertSettled, onVisibility, whenSettled } from "./phase";
+import { delayed } from "../shared/schedule";
+import { marked } from "../shared/mark";
 
 /**
  * The collapsed pill.
@@ -126,21 +128,31 @@ function build(root: ShadowRoot, onActivate: () => void): PillNodes {
 /**
  * Blinks the activity dot.
  *
- * Restarting a running animation rather than toggling a class: `currentTime = 0` needs no
- * style recalculation and cannot force a layout, and a fresh batch arriving mid-settle should
- * restart the blink rather than be swallowed by it or stack a second animation on top.
+ * Restarting a running animation rather than toggling a class: `currentTime = 0` needs no style
+ * recalculation and cannot force a layout, and a fresh batch mid-settle should restart the blink
+ * rather than be swallowed by it or stack a second animation on top.
  *
- * Reduced motion is handled in CSS, which makes this a loop over an empty list rather than a
- * media query read on every tick.
+ * **`getAnimations()` is called once and the result cached**, because it is a style-flushing read —
+ * it has to resolve current style to answer — and calling it per blink put a synchronous style
+ * recalculation on the main thread every time the request count moved. `persist()` is what makes
+ * caching safe: Chrome removes a finished, non-filling animation from the element automatically,
+ * and a removed animation cannot be restarted.
+ *
+ * Reduced motion is handled in CSS, so on a page that asks for it `getAnimations()` returns nothing
+ * and this stays permanently empty rather than reading a media query per tick.
  */
-function fire(pulse: HTMLElement): void {
+function fire(pulse: HTMLElement, cache: { blink?: Animation | null }): void {
   pulse.classList.add("firing");
-  const running = pulse.getAnimations();
-  for (let i = 0; i < running.length; i += 1) {
-    const animation = running[i] as Animation;
-    animation.currentTime = 0;
-    animation.play();
+  if (cache.blink === undefined) {
+    const running = pulse.getAnimations();
+    const first = running.length > 0 ? (running[0] as Animation) : null;
+    first?.persist();
+    cache.blink = first;
   }
+  const animation = cache.blink;
+  if (!animation) return;
+  animation.currentTime = 0;
+  animation.play();
 }
 
 /**
@@ -152,8 +164,10 @@ export function mountPill(onActivate: () => void): PillHandle {
   let shadow: ShadowRoot | undefined;
   let button: HTMLButtonElement | undefined;
   let nodes: PillNodes | undefined;
-  let clock: ReturnType<typeof setInterval> | undefined;
+  let cancelTick: (() => void) | undefined;
   let destroyed = false;
+  /* `undefined` = not looked up yet, `null` = looked up and there is none (reduced motion). */
+  const pulseAnimation: { blink?: Animation | null } = {};
 
   /* Last rendered values, so a tick with nothing to say writes no DOM at all. */
   let shownCount = -1;
@@ -168,7 +182,7 @@ export function mountPill(onActivate: () => void): PillHandle {
       nodes.count.nodeValue = `${count} req`;
       /* Not on the first paint: `shownCount` starts at -1, and a pill that blinks the moment
          it mounts is reporting its own arrival as page activity. */
-      if (shownCount >= 0) fire(nodes.pulse);
+      if (shownCount >= 0) fire(nodes.pulse, pulseAnimation);
       shownCount = count;
     }
 
@@ -199,19 +213,42 @@ export function mountPill(onActivate: () => void): PillHandle {
   }
 
   /**
-   * A 500ms coalescing clock rather than an update per entry: the alternative is work in
-   * the observer callback, which is the one place work must not go. It runs only while the
-   * document is visible, and a tick that finds nothing changed writes no DOM.
+   * A 500 ms coalescing clock rather than an update per entry: the alternative is work in the
+   * observer callback, which is the one place work must not go. It runs only while the document is
+   * visible, and a tick that finds nothing changed writes no DOM.
+   *
+   * **A self-rescheduling background task, not `setInterval`.** `schedule.ts` opens by saying
+   * deferred work is background priority and never a timer, and this file was the one place that
+   * did not follow it: `setInterval` runs at normal priority, so its tick competed with the host
+   * page and could land inside an interaction's presentation window — a repaint there is real INP,
+   * charged to the page d0bar is measuring. `delayed()` uses `scheduler.postTask` at background
+   * priority, which yields to input by construction.
+   *
+   * Six CI runs of the A/B sign test produced 7 decisive INP pairs, every one of them worse with
+   * the toolbar running and none better (pooled one-sided p = 0.0078, while no single run reached
+   * significance). This clock was the leading suspect named in `add-perturbation-budget`'s task 7.7,
+   * and it is the only periodic main-thread work stage 1 owns.
    */
   function startClock(): void {
-    if (clock !== undefined || document.visibilityState !== "visible") return;
-    clock = setInterval(refresh, REFRESH_MS);
+    if (cancelTick !== undefined || document.visibilityState !== "visible") return;
+    /* Marked so a long frame this tick lands in is attributable to d0bar rather than to the
+       host. It is the only periodic main-thread work stage 1 owns, so it is the one thing a
+       self-cost figure of zero has to be able to rule out. */
+    const tick = marked({
+      "d0bar:pill-tick"(): void {
+        cancelTick = undefined;
+        if (destroyed) return;
+        refresh();
+        startClock();
+      },
+    });
+    cancelTick = delayed(tick, REFRESH_MS);
   }
 
   function stopClock(): void {
-    if (clock === undefined) return;
-    clearInterval(clock);
-    clock = undefined;
+    if (cancelTick === undefined) return;
+    cancelTick();
+    cancelTick = undefined;
   }
 
   /* Pauses the refresh clock in a background tab. Driven by the `visibility-state` entry

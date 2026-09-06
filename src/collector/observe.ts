@@ -7,6 +7,7 @@ import {
 } from "./phase";
 import { pushResource } from "./ring";
 import { noteInteraction, noteLayoutShift, noteLcp, noteLoaf, noteNavigation } from "./vitals";
+import { beginSelfCost, marked, noteSelfLoaf } from "./selfcost";
 
 /**
  * Tier 1 observation.
@@ -105,7 +106,16 @@ function observe(
   options?: Record<string, unknown>,
 ): void {
   try {
-    const observer = new PerformanceObserver((list) => handle(list.getEntries()));
+    /* One marked callback covers every observer: this is the single function the browser invokes
+       for all of them, so naming it here attributes every tier 1 batch to d0bar at one call
+       frame per batch. See `shared/mark.ts`. */
+    const observer = new PerformanceObserver(
+      marked({
+        "d0bar:observe"(list: PerformanceObserverEntryList): void {
+          handle(list.getEntries());
+        },
+      }),
+    );
     observer.observe({ type, buffered: true, ...options });
     observers.push(observer);
     active.push(type);
@@ -188,10 +198,21 @@ export function startObserving(): () => void {
     { durationThreshold: 40 },
   );
 
+  /* One observer, two consumers. `noteLoaf` is the host's reading and `noteSelfLoaf` is d0bar's
+     own; a second observer for the same entry type would double the callback the browser has to
+     run on the thread both of them are measuring. */
   observe("long-animation-frame", (entries) => {
-    for (let i = 0; i < entries.length; i++) noteLoaf(entries[i] as PerformanceEntry);
+    for (let i = 0; i < entries.length; i++) {
+      noteLoaf(entries[i] as PerformanceEntry);
+      noteSelfLoaf(entries[i] as PerformanceEntry);
+    }
     notify(vitalsListeners);
   });
+  /* After the registration, not before: `observe` swallows an unsupported type, so whether the
+     browser accepted it is only knowable from `active`. Asking `supportedEntryTypes` instead would
+     be a second, differently-wrong answer — Chromium has listed a type it then refused options for.
+     Buffered delivery is a task away, so nothing has arrived yet. */
+  beginSelfCost(active.indexOf("long-animation-frame") !== -1);
 
   /* First input finalizes LCP. Observed as an entry type rather than a listener, so the
      toolbar adds nothing to the host page's event surface. */

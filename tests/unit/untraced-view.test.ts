@@ -69,6 +69,15 @@ function fakeRing(): FakeRing {
     onVisibility: () => () => {},
     visible: () => true,
     vitals: () => ({
+      self: {
+        mode: "unavailable",
+        totalMs: 0,
+        longestFrameMs: 0,
+        frames: 0,
+        namedFrames: 0,
+        loadPhaseMs: 0,
+        top: [],
+      },
       lcp: -1,
       cls: 0,
       inp: -1,

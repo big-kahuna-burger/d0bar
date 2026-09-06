@@ -135,9 +135,15 @@ A comment claiming a property is not a property. If it can regress silently, ass
   way: a `tier2` p95 of 5.60 ms against a 5 ms gate that passed cleanly on CI (the local run had
   a build and a push underneath it), and an INP row that could never fail on a laptop fast
   enough to land both arms in the same 8 ms quantum. Push it and read the run.
-- **Local runs one targeted spec, briefly.** `pnpm exec playwright test tests/perf/<one>.spec.ts`
-  to see whether something is wired up, or a throwaway probe. Not the suite, not `test:perf`,
-  and never a timing figure that gets written down.
+- **An agent never runs Playwright. At all.** Not the suite, not `test:perf`, not one targeted
+  spec, not a throwaway probe — `pnpm exec playwright test` and `pnpm test:perf` are prohibited
+  to you. They are slow, they hold port 8732, and a stale fixture server left behind by an
+  interrupted run silently serves old routes into the _next_ run. Push and read the CI run
+  instead; that is the only place a browser result is produced. If a browser check is the only
+  way to settle something, say so and ask — do not run it "just once".
+- **Unit tests, typecheck and lint are yours to run.** `pnpm vitest run`, `pnpm exec tsc
+--noEmit`, `pnpm lint`, `pnpm build`. These are fast, hold no ports and produce no timing
+  numbers.
 - **p95, never the mean — but the metric must resolve finer than its threshold.** A toolbar that
   is usually free and occasionally costs 40 ms is not free, and a mean hides exactly that. The
   rule inverts for a quantized value: the p95 of an integer count over 20 runs is one sample

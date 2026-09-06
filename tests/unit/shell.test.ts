@@ -3,6 +3,7 @@ import {
   escape,
   inpDelta,
   perturbation,
+  inpDeltaMode,
   recallScroll,
   rememberScroll,
   resetShell,
@@ -43,19 +44,58 @@ describe("perturbation label", () => {
        nothing, and printing it before anything has measured it would make the panel lie about
        the one property it exists to defend. */
     expect(text).not.toContain("0.0");
-    expect(text).toBe("Δ INP unavailable");
+    expect(text).toBe("Δ INP unmeasured");
   });
 
-  it("quotes the measured value once there is one", () => {
+  it("says unmeasured when the browser cannot attribute, even holding a number", () => {
     tier2.set({ kind: "live", owner: "d0bar" });
+    /* No `long-animation-frame`, so nothing looked. A stale figure from before the mode was
+       resolved must not be rendered as though something had. */
+    inpDelta.set(0.4);
+    inpDeltaMode.set("unavailable");
+    expect(perturbation()).toEqual({ text: "Δ INP unmeasured", state: "unknown" });
+  });
+
+  it("quotes the measured value once there is one, in the warning state", () => {
+    tier2.set({ kind: "live", owner: "d0bar" });
+    inpDeltaMode.set("url");
     inpDelta.set(0.42);
-    expect(perturbation()).toEqual({ text: "Δ INP 0.4ms", state: "ok" });
+    /* `warn`, not `ok`: a measured non-zero cost is the finding this panel exists to disclose,
+       and giving it zero's colour would bury it. */
+    expect(perturbation()).toEqual({ text: "Δ INP 0.4ms", state: "warn" });
+  });
+
+  it("renders a measured zero as ok, because nothing found is a real answer", () => {
+    tier2.set({ kind: "live", owner: "d0bar" });
+    inpDeltaMode.set("url");
+    inpDelta.set(0);
+    expect(perturbation()).toEqual({ text: "Δ INP 0.0ms", state: "ok" });
+  });
+
+  it("never floors a real cost to zero", () => {
+    tier2.set({ kind: "live", owner: "d0bar" });
+    inpDeltaMode.set("url");
+    /* `toFixed(1)` would print `0.0` here, which is the exact claim the spec forbids. */
+    inpDelta.set(0.04);
+    const { text, state } = perturbation();
+    expect(text).toBe("Δ INP <0.1ms");
+    expect(state).toBe("warn");
+  });
+
+  it("marks a bundled build's figure as a floor", () => {
+    tier2.set({ kind: "live", owner: "d0bar" });
+    /* d0bar inlined into the host's own chunk: `sourceURL` cannot separate the two, so what is
+       reported is only what a reserved name proved. */
+    inpDeltaMode.set("lower-bound");
+    inpDelta.set(1.25);
+    expect(perturbation()).toEqual({ text: "Δ INP 1.3ms (min)", state: "warn" });
   });
 
   it("follows tier 2 being lost after mount", () => {
     tier2.set({ kind: "live", owner: "d0bar" });
+    inpDeltaMode.set("url");
     inpDelta.set(1.25);
-    expect(perturbation().state).toBe("ok");
+    expect(perturbation().state).toBe("warn");
     /* The host registered its own worker at `/` and took the scope. */
     tier2.set({ kind: "off", reason: "scope-owned" });
     expect(perturbation().state).toBe("degraded");

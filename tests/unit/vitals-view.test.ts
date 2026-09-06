@@ -23,6 +23,15 @@ interface FakeTier1 extends Tier1Access {
 
 function fakeTier1(): FakeTier1 {
   let reading: VitalsReading = {
+    self: {
+      mode: "unavailable",
+      totalMs: 0,
+      longestFrameMs: 0,
+      frames: 0,
+      namedFrames: 0,
+      loadPhaseMs: 0,
+      top: [],
+    },
     lcp: -1,
     cls: 0,
     inp: -1,

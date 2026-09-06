@@ -13,6 +13,7 @@
 
 import { lcpSealTime } from "./phase";
 import type { VitalsReading } from "../shared/stage2";
+import { SELF_MARK } from "../shared/mark";
 
 export const HEALTHY = 0;
 export const WARNING = 1;
@@ -202,9 +203,14 @@ export function noteLoaf(entry: PerformanceEntry): void {
     let longest = -1;
     for (let i = 0; scripts && i < scripts.length; i++) {
       const script = scripts[i] as { duration?: number; sourceFunctionName?: string };
+      const name = script.sourceFunctionName ?? "";
+      /* d0bar's own callbacks are not the host's worst script and must never be named as one.
+         This card is a statement about the page; charging it with the instrument's frame would
+         be the toolbar distorting exactly what it exists to report. Ours is in `selfcost.ts`. */
+      if (name.startsWith(SELF_MARK)) continue;
       if ((script.duration ?? -1) > longest) {
         longest = script.duration ?? -1;
-        loafScript = (script.sourceFunctionName ?? "").slice(0, 64);
+        loafScript = name.slice(0, 64);
       }
     }
   }
@@ -240,6 +246,18 @@ export function snapshot(): VitalsReading {
     inpTargetIsScored: scored >= 0 && scored === inpTargetLatency,
     loafScript,
     entryTypes: [],
+    /* Composed by `collector/index.ts`, like `entryTypes`: what d0bar's own script cost is
+       `selfcost.ts`'s knowledge, and this module has no business reading it. `unavailable` is the
+       right default for an uncomposed reading — never a zero. */
+    self: {
+      mode: "unavailable",
+      totalMs: 0,
+      longestFrameMs: 0,
+      frames: 0,
+      namedFrames: 0,
+      loadPhaseMs: 0,
+      top: [],
+    },
   };
 }
 

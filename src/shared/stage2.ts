@@ -39,6 +39,15 @@ const selfUrl = (() => {
   }
 })();
 
+/**
+ * Stage 1's own URL, for anything that needs to recognise d0bar's script rather than fetch a
+ * sibling of it — `selfcost.ts` matches it against `long-animation-frame` attribution. Empty when
+ * neither source was available, which is a state that module has to handle rather than guess past.
+ */
+export function ownScriptUrl(): string {
+  return selfUrl ?? "";
+}
+
 let override: string | undefined;
 
 /** Test seam, and an escape hatch for a host with an unusual asset layout. */
@@ -158,6 +167,24 @@ export interface VitalsReading {
   loafScript: string;
   /** Entry types this browser accepted. An absent type is a state to report, not an error. */
   entryTypes: readonly string[];
+  /**
+   * What d0bar's own script cost the main thread, measured by the same API that produced every
+   * other number here. See `collector/selfcost.ts` for why the mode travels with the figure: an
+   * exact reading, a floor, and no reading at all must not render alike.
+   */
+  self: SelfReading;
+}
+
+/** Mirrors `collector/selfcost.ts`. Duplicated per the duplication rule. */
+export interface SelfReading {
+  mode: "url" | "lower-bound" | "unavailable";
+  totalMs: number;
+  longestFrameMs: number;
+  frames: number;
+  namedFrames: number;
+  loadPhaseMs: number;
+  /** Dev builds only; empty in a shipped one. See `collector/selfcost.ts`. */
+  top: ReadonlyArray<{ ms: number; name: string }>;
 }
 
 /** Mirrors `collector/otel.ts`. Duplicated per the duplication rule. */

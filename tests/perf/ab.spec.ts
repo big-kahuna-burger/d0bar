@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
-import { writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { attributedDuring, isD0bar } from "./attribution";
 
@@ -26,6 +27,66 @@ import { attributedDuring, isD0bar } from "./attribution";
  */
 
 const RUNS = Number(process.env.D0BAR_RUNS ?? 20);
+
+/** Where the pooled sign-test history lives, carried between CI runs by `actions/cache`. */
+const HISTORY = join(process.cwd(), "bench", "sign-history.json");
+
+/** Runs retained. Ten is the pool the trend gate reads; older entries are dropped. */
+const HISTORY_RUNS = 10;
+
+/** Decisive pairs the pool needs before it may fail a build. */
+const HISTORY_MIN_DECISIVE = 8;
+
+/**
+ * Confidence for the pooled trend, deliberately tighter than the per-run `inpSignificance`.
+ *
+ * The per-run test is the primary gate and this is a second look at the same data over a longer
+ * baseline, so it is held to a stricter bar — a rolling window that fails at 0.05 would fire on a
+ * run of luck often enough to be ignored, which is worse than not having it.
+ */
+const HISTORY_SIGNIFICANCE = 0.01;
+
+interface HistoryRun {
+  sha: string;
+  worse: number;
+  better: number;
+}
+
+interface History {
+  /** Hash of the stage-1 bundle these runs measured. */
+  bundle: string;
+  runs: HistoryRun[];
+}
+
+/**
+ * The stage-1 bundle's content hash.
+ *
+ * The pooled test's whole difficulty is that evidence about one build says nothing about the next,
+ * and a rolling window would otherwise keep failing for ten runs after a fix landed — diluting the
+ * fix with the very runs that motivated it. Keying the history on what was actually measured makes
+ * that structural: change the bundle by a byte and the pool starts empty, which is the correct
+ * answer rather than a generous one.
+ */
+function bundleHash(): string {
+  try {
+    return createHash("sha256")
+      .update(readFileSync(join(process.cwd(), "dist", "d0bar.iife.js")))
+      .digest("hex")
+      .slice(0, 16);
+  } catch {
+    return "unbuilt";
+  }
+}
+
+function readHistory(bundle: string): History {
+  try {
+    const parsed = JSON.parse(readFileSync(HISTORY, "utf8")) as History;
+    if (parsed.bundle === bundle && Array.isArray(parsed.runs)) return parsed;
+  } catch {
+    /* No file, unreadable, or a different bundle. All three mean the same thing: start over. */
+  }
+  return { bundle, runs: [] };
+}
 
 interface Sample {
   lcp: number;
@@ -168,14 +229,21 @@ function signTest(on: number[], gated: number[]): SignTest {
     else if (a < b) better++;
     else ties++;
   }
+  return { worse, better, ties, p: signP(worse, better) };
+}
 
-  /* P(X >= worse) for X ~ Binomial(worse + better, 0.5). Ties carry no information about
-     direction and are excluded, which is the standard treatment. */
+/**
+ * P(X >= worse) for X ~ Binomial(worse + better, 0.5).
+ *
+ * Ties carry no information about direction and are excluded, which is the standard treatment —
+ * and here it is also the whole point, since most pairs of a quantized metric are ties.
+ */
+function signP(worse: number, better: number): number {
   const trials = worse + better;
-  if (trials === 0) return { worse, better, ties, p: 1 };
+  if (trials === 0) return 1;
   let tail = 0;
   for (let k = worse; k <= trials; k++) tail += choose(trials, k);
-  return { worse, better, ties, p: tail / 2 ** trials };
+  return tail / 2 ** trials;
 }
 
 function choose(n: number, k: number): number {
@@ -366,6 +434,39 @@ test(
 
     const sign = result.metrics.inpSign;
 
+    /**
+     * The same comparison, pooled across runs of this exact bundle.
+     *
+     * A single run's twenty pairs are mostly ties — `#cheap-tap` is cheap and most pairs land in
+     * the same 8 ms quantum — so the per-run test routinely has two or three decisive pairs and
+     * cannot reach 0.05 no matter how consistent they are. Six runs of one build produced 7
+     * decisive pairs, all worse, none better: p = 0.0078 pooled, while the per-run gate read
+     * 1.0000, 0.5000, 0.2500, 0.5000, 1.0000 and 0.1250 and passed every time. The evidence was
+     * there and the gate was throwing it away at the end of each run.
+     *
+     * Legitimate to pool for the same reason it is legitimate to pair: under the null — d0bar costs
+     * nothing — the direction of a decisive pair is a coin flip whatever the machine was doing, so
+     * runs on different runners still contribute comparable Bernoulli trials. The machine's speed
+     * moves how *many* pairs are decisive, not which way they fall.
+     */
+    const bundle = bundleHash();
+    const history = readHistory(bundle);
+    history.runs.push({
+      sha: (process.env.GITHUB_SHA ?? "local").slice(0, 7),
+      worse: sign.worse,
+      better: sign.better,
+    });
+    history.runs = history.runs.slice(-HISTORY_RUNS);
+    writeFileSync(HISTORY, JSON.stringify(history, null, 2), "utf8");
+
+    const pooledWorse = history.runs.reduce((total, run) => total + run.worse, 0);
+    const pooledBetter = history.runs.reduce((total, run) => total + run.better, 0);
+    const pooled = signP(pooledWorse, pooledBetter);
+    const pooledReport =
+      `INP pooled over ${history.runs.length} run(s) of bundle ${bundle}: ` +
+      `${pooledWorse} worse, ${pooledBetter} better, p=${pooled.toFixed(4)} ` +
+      `(fails below ${HISTORY_SIGNIFICANCE} once ${HISTORY_MIN_DECISIVE} pairs are decisive)`;
+
     console.log("observer-effect deltas (on − gated):", deltas);
     console.log("attributed d0bar main-thread time:", result.metrics.attributedFrameMsP95);
     console.log("cheap-tap entries over the 16 ms floor:", result.metrics.cheapTapsOverQuantum);
@@ -380,6 +481,7 @@ test(
       `INP paired sign test (on vs gated): ${sign.worse} worse, ${sign.better} better, ` +
         `${sign.ties} tied, p=${sign.p.toFixed(4)}`,
     );
+    console.log(pooledReport);
 
     expect(deltas.tbtP95, "Δp95 TBT").toBeLessThanOrEqual(BUDGET.tbtP95);
     expect(deltas.cls, "Δ CLS").toBeLessThanOrEqual(BUDGET.cls);
@@ -397,6 +499,14 @@ test(
       `INP regressed in ${sign.worse} of ${sign.worse + sign.better} decisive runs ` +
         `(${sign.ties} tied); p=${sign.p.toFixed(4)}`,
     ).toBeGreaterThan(BUDGET.inpSignificance);
+
+    /**
+     * The same question over a longer baseline. Fails only once the pool holds enough decisive
+     * pairs to mean something, so a fresh bundle's first runs report and never block.
+     */
+    if (pooledWorse + pooledBetter >= HISTORY_MIN_DECISIVE) {
+      expect(pooled, pooledReport).toBeGreaterThan(HISTORY_SIGNIFICANCE);
+    }
 
     /* The row with provenance. Not a delta and not floored: this is d0bar's own script time in
      the worst top-level task of a run, at p95 across runs. */

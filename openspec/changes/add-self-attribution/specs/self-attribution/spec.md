@@ -33,6 +33,19 @@ Where self cost cannot be measured, the UI SHALL say so rather than displaying z
 - **WHEN** the toolbar's script URL is indistinguishable from the host's bundle
 - **THEN** the figure is labelled a lower bound and the attribution method is stated
 
+### Requirement: The attribution mechanism proves it is alive
+Attribution SHALL distinguish frames recognised by the toolbar's reserved function-name mark
+from frames recognised by script URL, and SHALL expose the count of the former.
+
+A URL match alone cannot detect its own failure: with the marks dead, every count and total
+stays confidently non-zero, and the panel's own cost — a separate bundle at a separate URL —
+is silently dropped. The mark is also the only discriminator that exists when the toolbar is
+bundled into the host's chunk.
+
+#### Scenario: Marks removed by a build change
+- **WHEN** the reserved mark no longer reaches the browser as `sourceFunctionName`
+- **THEN** the marked-frame count is zero and CI fails, even though the total is non-zero
+
 ### Requirement: Zero load-phase cost is verified, not assumed
 The toolbar's self-attributed cost during the load phase SHALL be zero.
 

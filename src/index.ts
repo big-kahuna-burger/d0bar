@@ -1,4 +1,4 @@
-import { init, destroy } from "./collector";
+import { init, destroy, diagnostics } from "./collector";
 import { otelSpanProcessor } from "./collector/otel";
 import type { D0barConfig, D0barHandle, Diagnostics } from "./collector";
 
@@ -14,7 +14,7 @@ import type { D0barConfig, D0barHandle, Diagnostics } from "./collector";
  * The processor reads and never exports — no second exporter, no extra network, and the span
  * object is not retained past the callback.
  */
-export { init, destroy, otelSpanProcessor };
+export { init, destroy, diagnostics, otelSpanProcessor };
 export type { D0barConfig, D0barHandle, Diagnostics };
 
 /**

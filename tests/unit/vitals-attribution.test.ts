@@ -169,10 +169,22 @@ describe("accumulation is bounded and retains nothing", () => {
     } as unknown as PerformanceEntry);
 
     const reading = snapshot();
-    for (const [key, value] of Object.entries(reading)) {
-      if (key === "entryTypes") continue;
-      expect(typeof value, `${key} is not a primitive`).not.toBe("object");
-    }
+    /* Recursed rather than exempted by name. `self` is a plain record of numbers and a mode
+       string, and skipping it the way `entryTypes` used to be skipped would leave a hole a later
+       field could smuggle an entry or a DOM node through. Plain objects and arrays are allowed;
+       anything with another prototype is a browser object and fails. */
+    const leaves = (value: unknown, path: string): void => {
+      if (value === null || typeof value !== "object") return;
+      expect(
+        Array.isArray(value) || Object.getPrototypeOf(value) === Object.prototype,
+        `${path} is neither a plain object nor an array — a browser entry or a DOM node would ` +
+          `land here, and this reading crosses the stage boundary`,
+      ).toBe(true);
+      for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+        leaves(child, `${path}.${key}`);
+      }
+    };
+    for (const [key, value] of Object.entries(reading)) leaves(value, key);
   });
 
   it("does not read a shift's sources unless the shift sets a new maximum", () => {

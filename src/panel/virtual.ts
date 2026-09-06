@@ -15,6 +15,8 @@
  * node test rather than by measuring a browser.
  */
 
+import { marked } from "../shared/mark";
+
 /** Row height, in pixels. Fixed by the handoff, and fixed by this module's arithmetic. */
 export const ROW_HEIGHT = 21;
 
@@ -137,9 +139,17 @@ export function virtualList(options: VirtualOptions): VirtualList {
     rows.style.transform = `translateY(${win.first * rowHeight}px)`;
   }
 
+  /* The panel's repaint is the largest main-thread cost d0bar has, and stage 2's URL is not
+     stage 1's — a URL-only attribution would miss it entirely. Marked, so it cannot. */
+  const paintFrame = marked({
+    "d0bar:panel-paint"(): void {
+      paint();
+    },
+  });
+
   function invalidate(): void {
     if (frame !== 0) return;
-    frame = requestAnimationFrame(paint);
+    frame = requestAnimationFrame(paintFrame);
   }
 
   /* Passive: this handler never calls `preventDefault`, and a non-passive scroll listener

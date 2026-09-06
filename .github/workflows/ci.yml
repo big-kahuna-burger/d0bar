@@ -140,6 +140,19 @@ jobs:
       - if: steps.playwright.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium
 
+      # The pooled INP sign test's history, carried between runs.
+      #
+      # A rolling key, because a cache entry is immutable once written: each run restores the most
+      # recent history, appends its own decisive pairs and saves under a new key. The file records
+      # the stage-1 bundle hash it describes and the test discards it when that changes, so a build
+      # is never judged on evidence gathered about a different one.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: bench/sign-history.json
+          key: ${{ runner.os }}-sign-history-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-sign-history-
+
       # `bench/fixtures/server.mjs` is started by Playwright's own `webServer` config with
       # `reuseExistingServer: false`, so nothing stale can serve it.
       - run: pnpm test:perf:timing
@@ -151,6 +164,7 @@ jobs:
           path: |
             bench/last-budget.json
             bench/last-run.json
+            bench/sign-history.json
             test-results/
           retention-days: 14
           if-no-files-found: ignore

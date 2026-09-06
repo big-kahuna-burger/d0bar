@@ -132,9 +132,24 @@ export const otel = signal<OtelState>({ kind: "off", reason: "no-sdk" });
  * number this panel could print, and unmeasured it would be a lie about the property d0bar exists
  * to defend.
  */
+/**
+ * d0bar's own measured main-thread cost, in milliseconds, and how it was measured.
+ *
+ * `null` is not zero and the type says so. Zero is a claim that the toolbar cost nothing — the most
+ * self-serving number this panel can print — so it is only reachable once `selfcost.ts` has looked
+ * and found nothing. Set from the vitals reading, which carries it across the stage boundary.
+ */
 export const inpDelta = signal<number | null>(null);
 
-export type Perturbation = { text: string; state: "ok" | "degraded" | "unknown" };
+/** How {@link inpDelta} was arrived at. Drives which sentence the footer is allowed to use. */
+export const inpDeltaMode = signal<"url" | "lower-bound" | "unavailable">("unavailable");
+
+/**
+ * `warn` is the state a measured, non-zero self cost renders in. It is deliberately not `ok`: the
+ * toolbar having cost the page something is the finding this panel exists to disclose, and giving
+ * it the same colour as zero would bury it.
+ */
+export type Perturbation = { text: string; state: "ok" | "warn" | "degraded" | "unknown" };
 
 /**
  * The footer's right-hand reading, down the honest-degradation ladder: the degraded case outranks
@@ -144,8 +159,26 @@ export type Perturbation = { text: string; state: "ok" | "degraded" | "unknown" 
 export const perturbation = computed<Perturbation>(() => {
   if (!tier2Live()) return { text: "degraded — no trace jump", state: "degraded" };
   const delta = inpDelta();
-  if (delta === null) return { text: "Δ INP unavailable", state: "unknown" };
-  return { text: `Δ INP ${delta.toFixed(1)}ms`, state: "ok" };
+  const mode = inpDeltaMode();
+
+  /* No `long-animation-frame`, so nothing looked. Distinct from a measured zero and worded so it
+     cannot be mistaken for one — the browser could not tell us, and saying `0.0ms` here would be
+     the toolbar inventing its own alibi. */
+  if (delta === null || mode === "unavailable") {
+    return { text: "Δ INP unmeasured", state: "unknown" };
+  }
+
+  /* Never floored. `toFixed(1)` on 0.04 ms prints `0.0`, which would report a real cost as none, so
+     anything above zero that rounds to zero is shown as a bound instead. */
+  const text = delta > 0 && delta < 0.05 ? "Δ INP <0.1ms" : `Δ INP ${delta.toFixed(1)}ms`;
+
+  /* Bundled into the host's own chunk: `sourceURL` cannot separate d0bar's script from theirs, so
+     the figure is whatever a reserved function name proved and everything else is invisible to it.
+     A floor, marked as one. */
+  if (mode === "lower-bound")
+    return { text: `${text} (min)`, state: delta > 0 ? "warn" : "unknown" };
+
+  return { text, state: delta > 0 ? "warn" : "ok" };
 });
 
 /** The untraced badge is hidden at zero but the tab is retained, per the handoff. */
@@ -222,4 +255,5 @@ export function resetShell(): void {
   scrollByTab.clear();
   tier2.set({ kind: "off", reason: "not-registered" });
   inpDelta.set(null);
+  inpDeltaMode.set("unavailable");
 }

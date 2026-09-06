@@ -20,3 +20,7 @@ bench/fixtures/host/otel-sdk.js
 
 # Registration access token from the add-credential-broker DCR probe. A credential.
 .dash0-dev-client.local.json
+
+# Pooled sign-test history. CI-only state, carried between runs by a rolling actions/cache
+# entry keyed on the bundle hash - a committed copy would mix machines into one pooled p.
+bench/sign-history.json

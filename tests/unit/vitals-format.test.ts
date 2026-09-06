@@ -15,6 +15,15 @@ const ALL_TYPES = ["largest-contentful-paint", "layout-shift", "event", "long-an
 
 function reading(over: Partial<VitalsReading> = {}): VitalsReading {
   return {
+    self: {
+      mode: "unavailable",
+      totalMs: 0,
+      longestFrameMs: 0,
+      frames: 0,
+      namedFrames: 0,
+      loadPhaseMs: 0,
+      top: [],
+    },
     lcp: -1,
     cls: 0,
     inp: -1,

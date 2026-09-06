@@ -148,3 +148,34 @@ function attribute(reading: VitalsReading, i: number): string {
 export function accessibleName(card: Card): string {
   return `${card.name} ${card.value}, ${card.attribution}`;
 }
+
+/**
+ * The dev self-report: what d0bar's own callbacks cost this page, by frame.
+ *
+ * Development only — `SelfCost.top` is empty in a shipped build, and this returns the summary
+ * line alone there. The point of the list is that a self cost of zero can be *disbelieved*: if
+ * attribution were broken, the total would read zero and look like success, so a dev build shows
+ * the frames it found and their names. `add-self-attribution` task 5.2 asserts the list is
+ * non-empty after the panel is driven hard, which is what proves the mechanism works at all.
+ *
+ * Load phase is printed on its own line whenever it is non-zero, never folded into the total: it
+ * is the moratorium's number, and burying it in a total a busy panel dominates is how a breach
+ * would go unnoticed.
+ */
+export function selfReport(reading: VitalsReading): string[] {
+  const self = reading.self;
+  if (self.mode === "unavailable") {
+    return ["self cost unmeasured — no long-animation-frame in this browser"];
+  }
+  const floor =
+    self.mode === "lower-bound" ? " (lower bound — d0bar is in the host's bundle)" : "";
+  const lines = [
+    `self ${formatMs(self.totalMs)} over ${self.frames} frame${self.frames === 1 ? "" : "s"}, longest ${formatMs(self.longestFrameMs)}${floor}`,
+  ];
+  if (self.loadPhaseMs > 0)
+    lines.push(`load phase ${formatMs(self.loadPhaseMs)} — MORATORIUM BREACH`);
+  for (const frame of self.top) {
+    lines.push(`  ${formatMs(frame.ms)}  ${frame.name || UNAVAILABLE}`);
+  }
+  return lines;
+}

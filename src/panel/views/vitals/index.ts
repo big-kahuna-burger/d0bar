@@ -1,6 +1,7 @@
 import type { Tier1Access } from "../../../shared/stage2";
 import { open, tab, view } from "../../shell";
-import { accessibleName, cards, type Card } from "./format";
+import { accessibleName, cards, selfReport, type Card } from "./format";
+import { marked } from "../../../shared/mark";
 
 /**
  * The vitals view.
@@ -93,7 +94,18 @@ export function vitalsView(options: VitalsViewOptions): VitalsView {
   mono.textContent = "PerformanceObserver";
   note.append(document.createTextNode(NOTE_BEFORE), mono, document.createTextNode(NOTE_AFTER));
 
-  root.append(grid, note);
+  /* Gated on the data, not on `__DEV__`.
+     
+     The obvious `__DEV__ ? … : undefined` was wrong here and shipped nothing: `__DEV__` is
+     compiled per bundle, stage 2 has no dev artifact, and `?d0bar=dev` loads a dev stage 1 with
+     the *production* panel as its sibling — so the block would have been compiled out in the one
+     arm it exists for. `SelfCost.top` is the dev flag that actually crosses the boundary: stage 1
+     fills it only under its own `__DEV__`, so this stays empty and hidden in a shipped build
+     without stage 2 needing to know which build it is. */
+  const selfEl = el("pre", "vself");
+  selfEl.hidden = true;
+
+  root.append(grid, note, selfEl);
 
   /* ── painting ── */
 
@@ -105,7 +117,8 @@ export function vitalsView(options: VitalsViewOptions): VitalsView {
   }
 
   function paint(): void {
-    const next = cards(tier1.vitals());
+    const reading = tier1.vitals();
+    const next = cards(reading);
     for (let i = 0; i < parts.length; i += 1) {
       const part = parts[i] as CardParts;
       const card = next[i] as Card;
@@ -117,6 +130,10 @@ export function vitalsView(options: VitalsViewOptions): VitalsView {
       part.value.dataset["tone"] = card.tone;
       part.root.setAttribute("aria-label", accessibleName(card));
     }
+    /* `hidden`, not a removed node: the block appears and disappears with the dev build, and
+       toggling a property is cheaper than mutating the panel's DOM on a repaint. */
+    selfEl.hidden = reading.self.top.length === 0;
+    if (!selfEl.hidden) selfEl.textContent = selfReport(reading).join("\n");
   }
 
   /**
@@ -128,12 +145,16 @@ export function vitalsView(options: VitalsViewOptions): VitalsView {
   let frame = 0;
   function schedule(): void {
     if (!enabled() || frame) return;
-    frame = requestAnimationFrame(() => {
-      frame = 0;
-      /* Re-checked inside the frame: the tab can change between the request and the
-         callback, and the state at paint time is the one that matters. */
-      if (enabled()) paint();
-    });
+    frame = requestAnimationFrame(
+      marked({
+        "d0bar:vitals-paint"(): void {
+          frame = 0;
+          /* Re-checked inside the frame: the tab can change between the request and the
+             callback, and the state at paint time is the one that matters. */
+          if (enabled()) paint();
+        },
+      }),
+    );
   }
 
   const stopVitals = tier1.onVitals(schedule);

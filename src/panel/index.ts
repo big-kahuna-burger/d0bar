@@ -14,6 +14,8 @@ import { untracedView } from "./views/untraced";
 import { vitalsView } from "./views/vitals";
 import type { OtelState, Tier1Access, Tier2State } from "../shared/stage2";
 import {
+  inpDelta,
+  inpDeltaMode,
   escape as shellEscape,
   open,
   perturbation,
@@ -294,6 +296,22 @@ export function openPanel(options: PanelOptions): PanelHandle {
      every tab switch, and it keeps the view subscribed so a return to the tab paints the
      current reading rather than the one it was left on. */
   const vitals = vitalsView({ tier1: options.tier1 });
+
+  /**
+   * The footer's own-cost reading, pushed from the same vitals batch the cards render from.
+   *
+   * Read here rather than inside the vitals view because the footer is the shell's, not a tab's —
+   * and it must be current whichever tab is open. `selfcost.ts` accrues on every long animation
+   * frame, so the figure moves while the panel is open, which is the point: a developer who drives
+   * the panel hard should watch d0bar's own number climb.
+   */
+  const pushSelfCost = (): void => {
+    const { self } = options.tier1.vitals();
+    inpDeltaMode.set(self.mode);
+    inpDelta.set(self.mode === "unavailable" ? null : self.totalMs);
+  };
+  pushSelfCost();
+  bindings.add(options.tier1.onVitals(pushSelfCost));
   const showVitals = () => tab() === "vitals" && view() === "list";
   bindings.add(bindHidden(vitals.el, () => !showVitals()));
 
