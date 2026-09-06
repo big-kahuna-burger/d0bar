@@ -136,12 +136,29 @@ test.describe("observation without interception", () => {
   test("adds no measurable worker-attributable delay", { tag: "@timing" }, async ({ page }) => {
     await loadControlled(page);
 
-    const deltas = await page.evaluate(() =>
-      (performance.getEntriesByType("resource") as PerformanceResourceTiming[])
-        .filter((entry) => entry.workerStart !== 0)
-        .map((entry) => entry.fetchStart - entry.workerStart)
-        .sort((a, b) => a - b),
-    );
+    /* Per request, in issue order, with what else was in flight when it reached the worker. The
+       series is what the split below has to be decided from — see the note on the assertion. */
+    const series = await page.evaluate(() => {
+      const entries = (
+        performance.getEntriesByType("resource") as PerformanceResourceTiming[]
+      ).filter((entry) => entry.workerStart !== 0);
+      entries.sort((a, b) => a.startTime - b.startTime);
+      return entries.map((entry, index) => ({
+        index,
+        startTime: entry.startTime,
+        delta: entry.fetchStart - entry.workerStart,
+        /* Requests that had reached the worker and not yet finished when this one arrived. If the
+           tail is queueing on the worker's single thread, it lives in this column. */
+        inFlight: entries.filter(
+          (other) =>
+            other !== entry &&
+            other.workerStart <= entry.workerStart &&
+            other.responseEnd > entry.workerStart,
+        ).length,
+      }));
+    });
+
+    const deltas = series.map((sample) => sample.delta).sort((a, b) => a - b);
 
     /* The task originally said "assert workerStart is 0". Measured, it is non-zero for every
        request once a worker controls the page — the field marks when service-worker handling
@@ -155,29 +172,35 @@ test.describe("observation without interception", () => {
            CI run 1                              p95 16.10             (n=250)
            CI run 2                              p95 9.10              (n=250)
            CI run 3        p50 1.50  p90 14.40  p95 19.90  p99 23.20  max 23.40
+           CI run 4        p50 3.20  p90 17.90  p95 18.90  p99 21.90  max 22.00
+           CI run 5        p50 2.90  p90 19.60  p95 20.60  p99 22.20  max 22.30
 
        THE THRESHOLD IS 35 ms. The old 5 ms was set from the laptop column and failed on CI at
        16.10 — not a regression but a two-core shared runner dispatching a service worker, which is
        the machine every number this project quotes comes from (`CLAUDE.md`: CI calibrates, local
-       never does). 25 replaced it, from that one sample, and was itself too fine: the p95 has since
-       ranged 9.10 to 19.90, a 10.8 ms spread against a gate 5.1 ms above the highest reading. A
-       threshold finer than its metric's own spread is what the `attributedFrameMsP95.gated <= 2`
-       control was deleted for. 35 clears the highest observed p95 by more than the spread and still
-       fails on a dispatch cost that doubles.
+       never does). 25 replaced it, from that one sample, and was itself too fine: across five runs
+       the p95 has ranged 9.10 to 20.60, and a gate 5 ms above the highest reading is finer than the
+       metric's own spread — the defect the `attributedFrameMsP95.gated <= 2` control was deleted
+       for. 35 clears the highest observed p95 by more than the spread and still fails on a doubling.
 
-       THE SHAPE IS THE REAL FINDING. p50 1.50 against p95 19.90 is bimodal, and the tail is almost
-       certainly worker cold start — the first requests after registration pay for booting the
-       thread and evaluating the script, and steady-state dispatch is the p50. So this row gates
-       largely on how many cold requests a run happened to catch. Gating steady state and reporting
-       cold start separately is the correct row, and is not built.
+       THE SHAPE IS THE OPEN QUESTION. p50 ~3 ms against p90 ~19 ms is bimodal, and this row's p95
+       therefore reports how many slow requests a run happened to contain rather than what dispatch
+       costs. An earlier version of this comment named worker cold start as the cause. THAT IS
+       CONTRADICTED BY THE DATA AND HAS BEEN REMOVED: cold start is paid once, and p90 ~19 ms means
+       roughly a quarter of 250 requests are slow, not one. The candidates now are queueing on the
+       worker's single thread and CPU contention on a two-core runner, and neither is established.
+       `series` above carries what separates them — issue order, and concurrency at the moment each
+       request reached the worker — and the block printed below is the probe. Splitting this row
+       into a steady-state gate and a reported tail is worth doing once the tail has a name; doing
+       it now would be splitting on a guess.
 
-              Note what this does *not* establish. It bounds service-worker dispatch, which any registered
+       Note what this does *not* establish. It bounds service-worker dispatch, which any registered
        worker imposes; it does not attribute that to d0bar's handler versus the browser's own
        machinery. `worker-perturbation.spec.ts` does, comparing `?d0bar=on` against
        `?d0bar=on&sw=off` — identical bundle and toolbar, with and without a registration — and
        measured p50 identical, p95 +1.6 ms across 1458 requests per arm. That row still gates at
-       12 ms and passed on the same CI run this one failed, which is the evidence that 16.10 is the
-       runner and not the toolbar. */
+       12 ms and passed on every CI run this one failed, which is the evidence that these numbers
+       are the runner and not the toolbar. */
     expect(deltas.length).toBeGreaterThan(0);
     const at = (p: number): number =>
       deltas[Math.min(Math.floor(deltas.length * p), deltas.length - 1)] ?? 0;
@@ -188,6 +211,47 @@ test.describe("observation without interception", () => {
       `p99 ${at(0.99).toFixed(2)} max ${(deltas[deltas.length - 1] ?? 0).toFixed(2)} ms ` +
       `(budget ${DISPATCH_BUDGET_MS} ms)`;
     console.log(report);
+
+    /* The probe. Three views of the same series, printed rather than asserted, because the
+       question is which of them the tail correlates with:
+
+         by tenth of issue order   cold start would put every slow request in the first tenth
+         by concurrency            queueing would put them where inFlight is high
+         the ten slowest           their index and inFlight say which story fits */
+    const slow = deltas[Math.floor(deltas.length * 0.9)] ?? 0;
+    const tenths: string[] = [];
+    for (let t = 0; t < 10; t++) {
+      const from = Math.floor((t * series.length) / 10);
+      const to = Math.floor(((t + 1) * series.length) / 10);
+      const slice = series.slice(from, to);
+      const over = slice.filter((sample) => sample.delta >= slow).length;
+      tenths.push(`${t}:${over}/${slice.length}`);
+    }
+    const buckets = new Map<number, { n: number; over: number }>();
+    for (const sample of series) {
+      const key = Math.min(sample.inFlight, 8);
+      const bucket = buckets.get(key) ?? { n: 0, over: 0 };
+      bucket.n += 1;
+      if (sample.delta >= slow) bucket.over += 1;
+      buckets.set(key, bucket);
+    }
+    const byConcurrency = [...buckets.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([key, bucket]) => `${key}:${bucket.over}/${bucket.n}`)
+      .join(" ");
+    const worst = [...series]
+      .sort((a, b) => b.delta - a.delta)
+      .slice(0, 10)
+      .map(
+        (sample) =>
+          `#${sample.index}@${sample.startTime.toFixed(0)}ms ` +
+          `${sample.delta.toFixed(1)}ms inFlight=${sample.inFlight}`,
+      );
+    console.log(`dispatch tail probe, slow = delta >= ${slow.toFixed(2)}ms (the p90)`);
+    console.log(`  over-p90 by tenth of issue order: ${tenths.join(" ")}`);
+    console.log(`  over-p90 by concurrency at workerStart: ${byConcurrency}`);
+    console.log(`  ten slowest: ${worst.join(" | ")}`);
+
     expect(p95, report).toBeLessThan(DISPATCH_BUDGET_MS);
   });
 
