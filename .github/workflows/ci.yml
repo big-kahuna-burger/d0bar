@@ -27,6 +27,14 @@
 #                       generator, the spark-signals workspace package — and a key that misses
 #                       one measures a stale bundle and reports the number as this commit's.
 #                       That is the stale-fixture-server bug with a longer feedback loop.
+#
+# Every action is pinned to a commit SHA with its version in a trailing comment. A tag is a moving
+# pointer the upstream owner can repoint at any commit, so `@v4` is a promise about intent rather
+# than about bytes; a SHA is the artifact. The comment is what makes the pin readable and what
+# Dependabot rewrites when it bumps one.
+#
+# All five run on Node 24. They were on Node 20 and the runner was force-upgrading them, which is a
+# deprecation warning today and a broken workflow when the forcing stops.
 name: ci
 
 on:
@@ -43,13 +51,13 @@ jobs:
       group: check-${{ github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       # pnpm only. An `npx` or `npm ci` anywhere in this file would resolve a different tree
       # than the committed `pnpm-lock.yaml`.
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           # From `.nvmrc`, so the workflow, the local toolchain and `engines.node` cannot
           # drift apart — three places declaring a version is three places to forget.
@@ -68,7 +76,7 @@ jobs:
       # The key covers the two configs and the lockfile; `restore-keys` falls back within the
       # same lockfile, so a config edit starts cold rather than reusing entries whose config
       # hash no longer matches.
-      - uses: actions/cache@v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache
           key: ${{ runner.os }}-lintcache-${{ hashFiles('pnpm-lock.yaml', 'eslint.config.js', '.prettierrc', '.prettierignore') }}-${{ github.sha }}
@@ -99,9 +107,9 @@ jobs:
       group: perf-timing-${{ github.sha }}
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -120,7 +128,7 @@ jobs:
       # The browser binary is cached; the system libraries it links against are not, because
       # they are installed into the runner image rather than into a cacheable directory. So a
       # cache hit still runs `install-deps`, which is the cheap half.
-      - uses: actions/cache@v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: playwright
         with:
           path: ~/.cache/ms-playwright
@@ -136,7 +144,7 @@ jobs:
       # `reuseExistingServer: false`, so nothing stale can serve it.
       - run: pnpm test:perf:timing
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: perf-timing-results
@@ -155,16 +163,16 @@ jobs:
       group: perf-behaviour-${{ github.sha }}
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: playwright
         with:
           path: ~/.cache/ms-playwright
@@ -178,7 +186,7 @@ jobs:
 
       - run: pnpm test:perf:behaviour
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: perf-behaviour-results
