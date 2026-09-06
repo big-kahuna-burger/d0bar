@@ -27,31 +27,18 @@ import {
 } from "../../../trace/traceMachine";
 
 /**
- * The trace surface, pushed over the request list.
+ * The trace surface, pushed over the request list. Its job is keeping four readings apart — found,
+ * waiting, `unqueryable`, and no span at all — and making the last impossible to mistake for the
+ * others. The decision is `src/trace/traceMachine.ts`'s and is node-tested; this file paints.
  *
- * Its whole job is to keep three readings apart — the trace was found, the trace is not
- * queryable *yet*, and no span exists at all — and to make the third impossible to mistake
- * for the second. Everything that decides which one applies is in
- * `src/trace/traceMachine.ts` and is a node test; this file paints the result and owns no
- * policy of its own.
+ * The query is now wired: `add-pasted-token` supplied the credential and `add-trace-layout-worker`
+ * the off-thread layout, so `panel/index.ts` passes a real `TraceQuery`. (Parsing OTLP here instead
+ * would put a multi-millisecond parse on the main thread of the page whose INP this reports.)
  *
- * **The query is not built, and the reason changed.** It was the credential; `add-pasted-token`
- * shipped that, and the worker will now issue an authenticated call for anyone who connects a
- * token. What is still missing is the other end: a `TraceQuery` must return a laid-out
- * {@link TraceSummary}, and producing one from a response body means parsing OTLP JSON —
- * thousands of spans — which `add-trace-layout-worker` exists to do off-thread and has not been
- * built. Doing it here instead would put a multi-millisecond parse on the main thread of the
- * page whose INP this toolbar is reporting, which is the one trade this project refuses.
- *
- * So `options.query` is left undefined in `panel/index.ts` and the machine's `unqueryable`
- * state is what a real deployment sees for an instrumented request today. That is a fourth
- * reading, not a fudged version of one of the three: it says the span exists and that *d0bar*
- * cannot ask about it. With a token connected it now says so in those words — see
- * `UNQUERYABLE_COPY`.
- *
- * With tier 2 off — the default on any origin that has not been given a worker path — no
- * request carries a traceparent at all, so every selection resolves to the no-span state
- * through {@link inputFor}, and no query is ever attempted.
+ * `unqueryable` remains a distinct reading rather than a fudged one: the span exists and *d0bar*
+ * cannot ask about it — see `UNQUERYABLE_COPY`. And with tier 2 off (the default without a worker
+ * path) nothing carries a traceparent, so every selection resolves to no-span via {@link inputFor}
+ * and no query is attempted.
  */
 
 /** Row height for the span list. Matches the handoff's 6px-padded rows. */
@@ -69,13 +56,10 @@ export interface TraceViewOptions {
   tier2(): Tier2State;
   origin?: string;
   /**
-   * Ring indices the service worker produced a record for — the same set the untraced tab
-   * classifies against, read at selection time rather than captured.
-   *
-   * It is what separates a request the worker watched go out bare from one it never saw, and
-   * without it this surface cannot use the coverage classifier at all. Defaults to empty, which
-   * classifies every same-origin application request as `unseen` — the honest answer for a
-   * caller that has no worker knowledge to give.
+   * Ring indices the worker produced a record for — the untraced tab's set, read at selection time
+   * rather than captured. Separates a request the worker watched go out bare from one it never saw.
+   * Defaults empty, classifying every same-origin application request as `unseen` — the honest
+   * answer for a caller with no worker knowledge to give.
    */
   seen?: () => ReadonlySet<number>;
   /**
@@ -88,19 +72,15 @@ export interface TraceViewOptions {
   now?: () => number;
   timeOrigin?: number;
   /**
-   * Resolves a ring record's `contextId` to the trace context tier 2 observed.
-   *
-   * Defaults to `correlate.ts`'s side table, which `flushCorrelation` populates in this same
-   * bundle. Injectable so a test can drive the found and waiting surfaces without standing
-   * up IndexedDB, a service worker and a join.
+   * Resolves a record's `contextId` to tier 2's observed trace context. Defaults to `correlate.ts`'s
+   * side table; injectable so a test can drive the found and waiting surfaces without IndexedDB, a
+   * service worker and a join.
    */
   context?: (id: number) => TraceContext | undefined;
   /**
-   * Machine tuning, passed straight through.
-   *
-   * Nothing in shipped code sets this. It exists so a test can drive the backoff, the ceiling
-   * and the countdown against a fake clock instead of waiting out four real doublings — the
-   * alternative is a six-second test, which is a test nobody runs.
+   * Machine tuning, passed through. Nothing shipped sets it: it exists so a test can drive the
+   * backoff, ceiling and countdown against a fake clock rather than waiting out four real
+   * doublings, which is a six-second test nobody runs.
    */
   machine?: Omit<TraceMachineOptions, "query" | "now">;
 }
@@ -110,14 +90,11 @@ export interface TraceView {
   /** The machine, exposed for tests and for teardown. */
   readonly machine: TraceMachine;
   /**
-   * Moves focus onto the back button.
-   *
-   * Not cosmetic, and not only an accessibility nicety. Escape is bound on the panel element
-   * rather than on the document, because a listener on the host's document is the one thing
-   * this project will not add — so Escape only works while focus is inside the panel. A row
-   * click pushes this surface and hides the row that had focus, at which point the browser
-   * moves focus to `<body>`, outside the shadow root, and Escape silently stops popping the
-   * surface. Observed in Chromium against the fixture, not reasoned about.
+   * Moves focus onto the back button. Not cosmetic: Escape is bound on the panel element, not the
+   * document (a host-document listener is the thing this project will not add), so it only works
+   * while focus is inside the panel. A row click hides the row that had focus, the browser moves
+   * focus to `<body>` outside the shadow root, and Escape silently stops popping the surface.
+   * Observed in Chromium against the fixture.
    */
   focus(): void;
   destroy(): void;
@@ -287,12 +264,9 @@ export function traceView(options: TraceViewOptions): TraceView {
   }
 
   /**
-   * One record, reused for every row painted.
-   *
-   * The rows live in a transferred buffer and are read into this on demand — so a scroll
-   * through a four-thousand-span trace allocates a viewport's worth of strings and nothing
-   * else. Same scratch pattern as the request list, and the reason the layout worker's output
-   * is an accessor rather than an array.
+   * One record, reused for every row: rows live in a transferred buffer and are read into it on
+   * demand, so scrolling a 4000-span trace allocates a viewport's worth of strings and nothing else.
+   * The request list's scratch pattern, and why the worker's output is an accessor, not an array.
    */
   const spanRecord: SpanRow = spanScratch();
 
@@ -439,14 +413,11 @@ export function traceView(options: TraceViewOptions): TraceView {
     }),
   );
   /**
-   * The `seen by the SW` line is a claim about an observation, so it appears only where the
-   * observation happened — and the classifier now says exactly where that is.
-   *
-   * `not-propagated` is *defined* as "the worker held a record for this request and there was
-   * no traceparent on it", so it is the one cause that entails the observation. `unseen` is its
-   * complement and previously printed this line anyway, telling the reader the worker saw a
-   * request it explicitly did not; the other four are decided before the worker is consulted at
-   * all, so for them the claim is simply unknown.
+   * `seen by the SW` is a claim about an observation, so it appears only where one happened.
+   * `not-propagated` is *defined* as the worker holding a record with no traceparent on it — the one
+   * cause that entails it. `unseen` is its complement and used to print the line anyway, telling
+   * the reader the worker saw a request it explicitly did not; the other four are decided before
+   * the worker is consulted at all.
    */
   bindings.add(
     bindHidden(noneSw, () => {

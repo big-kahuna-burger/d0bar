@@ -12,16 +12,13 @@ import {
 } from "../shared/flags";
 
 /**
- * The request ring: struct-of-arrays over one preallocated buffer.
+ * The request ring: struct-of-arrays over one preallocated buffer. Observer callbacks run on the
+ * main thread in bursts during load, while the host's TBT and LCP are being measured, so an object
+ * per entry would correlate the toolbar's GC pressure with the numbers it reports. A record is a
+ * fixed stride of numbers; the browser's entry is not retained.
  *
- * `PerformanceObserver` callbacks run on the main thread, in bursts, during load — exactly
- * when the host page's TBT and LCP are being measured. Allocating an object per entry would
- * put the toolbar's GC pressure in direct correlation with the numbers it reports. So a
- * captured request is a fixed stride of numbers, no object is created, and the browser's
- * own entry is not retained.
- *
- * Fixed capacity. On overflow the oldest record is overwritten and `dropped` increments —
- * the UI reports that loss rather than presenting a truncated list as complete.
+ * Fixed capacity: on overflow the oldest is overwritten and `dropped` increments, and the UI
+ * reports that loss rather than presenting a truncated list as complete.
  */
 
 export const CAPACITY = 512;
@@ -90,9 +87,9 @@ let deliverySupported =
 interface ResourceTimingExtras {
   renderBlockingStatus?: "blocking" | "non-blocking";
   /**
-   * The browser's own epoch id, stamped on every entry. Present wherever soft navigations
-   * are supported, including on entries buffered from before the toolbar mounted — which is
-   * why the epoch is read from the entry rather than derived from its `startTime`.
+   * The browser's own epoch id, on every entry wherever soft navigations are supported —
+   * including buffered ones from before the toolbar mounted, which is why it is read from the entry
+   * rather than derived from `startTime`.
    */
   navigationId?: number;
   /** `""` for a network fetch, `"cache"` for a hit, `"navigational-prefetch"` for a prefetch. */
@@ -104,12 +101,9 @@ interface ResourceTimingExtras {
 export { scratch, type RequestRecord };
 
 /**
- * The epoch and trace context subsequent records are written into.
- *
- * Held as two plain integers set between bursts by the epoch and trace layers, so the hot
- * path reads them without a call. A trace context is 24 bytes of ids and cannot live in a
- * `u32`, so `contextId` is a handle into a side table — the same indirection the URL strings
- * already use.
+ * The epoch and trace context subsequent records are written into. Two plain integers, set between
+ * bursts, so the hot path reads them without a call. A trace context is 24 bytes of ids and cannot
+ * live in a `u32`, so `contextId` is a handle into a side table — the URL strings' indirection.
  */
 let currentEpochId = 0;
 let currentContextId = ABSENT;
@@ -212,19 +206,13 @@ export function read(index: number, out: RequestRecord): RequestRecord | undefin
 }
 
 /**
- * Attaches tier 2's findings to a record tier 1 already wrote.
+ * Attaches tier 2's findings to a record tier 1 already wrote. Not at push time: the worker's
+ * records are read from IndexedDB once, after settle, so this is a write back into existing slots.
  *
- * The join cannot happen at push time: the worker's records are read from IndexedDB once,
- * after settle, long after the resource entries were observed. So correlation is a write
- * back into existing slots rather than a field set on the way in.
- *
- * Only the fields tier 2 owns are touched. Timings and status are tier 1's and are not
- * passed here at all — the type is the enforcement, so a future caller cannot overwrite a
- * measured duration with a worker's guess at one.
- *
- * `method` is the interesting case: the browser reports no method on a resource entry, so
- * `pushResource` deliberately leaves it {@link ABSENT} rather than assuming GET. This is
- * where it stops being absent.
+ * Only tier 2's own fields. Timings and status are not parameters at all, so a future caller cannot
+ * overwrite a measured duration with a worker's guess. `method` is the interesting one: a resource
+ * entry reports none, so `pushResource` leaves it {@link ABSENT} rather than assuming GET, and this
+ * is where it stops being absent.
  */
 export function correlate(
   index: number,
@@ -242,12 +230,9 @@ export function correlate(
 }
 
 /**
- * Writes tier 4's identity onto a record.
- *
- * Deliberately narrower than {@link correlate}: a `contextId` and the `F_HAS_SPAN` bit, and
- * no parameter for anything else. Tier 4 knows a request's identity and nothing about its
- * timing, size or status — every one of those is tier 1's, measured by the browser — so the
- * signature is where that is enforced rather than a comment asking future callers not to.
+ * Writes tier 4's identity onto a record: a `contextId` and `F_HAS_SPAN`, no parameter for anything
+ * else. Tier 4 knows identity and nothing about timing, size or status — all tier 1's, measured by
+ * the browser — and the signature enforces that rather than a comment asking callers not to.
  */
 export function adoptSpan(index: number, contextId: number): boolean {
   const count = size();

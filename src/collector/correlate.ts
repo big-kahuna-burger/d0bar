@@ -6,18 +6,14 @@ import { readAll, loggingDegraded } from "../sw/log";
 import type { FetchRecord } from "../sw/protocol";
 
 /**
- * The correlation flush.
+ * The correlation flush: once after settle, at background priority, never inside a `fetch` handler
+ * or observer callback — both fire during load, and a join there puts string interning and a map
+ * walk into the host's TBT.
  *
- * Runs once after settle, at background priority, and never inside a `fetch` handler or a
- * `PerformanceObserver` callback. Both of those fire during load, which is the window this
- * whole toolbar exists not to disturb — a join there would put string interning and a map
- * walk directly into the host's TBT.
- *
- * Reading the worker's log from the page is deliberate. The obvious alternative is for the
- * worker to `postMessage` each record as it observes it, which would deliver them earlier —
- * and would run a message handler on the host's main thread once per request, in bursts,
- * during load. IndexedDB is per-origin rather than per-realm, so the page can simply open
- * the database the worker wrote and pay for all of it once, after the page is quiet.
+ * The page reads the worker's log rather than the worker `postMessage`-ing each record: that
+ * delivers earlier and runs a message handler on the host's main thread once per request, in
+ * bursts, during load. IndexedDB is per-origin, not per-realm, so the page opens the worker's
+ * database and pays once, when the page is quiet.
  */
 
 export interface FlushResult {
@@ -28,10 +24,8 @@ export interface FlushResult {
   /** How many joins were flagged ambiguous. */
   lowConfidence: number;
   /**
-   * Ring indices the worker produced a record for, whether or not it carried a traceparent.
-   *
-   * The untraced view's input: a request the worker read and found bare is a different
-   * finding from one the worker never saw, and without this the two are indistinguishable.
+   * Ring indices the worker produced a record for, traceparent or not. The untraced view's input:
+   * a request the worker read and found bare is a different finding from one it never saw.
    */
   seen: Set<number>;
   /** True when the worker stopped logging (quota) and the log is therefore incomplete. */
@@ -42,20 +36,17 @@ export interface FlushResult {
   /** Adopted spans with no tier 1 counterpart. Counted, never discarded. */
   spansUnjoined: number;
   /**
-   * Records where tier 2 and tier 4 both supplied a trace id and the two disagree.
-   *
-   * Reported rather than resolved — see `F_TRACE_CONFLICT`. A non-zero count here means one
-   * of the two joins matched the wrong pair, and the panel must say so instead of choosing.
+   * Records where tier 2's and tier 4's trace ids disagree. Reported, not resolved
+   * (`F_TRACE_CONFLICT`): a non-zero count means one join matched the wrong pair, and the panel
+   * must say so rather than choose.
    */
   traceConflicts: number;
 }
 
 /**
- * The trace-context side table.
- *
- * The ring stores a `u32` per record, and a trace context is far too wide for that, so
- * `contextId` is a handle into this array — the same indirection the URLs already use. Index
- * 0 is reserved as "absent", matching the interning table's convention.
+ * The trace-context side table. The ring stores a `u32` per record and a trace context is far
+ * wider, so `contextId` indexes here — the URLs' indirection. Index 0 is "absent", matching the
+ * interning table.
  */
 const contexts: TraceContext[] = [
   { traceId: "", spanId: "", sampled: false, confident: false },
@@ -82,31 +73,22 @@ function addContext(context: TraceContext): number {
 }
 
 /**
- * Reads the worker's log, joins it against the ring, and writes the results back.
- *
- * Never throws. Every failure mode here — no worker, no storage, an empty log — is a
- * reading, not an error, and it resolves to the same honest degraded state.
+ * Reads the worker's log, joins it against the ring, writes back. Never throws: no worker, no
+ * storage and an empty log are readings rather than errors, and resolve to the same degraded state.
  */
 export async function flushCorrelation(options: {
   /**
-   * Tier 2's state, **passed in from stage 1** rather than read from `sw.ts`.
-   *
-   * Stage 1 and stage 2 are separate bundles, so each gets its own copy of every module and
-   * its own module-level state. `sw.ts` holds the registration outcome in a module variable,
-   * and the panel's copy of that variable is never written — reading it here returned `off`
-   * for a worker that was demonstrably registered and controlling the page. Found by running
-   * the fixture, not by a test: both bundles typecheck, both are internally consistent, and
-   * the only symptom is a footer that lies.
+   * Tier 2's state, **passed in from stage 1** per the duplication rule in `shared/stage2.ts`.
+   * Reading `sw.ts` here returned `off` for a worker that was registered and controlling the page.
+   * Found by running the fixture, not by a test — both bundles typecheck, both are internally
+   * consistent, and the only symptom is a footer that lies.
    */
   tier2: Tier2State;
   /**
-   * Only records observed during this document's lifetime take part in the join.
-   *
-   * The log is deliberately durable across reloads — that is the whole point of task 3.3,
-   * the failed request is still there after the refresh. But a record from a *previous* load
-   * has no counterpart in this load's ring, so joining against the whole log reported every
-   * request of every prior page view as untraced. The badge read 614 on a page that had
-   * issued 300.
+   * Only this document's records join. The log is durable across reloads by design — the failed
+   * request survives the refresh — but a previous load's record has no counterpart in this ring, so
+   * joining the whole log reported every prior page view's requests as untraced: the badge read 614
+   * on a page that had issued 300.
    */
   since: number;
   /** The ring, owned by stage 1. See `Tier1Access` for why this is passed and not imported. */
@@ -162,13 +144,9 @@ export async function flushCorrelation(options: {
     if (!correlation.confident) lowConfidence += 1;
   }
 
-  /* Tier 4, joined against the same entries and written back second.
-     
-     Second rather than first, and additively rather than authoritatively: tier 2 read the
-     `traceparent` the browser actually put on the wire, which is the header the backend
-     received. Tier 4 read the span the host's SDK built, which is what the SDK *intended* to
-     send. Where both exist and agree there is nothing to do; where they disagree, the
-     disagreement is the finding. */
+  /* Tier 4, second and additive rather than authoritative: tier 2 read the `traceparent` the
+     browser put on the wire (what the backend received), tier 4 read the span the SDK built (what
+     it intended to send). Agreement is a no-op; disagreement is the finding. */
   const spans = options.tier1.spans();
   const spanResult = joinSpans(entries, spans);
 

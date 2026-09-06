@@ -30,11 +30,9 @@ import { resetTier2, startTier2, tier2State, type SwConfig, type Tier2State } fr
 import { detectOtel, otelState, resetOtel, type OtelState } from "./otel";
 
 /**
- * Stage 1 — the only part of the toolbar on a host page's critical path.
- *
- * Everything here is either the opt-in gate, an observer registration, or a write into a
- * preallocated buffer. The panel arrives as a separate stage, imported on demand, so a page
- * whose developer never opens the toolbar pays for none of it.
+ * Stage 1 — the only part of the toolbar on the host's critical path. Everything here is the opt-in
+ * gate, an observer registration, or a write into a preallocated buffer; the panel is a separate
+ * stage imported on demand, so a developer who never opens it pays for none of it.
  */
 
 export interface D0barConfig {
@@ -51,13 +49,11 @@ export interface D0barConfig {
    */
   shortcut?: string | false | undefined;
   /**
-   * Where the host serves d0bar's service worker. Tier 2 — the only source of a
-   * `traceparent`, because `PerformanceResourceTiming` exposes no request headers — stays
-   * off until this is set.
-   *
-   * Opt-in rather than a guessed default: registering a worker is a persistent,
-   * origin-scoped side effect on someone else's site, and a path we invented would 404
-   * against their routing. A host that omits it gets tier 1, and the panel says so.
+   * Where the host serves d0bar's service worker. Tier 2 — the only source of a `traceparent`, since
+   * `PerformanceResourceTiming` exposes no request headers — stays off until this is set. Opt-in,
+   * not a guessed default: registering a worker is a persistent origin-scoped side effect on someone
+   * else's site, and an invented path 404s against their routing. Omitting it gets tier 1, and the
+   * panel says so.
    */
   sw?: SwConfig | undefined;
 }
@@ -108,12 +104,10 @@ let liveConfig: D0barConfig | undefined;
 let warnedAboutReinit = false;
 
 /**
- * Whether a second `init()` asked for something the running toolbar is not doing.
- *
- * Only the fields that change behaviour, compared the way `init()` itself reads them:
- * `shortcut` through its default, and `sw` field by field — a fresh object literal with
- * identical contents is the ordinary case for a host that reinitialises, and is not a
- * difference. Runs at most once per page, off the critical path.
+ * Whether a second `init()` asked for something the running toolbar is not doing. Only the fields
+ * that change behaviour, compared as `init()` reads them: `shortcut` through its default, `sw` field
+ * by field — a fresh literal with identical contents is the ordinary case and not a difference. At
+ * most once per page, off the critical path.
  */
 function differs(next: D0barConfig, prev: D0barConfig | undefined): boolean {
   if (!prev) return false;
@@ -275,12 +269,9 @@ export function init(config: D0barConfig): D0barHandle {
      cannot live in the panel's own keydown handler. */
   const stopShortcut = installShortcut({ shortcut: config.shortcut, onToggle: toggle });
 
-  /* Warmed only once the load phase has settled *and* the page has loaded, at background
-     priority, so the fetch cannot compete with the host page's own critical requests. Settle
-     alone would not be enough: a user who clicks mid-load makes LCP final, which lifts the
-     moratorium while the host's own critical requests are still in flight — see
-     `whenNetworkPermitted`. A click during the prefetch joins that same load rather than
-     starting a second one. */
+  /* Settled *and* loaded, at background priority, so the fetch cannot compete with the host's
+     critical requests — settle alone is not enough, since a mid-load click makes LCP final and lifts
+     the moratorium (see `whenNetworkPermitted`). A click during the prefetch joins that load. */
   let cancelPrefetch: (() => void) | undefined;
   whenNetworkPermitted(() => {
     /* Guarded here rather than inside `prefetchStage2`: that module is `shared/`, and stage 2
@@ -306,17 +297,12 @@ export function init(config: D0barConfig): D0barHandle {
   live = {
     enabled: true,
     /**
-     * Teardown, including the toolbar's own accumulated state.
-     *
-     * The state reset is not tidiness — without it a second `init()` reports numbers that
-     * describe two pages. Observers register with `buffered: true`, so re-registering
-     * re-delivers every entry the page ever produced: each resource is pushed into a ring
-     * that still holds the first copy, each layout shift joins a CLS session that already
-     * contains it, and `loafCount` doubles. A host doing this is not exotic — module reload
-     * in development and an SPA test harness both do exactly it.
-     *
-     * The observer disconnects come first, so nothing can write into a module that is being
-     * reset half-way through.
+     * Teardown, including accumulated state. The reset is not tidiness: `buffered: true` means
+     * re-registering re-delivers every entry the page ever produced, so without it a second `init()`
+     * describes two pages — resources pushed into a ring that still holds the first copy, shifts
+     * rejoining a CLS session that contains them, `loafCount` doubled. Not exotic: dev module reload
+     * and SPA test harnesses both do it. Observers disconnect first, so nothing writes into a module
+     * being reset half-way through.
      */
     destroy() {
       cancelPrefetch?.();

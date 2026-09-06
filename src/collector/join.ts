@@ -2,24 +2,19 @@ import { intern, ABSENT, OVERFLOW } from "../shared/intern";
 import type { FetchRecord } from "../sw/protocol";
 
 /**
- * The tier 1 ↔ tier 2 join.
- *
- * Two sources, each authoritative for different fields, and neither allowed to overwrite the
- * other's:
+ * The tier 1 ↔ tier 2 join. Two sources, each authoritative for different fields, neither allowed to
+ * overwrite the other's:
  *
  *   tier 1 · resource entry   timings, transferSize, responseStatus
  *   tier 2 · fetch event      traceparent, method, requests tier 1 never saw
  *
- * Naive matching is O(n·m) per flush — for a page with 500 requests and 500 worker records
- * that is a quarter of a million string comparisons on the main thread. Instead the URL is
- * interned to a `u32` (the table from `observation-core` has already done this for every
- * request in the ring), and unjoined tier 2 records are held in a per-URL FIFO. Matching a
- * tier 1 entry is then one map lookup and one shift: amortised O(1) per entry.
+ * Naive matching is O(n·m): 500 requests against 500 worker records is a quarter-million string
+ * comparisons on the main thread. Instead the URL is already interned to a `u32` and unjoined tier 2
+ * records sit in a per-URL FIFO — one map lookup and one shift, amortised O(1) per entry.
  *
- * Ambiguity is real and is not hidden. Two identical URLs issued concurrently arrive in the
- * worker in issue order and in the ring in completion order, which are not the same order.
- * The FIFO pops in issue order, which is right on average and wrong sometimes, so any record
- * that had a same-URL sibling in flight is flagged low confidence and the UI must not
+ * Ambiguity is real and not hidden: two identical concurrent URLs reach the worker in issue order
+ * and the ring in completion order. The FIFO pops in issue order, right on average and sometimes
+ * wrong, so a record with a same-URL sibling in flight is flagged low confidence and the UI must not
  * present its trace id as certain.
  */
 
@@ -35,11 +30,9 @@ export interface UrlKeyed {
 }
 
 /**
- * Builds the per-URL FIFOs.
- *
- * Shared by {@link join} and {@link joinSpans}. `overflowed` is separated rather than
- * dropped: every URL past the intern table's capacity collapses onto the same id, so
- * matching them would attach one request's identity to another's timings.
+ * Builds the per-URL FIFOs, shared by {@link join} and {@link joinSpans}. `overflowed` is separated
+ * rather than dropped: past the intern table's capacity every URL collapses onto one id, so matching
+ * them would attach one request's identity to another's timings.
  */
 function queuesByUrl<T extends UrlKeyed>(
   records: readonly T[],
@@ -96,13 +89,9 @@ export interface SpanJoinResult {
 }
 
 /**
- * Correlates adopted spans against the ring.
- *
- * Deliberately a separate function from {@link join} rather than a generic one with a
- * `kind` parameter: the two produce different results. Tier 2 supplies a method and a
- * sampling decision that tier 1 never has; tier 4 supplies identity and nothing else, and
- * the return type is what enforces that — there is no field here for a timing, a status or
- * a size, so a later change cannot let tier 4 overwrite one by accident.
+ * Correlates adopted spans against the ring. Separate from {@link join} rather than one generic
+ * function with a `kind`: tier 2 supplies a method and a sampling decision, tier 4 supplies identity
+ * and nothing else, and the return type enforces it — no field for a timing, status or size.
  */
 export function joinSpans(
   entries: readonly Tier1Entry[],
@@ -161,10 +150,8 @@ export interface Tier1Entry {
 }
 
 /**
- * Correlates one flush.
- *
- * Pure: it reads two arrays and returns a result. The caller owns the ring writes, which
- * keeps this testable from a recorded pair of dumps with no browser in sight.
+ * Correlates one flush. Pure — two arrays in, a result out; the caller owns the ring writes, which
+ * makes this testable from a recorded pair of dumps with no browser in sight.
  */
 export function join(
   entries: readonly Tier1Entry[],

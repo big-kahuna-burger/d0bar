@@ -1,34 +1,25 @@
 import { ABSENT, OVERFLOW, intern, str } from "../shared/intern";
 
 /**
- * Tier 4's span sink.
+ * Tier 4's span sink: a `SpanProcessor` that reads and never exports. Same posture as tier 2's
+ * worker — observe what the host already does, add nothing.
  *
- * A `SpanProcessor` that reads and never exports. The host's SDK already ends every span it
- * creates; this observes that moment, copies five primitives out and lets the span go. It is
- * the same posture as the service worker in tier 2 — observe what the host is already doing,
- * add nothing to it.
+ * `onEnd` runs synchronously inside the host's span lifecycle, on the main thread, on a page whose
+ * INP d0bar claims not to move. So:
  *
- * **What must not happen here.** `onEnd` runs synchronously inside the host's own span
- * lifecycle, on the main thread, on a page whose INP d0bar is claiming not to move. So:
+ *   - no exporter, network or serialisation — `forceFlush`/`shutdown` resolve immediately;
+ *   - `onStart` is empty: a started-never-ended span shows nothing, and working there doubles the
+ *     per-span cost;
+ *   - the `ReadableSpan` is not retained. It holds attributes, links, events and the whole
+ *     `Resource`. State here is five `TypedArray`s and three counters, which cannot hold an object
+ *     reference at all. `tests/unit/otel-sink.test.ts` asserts the copy by mutating a span after
+ *     the callback; a `WeakRef` assertion was tried first and abandoned, since collection is not
+ *     observable in that harness even for a plain unreferenced object.
  *
- *   - no exporter, no network, no serialisation — `forceFlush` and `shutdown` resolve
- *     immediately because there is genuinely nothing to flush;
- *   - `onStart` is empty. A span that is started and never ended is not evidence of anything
- *     the panel can show, and doing work at start doubles the per-span cost;
- *   - the `ReadableSpan` is not retained. It holds its attributes, links, events and the
- *     whole `Resource` — keeping one to read later keeps all of it, on memory that belongs
- *     to the customer's page. Every field is copied out before the callback returns. This
- *     module's entire state is five `TypedArray`s and three counters, which cannot hold an
- *     object reference at all; `tests/unit/otel-sink.test.ts` asserts the copy by mutating a
- *     span after the callback and watching the row not move. A `WeakRef` assertion was tried
- *     first and abandoned — collection is not observable in that harness even for a plain
- *     unreferenced object, so it would have measured vitest rather than this file.
- *
- * **Why a URL is required.** A span with no URL attribute cannot be joined to a resource
- * entry, and the only alternative — matching on the span's name — is exactly the kind of
- * plausible inference this project refuses: a host is free to name a span `GET /api/quote`
- * for a request to a different origin, or to name three spans the same. Those spans are
- * counted and dropped, and the count is reported rather than the loss being silent.
+ * **A URL is required.** Without one a span cannot be joined to a resource entry, and matching on
+ * span *name* is the plausible inference this project refuses — a host may name a span
+ * `GET /api/quote` for another origin, or name three spans alike. Those spans are counted and
+ * dropped, and the count is reported.
  */
 
 /** Fixed, and small. Tier 4 spans are the host's own, and a page that makes thousands has
@@ -52,10 +43,8 @@ let dropped = 0;
 let urlless = 0;
 
 /**
- * One adopted span, as the panel sees it.
- *
- * Filled into a caller-owned object, like `ring.read`, so reading the whole sink for a join
- * does not allocate one object per span.
+ * One adopted span, filled into a caller-owned object like `ring.read`, so a join over the whole
+ * sink does not allocate per span.
  */
 export interface SpanRow {
   traceId: string;
@@ -70,13 +59,10 @@ export function spanScratch(): SpanRow {
 }
 
 /**
- * The subset of `ReadableSpan` this file touches.
- *
- * Structural and minimal, and declared here rather than imported: `@opentelemetry/*` is
- * banned from `src/**` by an ESLint rule, because importing the API to get a type is one
- * refactor away from importing it to get a value, and tier 4's entire claim is that d0bar
- * ships no OpenTelemetry code. Every member is optional — this object comes from the host's
- * SDK, whose version d0bar does not control and must not assume.
+ * The subset of `ReadableSpan` touched here, declared rather than imported: an ESLint rule bans
+ * `@opentelemetry/*` from `src/**`, because importing the API for a type is one refactor from
+ * importing it for a value, and tier 4's claim is that d0bar ships no OpenTelemetry code. All
+ * optional — this comes from the host's SDK, whose version d0bar does not control.
  */
 export interface EndedSpan {
   name?: unknown;
@@ -87,11 +73,9 @@ export interface EndedSpan {
 }
 
 /**
- * The span-processor surface, as the SDK calls it.
- *
- * Declared structurally for the same reason as {@link EndedSpan}. A host installing
- * `otelSpanProcessor()` into their own provider is type-checked by *their* SDK against this
- * object, which is the only place the two shapes have to agree.
+ * The span-processor surface, structural for {@link EndedSpan}'s reason. A host installing
+ * `otelSpanProcessor()` is type-checked by *their* SDK against this object — the only place the two
+ * shapes must agree.
  */
 export interface ReadOnlySpanProcessor {
   onStart(): void;
@@ -101,21 +85,16 @@ export interface ReadOnlySpanProcessor {
 }
 
 /**
- * Where a URL lives on an HTTP client span.
- *
- * `url.full` is the current semantic convention; `http.url` is what every SDK older than the
- * stabilisation still emits, and both are in the field today. Read in that order and no
- * further — a third fallback would be a guess about a convention that does not exist.
+ * Where a URL lives on an HTTP client span: `url.full` (current convention) then `http.url` (every
+ * pre-stabilisation SDK), both in the field today. No third fallback — that would be a guess about
+ * a convention that does not exist.
  */
 const URL_KEYS = ["url.full", "http.url"] as const;
 
 /**
- * Converts the SDK's `HrTime` to milliseconds on the performance timeline.
- *
- * `HrTime` is `[epochSeconds, nanoseconds]` — wall clock, not `performance.now()`. The ring's
- * timings are relative to `timeOrigin`, so the two are only comparable once one is moved onto
- * the other's axis, and getting this wrong would produce a join that is off by the age of the
- * page rather than one that is visibly broken.
+ * `HrTime` (`[epochSeconds, nanoseconds]`, wall clock) to milliseconds on the performance timeline.
+ * The ring is relative to `timeOrigin`, so the two are comparable only on one axis — getting it
+ * wrong yields a join off by the age of the page rather than one that is visibly broken.
  */
 function hrToRelative(value: unknown, timeOrigin: number): number {
   if (!Array.isArray(value) || value.length < 2) return -1;
@@ -126,19 +105,13 @@ function hrToRelative(value: unknown, timeOrigin: number): number {
 }
 
 /**
- * Reads the span's URL and resolves it against the document.
- *
- * The convention says `url.full` is absolute, and every auto-instrumentation writes it that
- * way — but the join keys on an exact string match against the resource entry's `name`,
- * which is always absolute, so a hand-instrumented span carrying `/api/quote` matches
- * nothing and does so **silently**. That is the failure this project cannot have: the panel
- * would show the request untraced on a page where the SDK traced it, with no error anywhere.
- * Observed against a real `WebTracerProvider` in `tests/perf/otel.spec.ts` — every span was
- * recorded and none of them joined.
- *
- * Resolution is not inference. `new URL(value, base)` is what the browser itself does with
- * the same string, so this reads the URL the request actually went to rather than guessing
- * at one.
+ * Reads the span's URL and resolves it against the document. The convention says `url.full` is
+ * absolute and auto-instrumentation writes it that way, but the join is an exact match against the
+ * resource entry's always-absolute `name`, so a hand-instrumented `/api/quote` matches nothing
+ * **silently** — the panel showing untraced on a page the SDK traced, with no error anywhere.
+ * Observed against a real `WebTracerProvider` in `tests/perf/otel.spec.ts`: every span recorded,
+ * none joined. Resolution is not inference — `new URL(value, base)` is what the browser does with
+ * the same string.
  */
 function urlOf(attributes: Record<string, unknown> | undefined, base: string): string {
   if (!attributes) return "";
@@ -157,11 +130,8 @@ function urlOf(attributes: Record<string, unknown> | undefined, base: string): s
 }
 
 /**
- * Builds the processor.
- *
- * `timeOrigin` is injected rather than read from `performance` so a test can drive the
- * conversion above with a fixed origin, and so the module has no import-time dependency on a
- * browser global.
+ * Builds the processor. `timeOrigin` is injected so a test can drive the conversion with a fixed
+ * origin, and so the module has no import-time dependency on a browser global.
  */
 export function createSpanSink(
   timeOrigin: number = performance.timeOrigin,

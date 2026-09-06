@@ -171,6 +171,18 @@ from a measurement, the measurement goes in the comment:
 Do not narrate what the code already says. Do not leave a comment that has become false —
 a wrong explanation is worse than none.
 
+**And terse.** Keep the measurement, the falsified hypothesis, the reason the obvious thing was
+not done; cut the retelling around them. A comment is read by every agent that opens the file,
+and prose costs context that the reasoning itself has a better claim on. Concretely: state the
+finding, name the number, stop — one dense paragraph rather than four narrating ones, a table or
+an aligned diagram where the content is structural. Say a rule once and point at it, rather than
+restating it per field: `shared/stage2.ts` explained the stage-duplication rule six times before
+it was written down once with all four of its observed failures listed.
+
+Long history belongs where it is already kept and is not loaded by default — `budget.json`
+rationales, `bench/quantized-metrics.md`, the OpenSpec change. A comment cites it; it does not
+reproduce it.
+
 ### Honest degradation
 
 Absence is disclosed, never papered over:

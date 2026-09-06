@@ -2,21 +2,16 @@ import { F_HAS_SPAN, F_XHR } from "../shared/flags";
 import type { RequestRecord } from "../shared/record";
 
 /**
- * Coverage classification: why a request on this page produced no span.
+ * Coverage classification: why a request produced no span. The strongest argument for tier 2 and a
+ * diagnostic no backend can produce — the un-instrumented request never arrives, so no query would
+ * surface it. Which makes honesty the whole value: "missing" is not an answer, and two gaps with
+ * different causes have different fixes.
  *
- * This is the strongest argument for tier 2 and a diagnostic no backend can produce — the
- * un-instrumented request never arrives, so no amount of querying would surface it. Which
- * makes the classification's honesty the whole value: "missing" is not an answer, and two
- * gaps with different causes have different fixes.
- *
- * **The spec's original cause list could not be built, and the spec was wrong rather than the
- * implementation.** It called for `PROPAGATOR_EXCLUDED` — "a fetch whose URL fails the
- * configured propagator match" — read from "the propagator match list in configuration". d0bar
- * does not read the host's SDK configuration and must not claim to: naming a config file as
- * the cause is exactly the plausible-explanation failure this project refuses, and the same
- * copy was already rejected once in `add-trace-view`. What replaces it is what is actually
- * observed: the worker saw the request and there was no `traceparent` on it. Why there was
- * none is the host's answer to give, not ours to guess.
+ * **The spec's original cause list could not be built, and the spec was corrected.** It called for
+ * `PROPAGATOR_EXCLUDED`, read from "the propagator match list in configuration" — d0bar does not
+ * read the host's SDK configuration and must not claim to (the same copy was rejected once in
+ * `add-trace-view`). What replaced it is what is observed: the worker saw the request and there was
+ * no `traceparent`. Why is the host's answer, not ours to guess.
  *
  * Every cause below is a direct observation:
  *
@@ -40,13 +35,10 @@ export interface Gap {
 }
 
 /**
- * The tab's whole reading.
- *
- * `determinable` is not a detail. With tier 2 off, no request on the page carries a trace id
- * that d0bar can see, so *every* request would classify as a gap — a coverage report reading
- * `11 of 11` on a page that might be fully instrumented. The tab must say it cannot tell,
- * which is what this flag is for: `untraced` and `gaps` are meaningless when it is false, and
- * are returned empty so a caller that ignores the flag renders nothing rather than a lie.
+ * The tab's whole reading. `determinable` is not a detail: with tier 2 off nothing carries a visible
+ * trace id, so *every* request classifies as a gap — `11 of 11` on a page that may be fully
+ * instrumented. `untraced` and `gaps` are meaningless when it is false and are returned empty, so a
+ * caller ignoring the flag renders nothing rather than a lie.
  */
 export interface Coverage {
   determinable: boolean;
@@ -59,11 +51,9 @@ export interface Coverage {
 export const MAX_GAPS = 50;
 
 /**
- * Classifies one untraced record.
- *
- * `seenByWorker` is the only input that is not on the record, and it is what separates a
- * request the worker read and found bare from one it never saw at all — two different
- * findings that would otherwise both read as "no trace id".
+ * Classifies one untraced record. `seenByWorker` is the only input not on the record, and separates
+ * a request the worker read and found bare from one it never saw — two findings that would otherwise
+ * both read as "no trace id".
  */
 export function classify(
   record: Pick<RequestRecord, "url" | "flags" | "initiator">,
@@ -74,12 +64,10 @@ export function classify(
      or what the worker saw, and that is the most actionable finding here. */
   if (record.flags & F_XHR) return "transport-xhr";
 
-  /* Then the requests no application code issued. A stylesheet, a script tag and an <img> are
-     fetched by the browser's own parser, and nothing in an SDK could have put a `traceparent`
-     on them — so listing them as instrumentation gaps is technically true and practically
-     misleading. Observed rendering the tab against the fixture: the first four cards were
-     `/metrics.js`, `/app.css`, `/app.js` and d0bar's own bundle, which is exactly the signal
-     this tab exists to surface being buried under things nobody can act on. */
+  /* Then requests no application code issued: the parser fetches a stylesheet, a script tag and an
+     <img>, and no SDK could have put a `traceparent` on them, so listing them as gaps is true and
+     misleading. Rendered against the fixture, the first four cards were `/metrics.js`, `/app.css`,
+     `/app.js` and d0bar's own bundle — the signal buried under things nobody can act on. */
   if (SUBRESOURCE.has(record.initiator)) return "subresource";
 
   const other = originOf(record.url);
@@ -90,10 +78,9 @@ export function classify(
 }
 
 /**
- * `initiatorType` values that mean "the browser fetched this, not the application".
- *
- * The browser's own word for it, not a guess from the file extension — `/data.json?x=1` and
- * `/style.css` say nothing reliable about who asked for them, and `initiatorType` does.
+ * `initiatorType` values meaning "the browser fetched this, not the application" — its own word for
+ * it, not a guess from the extension: `/data.json?x=1` and `/style.css` say nothing reliable about
+ * who asked.
  */
 const SUBRESOURCE = new Set([
   "script",
@@ -128,11 +115,9 @@ function originOf(url: string): string {
 }
 
 /**
- * Builds the coverage reading from the ring.
- *
- * `read` fills a caller-owned scratch record, as everywhere else that walks the ring: the tab
- * repaints on every batch, and a per-record object would put an allocation per request per
- * repaint on the main thread of the page being measured.
+ * Builds the coverage reading from the ring. `read` fills a caller-owned scratch, as everywhere that
+ * walks the ring: the tab repaints per batch, and a per-record object would be an allocation per
+ * request per repaint on the page being measured.
  */
 export function coverage(options: {
   count: number;
