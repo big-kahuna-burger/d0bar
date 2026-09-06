@@ -29,6 +29,9 @@ jobs:
           # From `.nvmrc`, so the workflow, the local toolchain and `engines.node` cannot
           # drift apart — three places declaring a version is three places to forget.
           node-version-file: .nvmrc
+          # Caches the pnpm content-addressable store, keyed on `pnpm-lock.yaml`. With
+          # `--frozen-lockfile` below, a hit makes install a hardlink pass rather than a
+          # download.
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -49,7 +52,21 @@ jobs:
       # `supportedEntryTypes`, so a green run here says the modern path works — it says nothing
       # about the fallback tiers a user on an older browser gets. Those are covered by unit
       # tests against a stubbed capability set, not here.
-      - run: pnpm exec playwright install --with-deps chromium
+      #
+      # The browser binary is cached; the system libraries it links against are not, because
+      # they are installed into the runner image rather than into a cacheable directory. So a
+      # cache hit still runs `install-deps`, which is the cheap half.
+      - uses: actions/cache@v4
+        id: playwright
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - if: steps.playwright.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - if: steps.playwright.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
 
       # The perturbation suite. `bench/fixtures/server.mjs` is started by Playwright's own
       # `webServer` config with `reuseExistingServer: false`, so nothing stale can serve it.
