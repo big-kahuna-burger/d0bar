@@ -36,6 +36,99 @@ const PNG = Buffer.from(
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Dash0 forwarding for `/try/`'s OpenTelemetry export.
+ *
+ * **The token lives here and never reaches the browser.** A page exporting straight to Dash0's
+ * ingress would have to carry the auth token in script, readable by every extension and every
+ * other script on the page — and this repo already ships a service-worker broker
+ * (`src/sw/broker.ts`) built on the premise that a Dash0 token does not belong in the page. A
+ * fixture that contradicted that would be teaching the wrong thing, so the fixture server plays
+ * the part a collector plays in a real deployment.
+ *
+ * Read from the environment, never a file in the repo and never a default. Absent is the
+ * ordinary case: `/otlp/*` then answers 501 with what to set, `/try/` still runs every tier it
+ * can, and nothing anywhere pretends telemetry was delivered.
+ *
+ *   DASH0_INGRESS   e.g. https://ingress.eu-west-1.aws.dash0.com
+ *   DASH0_TOKEN     an auth token for that region
+ *   DASH0_DATASET   optional; the header is omitted when unset, which means `default`
+ */
+const DASH0 = {
+  ingress: process.env.DASH0_INGRESS?.replace(/\/+$/, ""),
+  token: process.env.DASH0_TOKEN,
+  dataset: process.env.DASH0_DATASET,
+};
+const dash0Configured = Boolean(DASH0.ingress && DASH0.token);
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
+/**
+ * Forwards one OTLP/HTTP payload to Dash0, unchanged.
+ *
+ * The body is passed through byte for byte — this is a pipe, not a translator, and rewriting
+ * spans in a fixture whose whole job is to show what the page really sent would be the same
+ * class of lie as a toolbar that distorts what it measures.
+ *
+ * Upstream's status and body are relayed as they are. A 401 from Dash0 must look like a 401 to
+ * whoever is debugging, not like a fixture error.
+ */
+async function forwardOtlp(req, res, signal) {
+  /* Logged before the configuration check, not after. The 501 branch used to return silently,
+     so an export that never left the machine and an export that was never attempted looked
+     identical from here — which is the first thing you need to tell apart. */
+  console.log(
+    `otlp ${signal}: received${dash0Configured ? "" : " (not forwarding — unconfigured)"}`,
+  );
+  if (!dash0Configured) {
+    res.writeHead(501, { "content-type": "application/json; charset=utf-8" });
+    res.end(
+      JSON.stringify({
+        error: "Dash0 forwarding is not configured.",
+        set: ["DASH0_INGRESS", "DASH0_TOKEN"],
+        optional: ["DASH0_DATASET"],
+        hint: "Restart the fixture server with those in the environment.",
+      }),
+    );
+    return;
+  }
+
+  const body = await readBody(req);
+  const headers = {
+    "content-type": req.headers["content-type"] ?? "application/json",
+    authorization: `Bearer ${DASH0.token}`,
+  };
+  if (DASH0.dataset) headers["dash0-dataset"] = DASH0.dataset;
+
+  try {
+    const upstream = await fetch(`${DASH0.ingress}/v1/${signal}`, {
+      method: "POST",
+      headers,
+      body,
+    });
+    const text = await upstream.text();
+    /* Logged because a silent export is indistinguishable from a working one, and the first
+       question when nothing shows up in Dash0 is always whether it left the machine. */
+    console.log(`otlp ${signal}: ${body.length}B -> ${upstream.status}`);
+    res.writeHead(upstream.status, {
+      "content-type": upstream.headers.get("content-type") ?? "application/json",
+      "access-control-allow-origin": "*",
+    });
+    res.end(text);
+  } catch (error) {
+    console.error(`otlp ${signal}: forward failed —`, error.message);
+    res.writeHead(502, { "content-type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ error: String(error) }));
+  }
+}
+
 async function serveFile(res, absolute, extraHeaders = {}) {
   try {
     const body = await readFile(absolute);
@@ -257,6 +350,26 @@ const server = createServer(async (req, res) => {
     await serveFile(res, join(repoRoot, "dist", "d0bar-sw.js"), {
       "cache-control": "no-store",
     });
+    return;
+  }
+
+  /* OpenTelemetry export from `/try/`, forwarded to Dash0 with the token this process holds. */
+  if (path === "/otlp/v1/traces" || path === "/otlp/v1/logs") {
+    await forwardOtlp(req, res, path.endsWith("traces") ? "traces" : "logs");
+    return;
+  }
+
+  /* Whether forwarding is configured, so the page can say so instead of exporting into a 501
+     and looking like it worked. The token itself is never in this response. */
+  if (path === "/otlp/status") {
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    res.end(
+      JSON.stringify({
+        configured: dash0Configured,
+        ingress: DASH0.ingress ?? null,
+        dataset: DASH0.dataset ?? null,
+      }),
+    );
     return;
   }
 

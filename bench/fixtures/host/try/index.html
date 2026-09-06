@@ -154,7 +154,34 @@
       </p>
       <p class="row">
         <button class="drag" id="traffic" type="button">Make some requests</button>
-        <span class="note" style="border: 0; padding: 0">then open the pill</span>
+        <button class="drag" id="session" type="button">Run a fake checkout</button>
+      </p>
+      <pre id="otel-status">checking Dash0 forwarding…</pre>
+      <pre id="otel-trace" hidden></pre>
+
+      <h2>Sending to Dash0</h2>
+      <p>
+        &ldquo;Run a fake checkout&rdquo; emits a nested trace and log records from the page's
+        own SDK — five child spans around real requests, one of them a 503 that ends the span
+        with an error status, and DEBUG/INFO/WARN/ERROR logs correlated to the span that was
+        current. The requests are genuine, so tier 1 records resource entries for them and tier
+        4 has something to join against; a generator that emitted spans without traffic would
+        look right in Dash0 and prove nothing about d0bar.
+      </p>
+      <p>
+        The token is <strong>never in page script</strong>. The page exports to
+        <code>/otlp/v1/traces</code> and <code>/otlp/v1/logs</code> on this origin, and the
+        fixture server forwards to Dash0 — the part a collector plays in a real deployment.
+        Start the server with those in its environment:
+      </p>
+      <pre>
+DASH0_INGRESS=https://ingress.&lt;region&gt;.aws.dash0.com \
+DASH0_TOKEN=&lt;your token&gt; \
+DASH0_DATASET=default \
+node bench/fixtures/server.mjs</pre>
+      <p class="note">
+        Unset is the ordinary case and is not faked: <code>/otlp/*</code> answers 501 with what
+        to set, the badge above says so, and nothing pretends telemetry was delivered.
       </p>
 
       <h2>Bookmarklet</h2>
@@ -228,8 +255,26 @@
       src="/dist/d0bar.iife.js"
       data-d0bar-enabled
       data-d0bar-sw="/try/d0bar-sw.js"
-      defer
     ></script>
+
+    <!--
+      A real OpenTelemetry web SDK, in the order a real customer loads one: d0bar first so
+      `D0bar.otelSpanProcessor()` exists, then the SDK, then registration passing the processor
+      at construction — the only path a 2.x provider supports. Synchronous, not deferred: a
+      processor installed after the first span would miss it, which is also why the d0bar tag
+      above lost its `defer`.
+
+      Export goes to this origin. `bench/fixtures/server.mjs` forwards `/otlp/v1/*` to Dash0
+      with the auth token, so no token is ever in page script — the same premise the service
+      worker broker in `src/sw/broker.ts` is built on.
+    -->
+    <script src="/otel-sdk.js"></script>
+    <script>
+      window.__otel = OtelFixture.install({
+        export: true,
+        serviceName: "northwind-freight-web",
+      });
+    </script>
 
     <script>
       (function () {
@@ -259,6 +304,39 @@
             );
           }
         });
+
+        var status = document.getElementById("otel-status");
+        /* A second element, because these are two different facts arriving at two different
+           times. Both wrote to one `<pre>` at first, so the `/otlp/status` reply — which lands
+           a beat later — silently erased the trace id the click had just produced, and the
+           button looked broken while working perfectly. */
+        var traceOut = document.getElementById("otel-trace");
+
+        document.getElementById("session").addEventListener("click", function () {
+          OtelFixture.fakeSession({ sessionId: "try-" + Date.now() }).then(function (traceId) {
+            /* The trace id is printed because it is the only thing that turns "I clicked a
+               button" into "this exact trace, in Dash0". Searching by time is guesswork. */
+            traceOut.hidden = false;
+            traceOut.textContent =
+              "trace " + traceId + "\nexporting… (1.5s batch delay, then look for it in Dash0)";
+          });
+        });
+
+        /* Asked rather than assumed. An exporter posting into a 501 looks exactly like one
+           that worked, so the page states which it is before anyone clicks. */
+        fetch("/otlp/status")
+          .then(function (r) {
+            return r.json();
+          })
+          .then(function (s) {
+            status.textContent = s.configured
+              ? "Dash0 forwarding on — " + s.ingress + (s.dataset ? " · " + s.dataset : "")
+              : "Dash0 forwarding OFF. Spans and logs are still created and the trace id below is real; they just have nowhere to go. Set DASH0_INGRESS and DASH0_TOKEN and restart the server.";
+          })
+          .catch(function () {
+            status.textContent =
+              "could not reach /otlp/status — is the fixture server running?";
+          });
       })();
     </script>
   </body>

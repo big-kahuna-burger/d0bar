@@ -1,7 +1,7 @@
 {
   "name": "d0bar",
   "version": "0.1.0",
-  "description": "A Dash0-branded observability toolbar for your own web app \u2014 that does not distort what it measures.",
+  "description": "A Dash0-branded observability toolbar for your own web app — that does not distort what it measures.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -46,7 +46,13 @@
   "devDependencies": {
     "@eslint/js": "^9.17.0",
     "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/api-logs": "^0.222.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.222.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.222.0",
+    "@opentelemetry/resources": "^2.11.0",
+    "@opentelemetry/sdk-logs": "^0.222.0",
     "@opentelemetry/sdk-trace-web": "^2.11.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
     "@playwright/test": "^1.49.1",
     "@size-limit/preset-small-lib": "^11.1.6",
     "@types/node": "^26.4.1",

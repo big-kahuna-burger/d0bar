@@ -390,9 +390,27 @@ test.describe("honest degradation", () => {
        state and reported `off` for a live worker. */
     expect(footer.state).toBe("live");
     expect(footer.label).toBe("2 SW");
-    /* Live tier 2 still does not licence a fabricated number: nothing has measured the
-       toolbar's INP cost yet, so the slot says so. */
-    expect(footer.perturb).toBe("Δ INP unavailable");
+    /**
+     * The perturbation slot, now that something measures it.
+     *
+     * This asserted `Δ INP unavailable` on the premise that nothing had measured the toolbar's
+     * own INP cost, so the slot could not name one. `add-self-attribution` removed that premise:
+     * `collector/selfcost.ts` charges d0bar for the `long-animation-frame` entries carrying its
+     * own script, Chromium reports that entry type, and a zero here is now a reading rather than
+     * a hopeful default. The old string is only correct where the browser has no
+     * `long-animation-frame` at all, which this one does.
+     *
+     * Matched as a shape, not as `Δ INP 0.0ms`. A pinned zero would assert that d0bar cost this
+     * particular CI box nothing on this particular run — a claim about the machine, which the
+     * A/B suite settles across 20 runs and a single behaviour test cannot. What belongs here is
+     * that the slot names a measurement instead of an absence. `(min)` is admitted for the
+     * bundled-into-the-host case; the fixture loads d0bar as its own script, so it will not
+     * appear, but pinning its absence would be pinning the fixture's layout into an assertion
+     * about honesty.
+     */
+    expect(footer.perturb, "the slot must name a measurement, not an absence").toMatch(
+      /^Δ INP (<0\.1ms|\d+\.\d+ms)( \(min\))?$/,
+    );
   });
 });
 
