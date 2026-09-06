@@ -6,10 +6,15 @@
 The request list SHALL render only the visible rows plus a small overscan, regardless of how
 many requests have been recorded.
 
-#### Scenario: Two thousand requests
-- **WHEN** 2000 requests are in the buffer
+#### Scenario: The buffer is full
+- **WHEN** the request buffer is at capacity
 - **THEN** the number of row elements in the DOM stays proportional to the visible window, and
   continuous scrolling produces no frame with more than 8 ms of toolbar work
+
+#### Scenario: More records than the buffer holds
+- **WHEN** more requests arrive than the buffer's capacity
+- **THEN** the windowing arithmetic is unchanged for any record count, and the list reports the
+  loss rather than presenting a truncated list as complete
 
 ### Requirement: Bar geometry is declarative
 Waterfall bar position and width SHALL be expressed as CSS custom properties on a contained
@@ -35,6 +40,13 @@ timestamps, and SHALL NOT be synthesized.
 - **WHEN** a cross-origin entry exposes no phase timings
 - **THEN** the bar renders as a single undifferentiated segment that is visually distinguishable
   from a measured breakdown, rather than showing invented proportions
+
+### Requirement: An open list keeps receiving requests
+While the list is open and visible, requests arriving after it was opened SHALL appear in it.
+
+#### Scenario: Requests arrive long after load
+- **WHEN** the page has gone quiet, the list is open, and new requests are issued
+- **THEN** each one appears in the list without the panel being reopened
 
 ### Requirement: Streaming does not disturb the user
 Appending rows SHALL NOT move the scroll position or change the selected row.

@@ -1,4 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { attributedDuring, isD0bar } from "./attribution";
+
+/** The spec's frame budget: no frame carries more than this much toolbar work. */
+const FRAME_BUDGET_MS = 8;
 
 /**
  * The requests view in a real browser.
@@ -43,6 +47,29 @@ async function openPanel(page: import("@playwright/test").Page, query = "?d0bar=
   });
 }
 
+/**
+ * Waits until the list stops growing on its own, and returns the count it settled at.
+ *
+ * The fixture issues 300 requests in a burst plus a pumped tail, and `openPanel` returns as
+ * soon as the first row exists — so a baseline read there is a moving number. Any assertion
+ * about d0bar's own streaming has to start from a still one.
+ */
+async function quiet(page: import("@playwright/test").Page): Promise<number> {
+  const records = () =>
+    page.evaluate(() => {
+      const spacer = window.__d0root!.querySelector(".rows-spacer") as HTMLElement;
+      return Math.round(parseFloat(spacer.style.height) / 21);
+    });
+  let last = -1;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const now = await records();
+    if (now === last) return now;
+    last = now;
+    await page.waitForTimeout(250);
+  }
+  return last;
+}
+
 test.describe("windowing", () => {
   test("keeps the row count proportional to the viewport, not to the record count", async ({
     page,
@@ -71,6 +98,7 @@ test.describe("windowing", () => {
 
   test("creates no new rows while scrolling the whole list", async ({ page }) => {
     await openPanel(page);
+    await quiet(page);
 
     const before = await page.evaluate(
       () => window.__d0root!.querySelectorAll(".row").length,
@@ -93,6 +121,7 @@ test.describe("windowing", () => {
 
   test("scrolling the full list costs no long frame", async ({ page }) => {
     await openPanel(page);
+    await quiet(page);
 
     const frames = await page.evaluate(async () => {
       const durations: number[] = [];
@@ -120,17 +149,72 @@ test.describe("windowing", () => {
 
     test.skip(frames === null, "long-animation-frame unsupported on this browser");
 
-    /* Note what this measures and what it does not. A long-animation-frame entry covers the
-       whole frame, not d0bar's share of it — attributing the cost to the toolbar
-       specifically needs script attribution, which arrives with add-self-attribution. The
-       fixture is idle by this point (its request storm is long finished and it schedules no
-       further work), so a long frame here is the list's, but that is an argument from the
-       fixture's behaviour rather than a measurement of provenance. */
+    /* The coarse half of the budget: no frame in the window exceeded 50 ms, whoever ran in
+       it. The toolbar's own share is measured separately below — this entry covers the whole
+       frame and has a 50 ms floor, so it can neither see an 8 ms budget nor say whose the
+       work was. */
     const long = (frames ?? []).filter((duration) => duration > 50);
     expect(
       long,
       `long animation frames during a full scroll: ${JSON.stringify(frames)}`,
     ).toHaveLength(0);
+  });
+
+  /**
+   * The spec's actual number: *no frame with more than 8 ms of toolbar work*.
+   *
+   * Read out of the browser's own tracer, per top-level task, attributed by script URL — see
+   * `attribution.ts` for why neither `long-animation-frame` nor `longtask` can answer this and
+   * why in-product timing is not an option. What the earlier note here said — that attributing
+   * the cost needs `add-self-attribution` — was true of the two performance-entry instruments
+   * and not of CDP, which has carried `FunctionCall.args.data.url` all along.
+   *
+   * Two records, because they answer two questions: `maxTaskMs` is d0bar's script time in the
+   * worst task and is what the budget gates; `maxAnyTaskMs` is that task-vs-any-task context,
+   * reported so a regression in the gap between them is visible rather than silent.
+   */
+  test("spends under 8 ms of toolbar time in any frame of a full scroll", async ({ page }) => {
+    await openPanel(page);
+    await quiet(page);
+
+    const attributed = await attributedDuring(page, isD0bar, async () => {
+      await page.evaluate(async () => {
+        const scroll = window.__d0root!.querySelector(".rows-scroll") as HTMLElement;
+        const max = scroll.scrollHeight - scroll.clientHeight;
+        for (let pass = 0; pass < 3; pass += 1) {
+          for (let offset = 0; offset <= max; offset += 21) {
+            scroll.scrollTop = offset;
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+          }
+        }
+      });
+    });
+
+    /* A scroll that attributed nothing to d0bar measured nothing at all — the tracing
+       category could have changed name, or the bundle URL could have. Fail rather than pass
+       a budget on an empty set. */
+    expect(
+      attributed.totalMs,
+      "no d0bar script was attributed during the scroll — the instrument, not the toolbar",
+    ).toBeGreaterThan(0);
+
+    /* Recorded rather than only printed on failure: `bench/last-run.json` is the run's own
+       record, and a budget row in `bench/budget.json` has to come from a number someone can
+       find again. */
+    test.info().annotations.push({
+      type: "d0bar-scroll",
+      description:
+        `max ${attributed.maxTaskMs.toFixed(2)} ms in one frame, ` +
+        `${attributed.totalMs.toFixed(1)} ms total over ${attributed.taskMs.length} frames, ` +
+        `longest task of any origin ${attributed.maxAnyTaskMs.toFixed(2)} ms`,
+    });
+
+    expect(
+      attributed.maxTaskMs,
+      `worst frame's d0bar work ${attributed.maxTaskMs.toFixed(2)} ms; ` +
+        `top frames ${JSON.stringify(attributed.taskMs.slice(0, 5).map((ms) => +ms.toFixed(2)))}; ` +
+        `longest task of any origin ${attributed.maxAnyTaskMs.toFixed(2)} ms`,
+    ).toBeLessThan(FRAME_BUDGET_MS);
   });
 });
 
@@ -188,6 +272,107 @@ test.describe("streaming", () => {
      not reachable here: the fixture issues ~310 requests against a ring that holds 512, and
      driving 200 more just to reach the boundary would change the traffic shape the rest of
      this file measures. */
+  /**
+   * The list streams at all.
+   *
+   * This is the property that regressed silently and was not caught, because the test below
+   * samples its baseline while the fixture's own 300-request storm is still landing — so its
+   * `after > before` passed on the fixture arriving, and would have passed identically with
+   * live updates entirely dead. They *were* entirely dead: `onResourceBatch` held one listener
+   * slot and two views registered for it, so the untraced view's registration overwrote the
+   * requests view's and the list showed whatever the ring held when the panel opened.
+   *
+   * So this waits for the page to go quiet first, and only then issues requests. Every number
+   * it asserts is a delta against a baseline nothing else is moving.
+   */
+  test("keeps appending after the page has gone quiet", async ({ page }) => {
+    await openPanel(page);
+    const settled = await quiet(page);
+
+    await page.evaluate(async () => {
+      const pending: Array<Promise<unknown>> = [];
+      for (let i = 0; i < 20; i += 1) {
+        pending.push(fetch(`/api/resource?quiet=${i}&delay=5`).then((r) => r.text()));
+      }
+      await Promise.all(pending);
+    });
+
+    await page.waitForFunction(
+      (baseline) => {
+        const spacer = window.__d0root!.querySelector(".rows-spacer") as HTMLElement;
+        return Math.round(parseFloat(spacer.style.height) / 21) >= baseline + 20;
+      },
+      settled,
+      { timeout: 10_000 },
+    );
+  });
+
+  /**
+   * The append storm: 300 requests over 3 s with the panel open, watching the list.
+   *
+   * The scroll bench measures the list being read. This measures it being written to — which
+   * is the state a developer actually leaves the panel in, and the one where the toolbar's
+   * cost lands on a page that is itself doing work. One request every 10 ms is faster than
+   * any real page sustains and crosses the ring's 512 capacity partway through, so eviction
+   * and the index shift it forces are inside the measured window rather than outside it.
+   *
+   * Only measurable at all since the `onResourceBatch` listener slot became a list: before
+   * that, an open list received no appends, and this bench would have measured a static view.
+   */
+  test("spends under 8 ms of toolbar time in any frame of an append storm", async ({ page }) => {
+    await openPanel(page);
+    const settled = await quiet(page);
+
+    const attributed = await attributedDuring(page, isD0bar, async () => {
+      await page.evaluate(async () => {
+        const pending: Array<Promise<unknown>> = [];
+        for (let i = 0; i < 300; i += 1) {
+          pending.push(fetch(`/api/resource?storm=${i}&delay=5`).then((r) => r.text()));
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        await Promise.all(pending);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      });
+    });
+
+    const after = await page.evaluate(() => {
+      const root = window.__d0root!;
+      const spacer = root.querySelector(".rows-spacer") as HTMLElement;
+      return {
+        records: Math.round(parseFloat(spacer.style.height) / 21),
+        rows: root.querySelectorAll(".row:not([hidden])").length,
+        dropped: (root.querySelector(".rows-dropped") as HTMLElement).hidden,
+      };
+    });
+
+    /* The storm landed. Without this the budget below would pass on a list nothing appended
+       to — which is exactly how the regression this bench now covers went unnoticed. */
+    expect(after.records, `list held ${settled} before the storm`).toBeGreaterThan(settled);
+    /* Past capacity, so eviction ran and said so. */
+    expect(after.records).toBe(512);
+    expect(after.dropped, "records were evicted and the list did not report it").toBe(false);
+    /* And the window is still a window — 300 appends did not grow the row pool. */
+    expect(after.rows).toBeLessThanOrEqual(27);
+
+    /* Recorded rather than only printed on failure: `bench/last-run.json` is the run's own
+       record, and a budget row in `bench/budget.json` has to come from a number someone can
+       find again. */
+    test.info().annotations.push({
+      type: "d0bar-append-storm",
+      description:
+        `max ${attributed.maxTaskMs.toFixed(2)} ms in one frame, ` +
+        `${attributed.totalMs.toFixed(1)} ms total over ${attributed.taskMs.length} frames, ` +
+        `longest task of any origin ${attributed.maxAnyTaskMs.toFixed(2)} ms`,
+    });
+
+    expect(
+      attributed.maxTaskMs,
+      `worst frame's d0bar work ${attributed.maxTaskMs.toFixed(2)} ms; ` +
+        `top frames ${JSON.stringify(attributed.taskMs.slice(0, 5).map((ms) => +ms.toFixed(2)))}; ` +
+        `${attributed.totalMs.toFixed(1)} ms total over ${attributed.taskMs.length} frames`,
+    ).toBeLessThan(FRAME_BUDGET_MS);
+  });
+
   test("appending does not move the viewport or drop the selection", async ({ page }) => {
     await openPanel(page);
 

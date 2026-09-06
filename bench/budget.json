@@ -46,7 +46,7 @@
         "off": 6,
         "on": 6
       },
-      "rationale": "Half a task per run means a regression that adds a long task to even one run in two fails. Attributing a long task to d0bar specifically needs long-animation-frame script attribution, which arrives with add-self-attribution."
+      "rationale": "Half a task per run means a regression that adds a long task to even one run in two fails. This counts tasks, and does not attribute them: it is a difference between two arms of the same fixture, which is what makes it meaningful without provenance. The claim that attributing a long task to d0bar 'needs long-animation-frame script attribution, which arrives with add-self-attribution' was wrong on its second half and is corrected here — CDP tracing attributes script time by URL with no 50 ms floor, which is what requestsView's two rows now use, and add-self-attribution is about d0bar reporting its own cost to the user in the panel, not about a test being able to see it."
     },
     {
       "metric": "lcpP95",
@@ -157,6 +157,26 @@
       "limit": "3 kB",
       "lastMeasured": "2.52 kB (esbuild, gated) / 3.03 kB (vite terser, reported)",
       "rationale": "Newly budgeted with the artifact. Fetched only when a trace is first opened and never on any load path — a developer who never opens a trace never downloads it, which is why the flattening lives here rather than in stage 2. Two numbers because there are two minifiers, same as the service worker: size-limit re-minifies with esbuild and that is what is gated. size-limit emits a warning measuring this one — \"You need to set the output format to esm for import.meta to work correctly\" — because it wraps the module in an IIFE to measure it. That is a property of the measurement harness, not of the shipped artifact, which is ESM and is loaded with `new Worker(url, { type: \"module\" })`. 0.48 kB of headroom; a streaming decoder or a WASM protobuf path would not fit inside it, which is the correct outcome — both are deliberately deferred in design.md."
+    }
+  ],
+  "requestsView": [
+    {
+      "metric": "scrollFrameMs",
+      "threshold": 8,
+      "unit": "ms of d0bar script in the worst frame",
+      "lastMeasured": 1.56,
+      "spread": "0.78 / 1.16 / 1.55 / 1.56 over four runs; 476-581 ms total across ~1900-2200 frames",
+      "instrument": "CDP tracing, per RunTask, attributed by script URL — tests/perf/attribution.ts",
+      "rationale": "Three full passes of a 512-record list, from a page that has gone quiet. The threshold is the spec's own number and is deliberately not tightened onto the measurement: at ~5x headroom this catches a categorical regression (geometry computed in JavaScript, rows rebuilt per frame) rather than machine-to-machine variance, and a gate set at 2 ms would go red on a slower laptop while telling nobody anything. THE MAXIMUM, NOT p95, and that is the one place this file departs from the repo's own rule: p95 hides exactly the frame a user feels as a stutter, and with ~2000 frames in the window a p95 would be reporting the 100th-best frame. The max is stricter than the rule asks for, so nothing is being flattered. What this does NOT include: style recalculation and layout provoked by d0bar's writes, which the browser attributes to no script at all — that work is bounded structurally by `contain: layout style` on the row instead. The tracer's own overhead lands inside the intervals it reports, so this is an upper bound on the untraced cost."
+    },
+    {
+      "metric": "appendStormFrameMs",
+      "threshold": 8,
+      "unit": "ms of d0bar script in the worst frame",
+      "lastMeasured": 2.24,
+      "spread": "2.24 / 1.47 / 1.14 / 1.53 over four runs; 140-162 ms total across ~565 frames",
+      "instrument": "same as scrollFrameMs",
+      "rationale": "300 requests over 3 s with the panel open on the list — one every 10 ms, faster than any real page sustains. The storm crosses the ring's 512 capacity partway through, so eviction and the index shift it forces are inside the measured window: the worst frame in this bench is generally that one, which is why its maximum sits above the scroll bench's despite doing a fraction of the total work. NEWLY MEASURABLE, and the reason it was not measured before is recorded rather than skipped: `onResourceBatch` held a single listener slot, `add-untraced-view` registered a second consumer for it, and the requests view's registration was overwritten — so an open list received no appends at all and this bench would have measured a static view. The bench asserts the storm landed (records reach 512 and the eviction notice appears) before it asserts anything about cost, so it cannot pass on a list nothing appended to."
     }
   ],
   "traceLayout": [

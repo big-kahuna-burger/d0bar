@@ -37,39 +37,55 @@ const active: string[] = [];
 /**
  * Notified once after each post-settle batch of resource entries.
  *
- * One optional slot rather than a subscriber list: there is exactly one consumer — the open
- * panel — and an array here would put an iteration in a `PerformanceObserver` callback for a
- * generality nothing asked for.
+ * **This was a single optional slot, and the slot was a bug.** The comment justifying it said
+ * there was "exactly one consumer — the open panel", which was true when it was written and
+ * stopped being true the day `add-untraced-view` landed a second view that also wants to know
+ * when requests arrive. A second `onResourceBatch` overwrote the first with no error and no
+ * warning: `panel/index.ts` builds the requests view before the untraced one, so the requests
+ * list quietly stopped receiving live updates and showed whatever the ring held at the moment
+ * the panel opened. Observed as a list pinned at 273 records while the browser's own resource
+ * count climbed past 600.
+ *
+ * So it is a list, and the cost the old comment feared is worth naming exactly: one indexed
+ * loop over two entries, once per *batch* — not per entry — allocating nothing. The hot path's
+ * rule is about allocation inside `pushResource`, and this is neither.
  */
-let batchListener: (() => void) | undefined;
+const batchListeners: Array<() => void> = [];
 
 /**
- * Registers the resource-batch listener. Returns a teardown that clears it.
+ * Registers a resource-batch listener. Returns a teardown that removes it.
  *
  * The listener must be cheap: it runs at the end of an observer callback, on the main
  * thread. The panel's does one boolean write and, at most, one `requestAnimationFrame`.
  */
 export function onResourceBatch(fn: () => void): () => void {
-  batchListener = fn;
+  batchListeners.push(fn);
   return () => {
-    if (batchListener === fn) batchListener = undefined;
+    const at = batchListeners.indexOf(fn);
+    if (at !== -1) batchListeners.splice(at, 1);
   };
 }
 
 /**
- * The same one-slot pattern, for the vitals entry types.
+ * The same, for the vitals entry types.
  *
- * Deliberately not the resource slot. Sharing it would repaint the requests list on every
+ * Deliberately not the resource list. Sharing it would repaint the requests list on every
  * layout shift — a repaint per shift on the page being measured, to update a list that did
- * not change. The two batches are different events and get different slots.
+ * not change. The two batches are different events and get different subscriptions.
  */
-let vitalsListener: (() => void) | undefined;
+const vitalsListeners: Array<() => void> = [];
 
 export function onVitalsBatch(fn: () => void): () => void {
-  vitalsListener = fn;
+  vitalsListeners.push(fn);
   return () => {
-    if (vitalsListener === fn) vitalsListener = undefined;
+    const at = vitalsListeners.indexOf(fn);
+    if (at !== -1) vitalsListeners.splice(at, 1);
   };
+}
+
+/** Both notifiers, in one shape, so neither can grow a subtly different dispatch. */
+function notify(listeners: Array<() => void>): void {
+  for (let i = 0; i < listeners.length; i++) listeners[i]!();
 }
 
 /** Deprecations, interventions and CSP violations, bounded so a noisy page cannot grow us. */
@@ -121,7 +137,7 @@ export function startObserving(): () => void {
        phase there is nothing to tell, because stage 2 has not been fetched yet and the
        panel re-reads the whole ring when it opens. Gating on the phase keeps the claim
        about this callback exact rather than nearly true. */
-    if (batchListener && currentPhase() === "settled") batchListener();
+    if (currentPhase() === "settled") notify(batchListeners);
   });
 
   observe("navigation", (entries) => {
@@ -148,14 +164,14 @@ export function startObserving(): () => void {
     for (let i = 0; i < entries.length; i++) noteLcp(entries[i] as PerformanceEntry);
     /* Each entry resets the quiet timer the moratorium waits on. */
     noteLcpEntry();
-    vitalsListener?.();
+    notify(vitalsListeners);
   });
 
   observe("layout-shift", (entries) => {
     for (let i = 0; i < entries.length; i++) {
       noteLayoutShift(entries[i] as LayoutShiftEntry);
     }
-    vitalsListener?.();
+    notify(vitalsListeners);
   });
 
   /* 40ms matches the threshold the platform itself uses for reporting slow interactions. */
@@ -165,14 +181,14 @@ export function startObserving(): () => void {
       for (let i = 0; i < entries.length; i++) {
         noteInteraction(entries[i] as EventTimingEntry);
       }
-      vitalsListener?.();
+      notify(vitalsListeners);
     },
     { durationThreshold: 40 },
   );
 
   observe("long-animation-frame", (entries) => {
     for (let i = 0; i < entries.length; i++) noteLoaf(entries[i] as PerformanceEntry);
-    vitalsListener?.();
+    notify(vitalsListeners);
   });
 
   /* First input finalizes LCP. Observed as an entry type rather than a listener, so the
@@ -202,8 +218,8 @@ export function startObserving(): () => void {
     active.length = 0;
     reportingObserver?.disconnect();
     reportingObserver = undefined;
-    batchListener = undefined;
-    vitalsListener = undefined;
+    batchListeners.length = 0;
+    vitalsListeners.length = 0;
   };
 }
 

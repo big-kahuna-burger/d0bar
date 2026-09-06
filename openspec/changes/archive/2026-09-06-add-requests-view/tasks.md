@@ -66,19 +66,42 @@
       the absences, spelled out as "method unknown" / "status unknown" rather than omitted
 
 ## 6. Budget
-- [ ] 6.1 **Partly done.** `tests/perf/requests-view.spec.ts` scrolls the full list three times
-      and asserts no long animation frame, and asserts the row count stays ≤ 27 for ~310
-      records. Two gaps: the fixture produces ~310 records against a 512-record ring, so
-      **2000 rows is not reachable in the browser at all** — the 2000-row case is settled
-      arithmetically in `tests/unit/virtual.test.ts` instead; and a long-animation-frame entry
-      covers the whole frame, so this bounds total main-thread work rather than d0bar's share
-      of it. Attributing the cost needs script attribution from `add-self-attribution`.
-- [ ] 6.2 **Not done.** The append-storm bench (300 appends over 3 s with the panel open) is
-      not written. The no-scroll-jump half of it is covered by the streaming test in
-      `tests/perf/requests-view.spec.ts` and by the eviction tests in
-      `tests/unit/requests-view.test.ts`; the per-frame cost under a sustained append storm is
-      not measured.
-- [ ] 6.3 Not done — depends on 6.1 and 6.2 producing numbers worth committing. The two budget
-      rows that *were* touched are the bundle sizes, both with written rationale: stage 1
-      5.77 → 6.25 kB (limit unchanged at 6.5), stage 2 6.83 → 9.83 kB with the limit raised
-      8 → 10.5 kB.
+
+> **The blocker recorded here was half wrong, and finding that out found a shipped bug.**
+> 6.1 said attributing a frame's cost to the toolbar needed `add-self-attribution`. True of
+> `long-animation-frame` and `longtask` — both have a 50 ms floor and both report the whole
+> frame — and false of CDP, which carries `FunctionCall.args.data.url` at microsecond
+> resolution. `tests/perf/attribution.ts` reduces a trace to per-task script time by URL.
+>
+> Writing 6.2 against that instrument then showed the list was not appending at all:
+> `onResourceBatch` held **one** listener slot and `add-untraced-view` had quietly registered a
+> second consumer, overwriting the requests view's. Fixed in `src/collector/observe.ts`; the
+> slot is a list. See the note under 6.2.
+>
+> The 2000-row scenario in the delta spec was unsatisfiable — the ring holds 512 by
+> construction — so the spec was corrected rather than the test contorted. The 2000-row case is
+> arithmetic and stays in `tests/unit/virtual.test.ts`.
+
+- [x] 6.1 Scroll bench, attributed. Three full passes of a 512-record list from a quiet page;
+      d0bar's own script time gated at the spec's 8 ms. **Measured 0.78 / 1.16 / 1.55 / 1.56 ms
+      worst-frame over four runs.** The `long-animation-frame` assertion is kept beside it as
+      the coarse whole-frame check, now labelled as what it is. Both scroll tests wait for the
+      fixture's own storm to finish first — measuring d0bar's scroll cost while the instrument
+      is still issuing 300 requests measures the storm, and did produce one 65.9 ms frame.
+      **Not covered:** style and layout provoked by d0bar's writes, which the browser attributes
+      to no script; that is bounded structurally by `contain: layout style` (task 3.7).
+- [x] 6.2 Append-storm bench: 300 requests over 3 s with the panel open, crossing the ring's
+      capacity so eviction and its index shift are inside the measured window. **Measured
+      2.24 / 1.47 / 1.14 / 1.53 ms worst-frame over four runs** — above the scroll bench's
+      maximum on a fraction of the total work, because the eviction frame is the expensive one.
+      The bench asserts the storm landed (512 records, eviction notice shown) before it asserts
+      any cost, so it cannot pass on a list nothing appended to. A new test,
+      `keeps appending after the page has gone quiet`, covers the streaming property directly;
+      it was verified to fail against the unfixed listener slot.
+- [x] 6.3 Two rows added to `bench/budget.json` under `requestsView`, both carrying the spread
+      across four runs, the instrument, and what the number excludes. The threshold stays at the
+      spec's 8 ms rather than being tightened onto the measurement: at ~5x headroom it catches a
+      categorical regression instead of machine variance. Also corrected there: the
+      `longTaskCount` rationale claimed attribution had to wait for `add-self-attribution`.
+      The bundle rows were already updated — stage 1 5.77 → 6.25 kB (limit unchanged at 6.5),
+      stage 2 6.83 → 9.83 kB with the limit raised 8 → 10.5 kB.
