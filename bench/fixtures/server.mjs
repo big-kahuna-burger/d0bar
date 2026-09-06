@@ -117,6 +117,20 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  /* An empty script whose first byte is deliberately late, used to push the fixture's own
+     `load` event out. Without it the fixture loads in ~140 ms, which is too short a window to
+     land a click inside — and `moratorium.spec.ts`'s interaction-before-load test could not be
+     made to fail even with the gate it guards removed. */
+  if (path === "/slow-script.js") {
+    await sleep(Number(url.searchParams.get("delay") ?? 900));
+    res.writeHead(200, {
+      "content-type": "text/javascript; charset=utf-8",
+      "cache-control": "no-store",
+    });
+    res.end("/* deliberately empty */\n");
+    return;
+  }
+
   /* A genuinely cacheable asset. Everything else here is `no-store`, which meant the fixture
      could never produce a cache hit — so the cache-status handling in `ring.ts` was measured
      only against misses and `deliveryType` was never actually exercised. Requested twice. */

@@ -4,7 +4,7 @@ import {
   isVisible,
   onVisibility,
   resetPhase,
-  whenSettled,
+  whenNetworkPermitted,
 } from "./phase";
 import { activeEntryTypes, onResourceBatch, onVitalsBatch, startObserving } from "./observe";
 import { definePill, mountPill } from "./pill";
@@ -274,11 +274,14 @@ export function init(config: D0barConfig): D0barHandle {
      cannot live in the panel's own keydown handler. */
   const stopShortcut = installShortcut({ shortcut: config.shortcut, onToggle: toggle });
 
-  /* Warmed only after the load phase settles, at background priority, so the fetch cannot
-     compete with the host page's own critical requests. A click during the prefetch joins
-     that same load rather than starting a second one. */
+  /* Warmed only once the load phase has settled *and* the page has loaded, at background
+     priority, so the fetch cannot compete with the host page's own critical requests. Settle
+     alone would not be enough: a user who clicks mid-load makes LCP final, which lifts the
+     moratorium while the host's own critical requests are still in flight — see
+     `whenNetworkPermitted`. A click during the prefetch joins that same load rather than
+     starting a second one. */
   let cancelPrefetch: (() => void) | undefined;
-  whenSettled(() => {
+  whenNetworkPermitted(() => {
     cancelPrefetch = prefetchStage2();
     /* Registration is a network fetch for the worker file plus an install event, so it waits
        for settle exactly as the prefetch does. Deliberately not awaited and deliberately not

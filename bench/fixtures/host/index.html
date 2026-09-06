@@ -43,6 +43,15 @@
             navigator.serviceWorker.register("/host-sw.js", { scope: "/" }).catch(function () {});
           }
         }
+        /* `?slowload=<ms>` holds the fixture's own load event open, so a test can land a click
+           while the page is genuinely still loading. Inert unless asked for, like `?live`. */
+        var slowload = new URLSearchParams(location.search).get("slowload");
+        if (slowload) {
+          var hold = document.createElement("script");
+          hold.src = "/slow-script.js?delay=" + encodeURIComponent(slowload);
+          hold.defer = true;
+          document.head.appendChild(hold);
+        }
         var arm = new URLSearchParams(location.search).get("d0bar") || "off";
         if (arm === "off") return;
         var script = document.createElement("script");

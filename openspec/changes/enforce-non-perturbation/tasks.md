@@ -31,18 +31,18 @@ Four findings, ordered so each one's verification exists before the next one lea
 
 ## 2. The moratorium test can fail
 
-- [ ] 2.1 `moratorium.spec.ts` — read LCP from `__metrics.lcp`, the fixture's own instrument,
+- [x] 2.1 `moratorium.spec.ts` — read LCP from `__metrics.lcp`, the fixture's own instrument,
       which has it. `performance.getEntriesByType("largest-contentful-paint")` returns nothing:
       LCP is observer-only, and the same fact broke the vitals recorder in `add-vitals-view`
-- [ ] 2.2 Fail if that value is absent rather than defaulting to `0` — the current `: 0` is what
+- [x] 2.2 Fail if that value is absent rather than defaulting to `0` — the current `: 0` is what
       turned the assertion into a tautology
-- [ ] 2.3 Assert against settle, not `loadEventEnd`: settle is load, plus LCP quiet, plus one
+- [x] 2.3 Assert against settle, not `loadEventEnd`: settle is load, plus LCP quiet, plus one
       background task
-- [ ] 2.4 `bench/fixtures/host/metrics.js` records load-phase side effects beyond a node
+- [x] 2.4 `bench/fixtures/host/metrics.js` records load-phase side effects beyond a node
       insertion — a `fetch`, a `postMessage` to a worker, an `adoptedStyleSheets` write. It is
       the instrument, so it must record without perturbing: capture, do not patch what d0bar
       uses to measure
-- [ ] 2.5 Verify the test fails when the deferral is removed. A test that has never been seen
+- [x] 2.5 Verify the test fails when the deferral is removed. A test that has never been seen
       red is the thing this change exists to stop shipping
 
 ## 3. The budget measures d0bar
@@ -78,14 +78,14 @@ Four findings, ordered so each one's verification exists before the next one lea
 
 ## 5. Interaction before load
 
-- [ ] 5.1 `index.ts` — the settle-gated network side effects (stage-2 prefetch, tier 2
+- [x] 5.1 `index.ts` — the settle-gated network side effects (stage-2 prefetch, tier 2
       registration) additionally wait for load. The moratorium may lift at first input, per the
       standard; the prefetch's own justification is that it must not compete with the host's
       critical requests
-- [ ] 5.2 Leave the pill mount on settle alone — a DOM write into a closed shadow root is not
+- [x] 5.2 Leave the pill mount on settle alone — a DOM write into a closed shadow root is not
       what that justification is about
-- [ ] 5.3 Perf test: click during load, assert no d0bar network request before `loadEventEnd`
-- [ ] 5.4 `phase.ts` — start the settle ceiling at `beginPhaseTracking` rather than at
+- [x] 5.3 Perf test: click during load, assert no d0bar network request before `loadEventEnd`
+- [x] 5.4 `phase.ts` — start the settle ceiling at `beginPhaseTracking` rather than at
       `noteLoaded`. Today a page whose `load` never fires never reaches the ceiling, and
       `observation-core`'s "bounded ceiling" scenario is false for it
 

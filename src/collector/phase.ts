@@ -61,7 +61,11 @@ let cancelQuietCheck: (() => void) | undefined;
 /** When the most recent LCP entry arrived, on the page timeline. */
 let lastLcpAt = 0;
 let loadedAt = 0;
+/** When tracking started, so the ceiling is anchored to something that always happens. */
+let startedAt = 0;
+let cancelCeiling: (() => void) | undefined;
 const settleCallbacks: Array<() => void> = [];
+const networkCallbacks: Array<() => void> = [];
 
 export function currentPhase(): Phase {
   return phase;
@@ -71,6 +75,29 @@ export function currentPhase(): Phase {
 export function whenSettled(fn: () => void): void {
   if (phase === "settled") fn();
   else settleCallbacks.push(fn);
+}
+
+/**
+ * Runs `fn` once the toolbar may issue a request of its own: settled **and** loaded.
+ *
+ * Settle alone is not enough, and the gap is real rather than theoretical. LCP is final at
+ * first input, per the standard, so a user who clicks while the page is still loading lifts
+ * the moratorium mid-load — and the two things it gates that reach the network, the stage-2
+ * prefetch and worker registration, are justified by "must not compete with the host page's
+ * own critical requests". Competing with them is exactly what they would then do.
+ *
+ * The load half is anchored to the same ceiling as settle, so a page whose `load` never fires
+ * still gets its toolbar rather than waiting forever for a signal that is not coming.
+ */
+export function whenNetworkPermitted(fn: () => void): void {
+  if (phase === "settled" && loadedAt !== 0) fn();
+  else networkCallbacks.push(fn);
+}
+
+function releaseNetwork(): void {
+  if (phase !== "settled" || loadedAt === 0) return;
+  for (const fn of networkCallbacks) fn();
+  networkCallbacks.length = 0;
 }
 
 /**
@@ -91,6 +118,7 @@ function settle(): void {
   phase = "settled";
   for (const fn of settleCallbacks) fn();
   settleCallbacks.length = 0;
+  releaseNetwork();
 }
 
 function finalizeLcp(): void {
@@ -138,7 +166,7 @@ function checkQuiet(): void {
   if (lcpFinal) return;
   const now = performance.now();
   const quietFor = now - Math.max(lastLcpAt, loadedAt);
-  if (quietFor >= LCP_QUIET_MS || now - loadedAt >= MAX_WAIT_MS) {
+  if (quietFor >= LCP_QUIET_MS || now - startedAt >= MAX_WAIT_MS) {
     finalizeLcp();
     return;
   }
@@ -156,6 +184,22 @@ export function noteLoaded(): void {
   if (loadedAt !== 0) return;
   loadedAt = performance.now();
   cancelQuietCheck = delayed(checkQuiet, LCP_QUIET_MS);
+  releaseNetwork();
+}
+
+/**
+ * The ceiling, anchored to when tracking started rather than to load.
+ *
+ * `checkQuiet` also carries a ceiling, but it is only ever scheduled *from* `noteLoaded`, so
+ * on a page whose `load` event never fires — a hung subresource, a navigation the user
+ * abandons — nothing was bounding anything and `observation-core`'s "a page that never stops
+ * painting settles at a bounded ceiling" scenario was false for it. This one always runs.
+ */
+function checkCeiling(): void {
+  cancelCeiling = undefined;
+  if (loadedAt === 0) loadedAt = performance.now();
+  finalizeLcp();
+  releaseNetwork();
 }
 
 const visibilityCallbacks: Array<(visible: boolean) => void> = [];
@@ -233,6 +277,8 @@ export function beginPhaseTracking(): () => void {
   /* Read once, not observed: without the entry type there is no way to see a later change
      that does not cost the host a listener, so the toolbar takes the state it can have and
      `isVisible()` documents that it may go stale. */
+  startedAt = performance.now();
+  cancelCeiling = delayed(checkCeiling, MAX_WAIT_MS);
   documentVisible = document.visibilityState !== "hidden";
   if (!supports("visibility-state") && document.visibilityState === "hidden") {
     /* Already hidden when the toolbar mounted, and no entry type to tell us when it happened.
@@ -254,6 +300,7 @@ export function beginPhaseTracking(): () => void {
   return () => {
     cancelSettle?.();
     cancelQuietCheck?.();
+    cancelCeiling?.();
   };
 }
 
@@ -264,9 +311,12 @@ export function resetPhase(): void {
   lcpSealAt = Infinity;
   lastLcpAt = 0;
   loadedAt = 0;
+  startedAt = 0;
   cancelSettle = undefined;
   cancelQuietCheck = undefined;
+  cancelCeiling = undefined;
   settleCallbacks.length = 0;
+  networkCallbacks.length = 0;
   visibilityCallbacks.length = 0;
   documentVisible = true;
 }

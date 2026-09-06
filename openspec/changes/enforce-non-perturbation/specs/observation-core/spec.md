@@ -29,8 +29,16 @@ production. The guard SHALL be exercised by at least one test arm that runs with
 #### Scenario: LCP rendered from JavaScript
 - **WHEN** the host application paints its largest element from JavaScript, well after the
   load event
-- **THEN** the moratorium is still in force at that moment, because the load event is not a
-  point at which the browser stops raising LCP
+- **THEN** the toolbar does not change the LCP the page reports, and it mounts no earlier than
+  every candidate the browser had produced at that moment
+
+  The previous wording — "the moratorium is still in force at that moment" — is not a property
+  any implementation can hold, and measuring it is what showed that. LCP is final only at first
+  input or at hidden; on a page nobody touches, a larger paint may arrive at any time. The
+  fixture paints its hero from an 800 ms-delayed fetch and reports LCP at ~1.58 s while the
+  toolbar settles at ~0.60 s, and the toolbar cannot know at 0.60 s that 1.58 s is coming. What
+  it can hold is that its presence does not move the number: five runs per arm gave
+  `on` [1588, 1580, 1580, 1564, 1568] ms against `gated` [1560, 1560, 1568, 1564, 1580] ms.
 
 #### Scenario: A page that never stops painting
 - **WHEN** LCP entries keep arriving indefinitely
@@ -48,9 +56,15 @@ production. The guard SHALL be exercised by at least one test arm that runs with
   with `buffered: true`
 
 #### Scenario: The moratorium is asserted against a real signal
-- **WHEN** the suite asserts that the toolbar mounted after LCP was final
+- **WHEN** the suite asserts that the toolbar mounted after the page's LCP candidates
 - **THEN** the LCP it compares against is one the page actually reported, and the assertion
   fails if that value is unavailable rather than passing against a default
+
+#### Scenario: A guard the suite cannot make fail
+- **WHEN** a test asserts that a load-phase side effect did not happen
+- **THEN** it has been observed failing with the deferral it guards removed, and where the
+  fixture's own load window is too short to observe the violation, the fixture provides a
+  longer one rather than the test being kept as a passing tautology
 
 ### Requirement: Clean teardown
 `destroy()` SHALL leave no observer, listener, node, or timer belonging to the toolbar, and

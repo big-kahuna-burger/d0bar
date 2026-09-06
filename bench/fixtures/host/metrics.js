@@ -14,6 +14,19 @@
     inp: 0,
     interactions: [],
     d0barMountedAt: -1,
+    /* The LCP the browser had reported at the moment the pill was inserted. The final LCP is
+       not the right comparison and cannot be: on this fixture the hero paints at ~1.6 s from
+       a delayed fetch, and nothing can know at mount time whether a larger paint is still
+       coming — LCP is only final at first input or hidden. What the moratorium can promise is
+       that the toolbar came after everything the page had painted so far, and that it did not
+       move the final number; the second half is measured in `ab.spec.ts`. */
+    lcpAtMount: -1,
+    /* The load-phase side effects the moratorium forbids, each as the page-timeline moment it
+       first happened, or -1 for "never". A DOM insertion is one of four, and it was the only
+       one being recorded. */
+    d0barFirstRequestAt: -1,
+    d0barSwRegisterAt: -1,
+    d0barWorkerMessageAt: -1,
   });
 
   /* When the toolbar first touches the host DOM. The moratorium says this must not happen
@@ -25,12 +38,47 @@
         for (var j = 0; j < added.length; j++) {
           if (added[j].nodeName === "D0-BAR" && m.d0barMountedAt < 0) {
             m.d0barMountedAt = performance.now();
+            m.lcpAtMount = m.lcp;
           }
         }
       }
     }).observe(document.documentElement, { childList: true, subtree: true });
   } catch {
     /* no MutationObserver */
+  }
+
+  /* d0bar's own network requests, read out of the browser's resource entries rather than by
+     patching `fetch`. Patching it would put the instrument inside the host's own request path
+     — the exact thing this fixture must never do — and would miss the ones d0bar makes that
+     are not fetches: the stage-2 module import and the service-worker script. */
+  var D0BAR = /d0bar/i;
+  /* The host's own script tag for the bundle is not a request d0bar made. Everything else
+     matching — the panel module, the worker script, the service-worker script — is. */
+  var HOST_LOADED = /\/dist\/d0bar\.(iife|dev\.iife)\.js(\?|$)/;
+
+  /* Service-worker registration and worker messages have no entry type, so these two are
+     captured. Neither is on any path d0bar measures through: d0bar reads performance entries,
+     and nothing here touches PerformanceObserver, performance.*, or the DOM. */
+  try {
+    if (navigator.serviceWorker) {
+      var register = navigator.serviceWorker.register.bind(navigator.serviceWorker);
+      navigator.serviceWorker.register = function () {
+        if (m.d0barSwRegisterAt < 0) m.d0barSwRegisterAt = performance.now();
+        return register.apply(null, arguments);
+      };
+    }
+  } catch {
+    /* no service worker container */
+  }
+
+  try {
+    var post = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function () {
+      if (m.d0barWorkerMessageAt < 0) m.d0barWorkerMessageAt = performance.now();
+      return post.apply(this, arguments);
+    };
+  } catch {
+    /* no Worker constructor */
   }
 
   function on(type, fn, extra) {
@@ -45,6 +93,12 @@
       /* unsupported entry type */
     }
   }
+
+  on("resource", function (e) {
+    if (m.d0barFirstRequestAt >= 0) return;
+    if (!D0BAR.test(e.name) || HOST_LOADED.test(e.name)) return;
+    m.d0barFirstRequestAt = e.startTime;
+  });
 
   on("largest-contentful-paint", function (e) {
     m.lcp = e.startTime;
