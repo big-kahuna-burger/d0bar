@@ -1,48 +1,32 @@
 /**
- * The page ↔ layout-worker contract.
+ * The page ↔ layout-worker contract. In `src/shared/` because the two realms compile against
+ * different libs (`lib.dom` / `lib.webworker`) and this is the only file both can import.
  *
- * In `src/shared/` for the same reason `broker.ts` is: two realms need it, and they compile
- * against different libs — the panel against `lib.dom`, the worker against `lib.webworker`.
- * A shared file is the only thing both can import.
- *
- * **The shape is the guarantee here too, and the guarantee is different from `broker.ts`'s.**
- * There the types exist so a credential has nowhere to travel. Here they exist so that *work*
- * has nowhere to travel: the response carries rows that are already positioned, in typed arrays
- * over one buffer, with strings interned to `u32`. There is no tree in it, nothing to sort, and
- * no percentage left to compute. A main thread that receives this cannot accidentally do the
- * work the worker exists to do, because the work is not expressible on what it is handed.
- *
- * The buffer is **transferred**, not copied. That is the difference between handing over 108 kB
- * of rows and structured-cloning it, and it is asserted rather than assumed — see
- * `tests/unit/layout-protocol.test.ts`.
+ * **The shape is the guarantee:** the response carries rows already positioned, in typed arrays
+ * over one buffer, strings interned to `u32`. No tree, nothing to sort, no percentage left to
+ * compute — the main thread cannot accidentally do the worker's work because that work is not
+ * expressible on what it is handed. The buffer is **transferred**, not cloned (108 kB of rows),
+ * asserted in `tests/unit/layout-protocol.test.ts`.
  */
 
 /**
- * Bumped whenever the byte layout, the field set, or the message shape changes.
- *
- * Checked on both sides. The panel and the worker are separate build artifacts served from the
- * same origin with `no-store`, but a host may cache them differently, and a worker one version
- * behind would otherwise read the right bytes at the wrong offsets and produce a waterfall that
- * looks plausible and is wrong — the single worst failure this module can have.
+ * Bumped on any change to byte layout, field set or message shape; checked on both sides. The two
+ * are separate artifacts and a host may cache them differently — a worker one version behind reads
+ * the right bytes at the wrong offsets and draws a plausible, wrong waterfall.
  */
 export const LAYOUT_PROTOCOL_VERSION = 1;
 
 /**
- * The most rows the worker will emit.
- *
- * Not a memory limit — 8192 rows is 216 kB — but a rendering one: past this the waterfall has
- * stopped being readable and the honest move is to say so. Anything beyond the cap sets
- * {@link LayoutSummary.truncated}, which the UI is required to surface.
- *
- * Chosen above the 4000-span budget case on purpose, so the benchmark measures a whole trace
- * rather than the cap. Truncation is exercised by unit tests with an injected cap instead.
+ * Row cap. Not memory (8192 rows is 216 kB) but readability: past this the waterfall is unreadable
+ * and saying so is the honest move — beyond it sets {@link LayoutSummary.truncated}, which the UI
+ * must surface. Above the 4000-span budget case on purpose, so the benchmark measures a whole trace
+ * rather than the cap; truncation is unit-tested with an injected cap.
  */
 export const SPAN_CAP = 8192;
 
 /* ── row flags ──
-   One `u8` per row rather than five booleans, because five booleans is five bytes and this is
-   one. Every one of them is a statement the UI is required to render: none of these conditions
-   is repaired silently. */
+   One `u8` rather than five booleans (five bytes). Each is a statement the UI must render; none of
+   these conditions is repaired silently. */
 
 /** The row has no parent inside this trace *and* was not made an orphan — the real root. */
 export const F_ROOT = 1 << 0;
@@ -56,12 +40,9 @@ export const F_CYCLE = 1 << 3;
 export const F_DEGENERATE = 1 << 4;
 
 /**
- * Bytes per row, and the per-field offsets within the buffer.
- *
- * Fields are grouped by width and laid out widest-first, so every view starts on its own
- * natural alignment without padding: a `Float64Array` at a non-multiple-of-8 offset throws
- * outright, and a `Uint32Array` at an odd one does too. Derived here once and consumed by
- * {@link layoutViews}, so neither realm computes an offset of its own.
+ * Bytes per row. Fields are grouped widest-first so every view lands on its natural alignment
+ * without padding — a `Float64Array` at a non-multiple-of-8 offset throws outright. Consumed by
+ * {@link layoutViews} so neither realm computes an offset of its own.
  */
 export const ROW_BYTES = 8 + 4 + 4 + 4 + 4 + 1 + 1 + 1;
 
@@ -82,11 +63,9 @@ export interface LayoutViews {
 }
 
 /**
- * Builds the views for `count` rows over `buffer`.
- *
- * **The single source of truth for the byte layout**, called by the worker to write and by the
- * panel to read. Two functions computing the same offsets is the bug this exists to make
- * impossible; a type test cannot catch a wrong offset, and this makes one unnecessary.
+ * Views for `count` rows over `buffer`. **The single source of truth for the byte layout** — the
+ * worker writes through it, the panel reads through it. Two functions computing the same offsets is
+ * the bug this makes impossible, and no type test can catch a wrong offset.
  */
 export function layoutViews(buffer: ArrayBuffer, count: number): LayoutViews {
   let at = 0;
@@ -132,38 +111,26 @@ export interface LayoutRequest {
   kind: "layout";
   version: number;
   /**
-   * Correlates a response with its request.
-   *
-   * A worker is reused across selections and a trace opened, abandoned and reopened produces
-   * two in-flight requests whose replies can arrive in either order. The machine's generation
-   * counter already refuses a stale write, but it cannot tell *which* reply it is refusing;
-   * this can, and a reply for an id nobody is waiting on is dropped before it reaches it.
+   * Correlates a reply with its request. The worker is reused, so a trace opened, abandoned and
+   * reopened has two replies that can arrive in either order. The generation counter refuses a
+   * stale write but cannot say *which*; this drops an unawaited reply before it gets there.
    */
   id: number;
   /** The response body, **as text**. Never parsed on the main thread — that is the whole point. */
   body: string;
   /**
-   * The query's own time window, milliseconds — `TraceQueryRequest.timeRange`.
-   *
-   * **Not the denominator.** `left` and `width` are fractions of the *trace's* extent, because
-   * a trace laid out against a ±2s query window would be a two-pixel smudge in the middle of an
-   * empty waterfall. The spans decide the scale.
-   *
-   * It is carried because it is the only scale available when the spans cannot supply one: a
-   * trace of a single instantaneous span, or of spans that all share one timestamp, has an
-   * extent of zero and no denominator at all. Falling back to the window puts that row where it
-   * actually happened rather than filling the waterfall with a bar that means nothing.
+   * The query window, ms. **Not the denominator** — `left`/`width` are fractions of the *trace's*
+   * extent, since a trace against a ±2s window is a two-pixel smudge. Carried as the only fallback
+   * scale when the spans supply none: a single instantaneous span, or spans all sharing one
+   * timestamp, has zero extent and no denominator.
    */
   from: number;
   to: number;
 }
 
 /**
- * Why a layout produced nothing.
- *
- * Named, not collapsed, for the same reason `QueryFailure` is: "the API sent something this
- * worker could not read" and "this worker has a bug" are different problems, and a panel that
- * shows one sentence for both sends the reader to the wrong place.
+ * Why a layout produced nothing. Named, not collapsed: "the API sent something unreadable" and
+ * "this worker has a bug" are different problems, and one sentence for both misdirects the reader.
  */
 export type LayoutFailure =
   /** The body is not JSON at all. */
@@ -201,14 +168,10 @@ export type LayoutResponse =
     };
 
 /**
- * The one failure sentence the *panel* produces on its own.
- *
- * Split out of {@link LAYOUT_FAILURE_COPY} rather than read from it, because that record is
- * otherwise entirely the worker's: every other reason is decided inside the worker and arrives
- * as a message. Importing the whole record to reach one entry shipped all five sentences in the
- * stage-2 bundle for the one the panel can reach without asking — 0.4 kB of prose on the path a
- * developer waits for. This is the only one the panel can raise, because it is the one about the
- * two realms disagreeing.
+ * The one failure sentence the *panel* raises itself — the two realms disagreeing. Split out of
+ * {@link LAYOUT_FAILURE_COPY} rather than read from it: every other reason is decided in the
+ * worker, and importing the record to reach one entry shipped all five sentences (0.4 kB of prose)
+ * in stage 2.
  */
 export const VERSION_MISMATCH_COPY =
   "d0bar's panel and its layout worker are different versions. Reload the page.";
