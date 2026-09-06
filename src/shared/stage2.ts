@@ -21,8 +21,15 @@ import type { SpanEntry } from "../collector/join";
  * `vitals.ts` reported `LCP unavailable` where the browser had reported one.
  */
 
-/** Filename of the stage-2 bundle, a sibling of stage 1. */
-const STAGE_2 = "d0bar.panel.js";
+/**
+ * Filename of the stage-2 bundle, a sibling of stage 1.
+ *
+ * `__DEV__` is compiled per artifact, so a dev stage 1 must load a dev *panel* or nothing the
+ * panel gates on `__DEV__` is ever reachable — and gating on data instead just ships the
+ * diagnostic to customers. The dev arm loads `d0bar.dev.iife.js` beside `d0bar.dev.panel.js`;
+ * every shipped build resolves the plain name and never emits the dev one.
+ */
+const STAGE_2 = __DEV__ ? "d0bar.dev.panel.js" : "d0bar.panel.js";
 
 /**
  * Stage 1's own URL, captured at module evaluation because both sources expire.

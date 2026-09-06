@@ -94,18 +94,15 @@ export function vitalsView(options: VitalsViewOptions): VitalsView {
   mono.textContent = "PerformanceObserver";
   note.append(document.createTextNode(NOTE_BEFORE), mono, document.createTextNode(NOTE_AFTER));
 
-  /* Gated on the data, not on `__DEV__`.
-     
-     The obvious `__DEV__ ? … : undefined` was wrong here and shipped nothing: `__DEV__` is
-     compiled per bundle, stage 2 has no dev artifact, and `?d0bar=dev` loads a dev stage 1 with
-     the *production* panel as its sibling — so the block would have been compiled out in the one
-     arm it exists for. `SelfCost.top` is the dev flag that actually crosses the boundary: stage 1
-     fills it only under its own `__DEV__`, so this stays empty and hidden in a shipped build
-     without stage 2 needing to know which build it is. */
-  const selfEl = el("pre", "vself");
-  selfEl.hidden = true;
+  /* Dev builds only, and `__DEV__` is a compile-time constant, so terser drops both this and
+     `selfReport` from the panel a customer runs — the first attempt gated on the data instead
+     and shipped the report's strings to every host. It renders because there is a dev *panel*
+     artifact (`D0BAR_STAGE=dev2`) that a dev stage 1 resolves as its sibling; without one, a
+     `__DEV__` gate here would be compiled out in the one arm it exists for. */
+  const selfEl = __DEV__ ? el("pre", "vself") : undefined;
 
-  root.append(grid, note, selfEl);
+  root.append(grid, note);
+  if (selfEl) root.appendChild(selfEl);
 
   /* ── painting ── */
 
@@ -130,10 +127,7 @@ export function vitalsView(options: VitalsViewOptions): VitalsView {
       part.value.dataset["tone"] = card.tone;
       part.root.setAttribute("aria-label", accessibleName(card));
     }
-    /* `hidden`, not a removed node: the block appears and disappears with the dev build, and
-       toggling a property is cheaper than mutating the panel's DOM on a repaint. */
-    selfEl.hidden = reading.self.top.length === 0;
-    if (!selfEl.hidden) selfEl.textContent = selfReport(reading).join("\n");
+    if (selfEl) selfEl.textContent = selfReport(reading).join("\n");
   }
 
   /**

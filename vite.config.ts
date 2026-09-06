@@ -111,16 +111,18 @@ function minifyLibOutput(options: () => MinifyOptions, expectedGlobal: string | 
  * silently inlined back into the IIFE one, putting the panel on the critical path with no
  * error to notice. So stage 2 builds alone, as an ES module, and stage 1 loads it by URL.
  */
-const stage: 1 | 2 | "sw" | "worker" | "dev" =
+const stage: 1 | 2 | "sw" | "worker" | "dev" | "dev2" =
   process.env.D0BAR_STAGE === "2"
     ? 2
-    : process.env.D0BAR_STAGE === "sw"
-      ? "sw"
-      : process.env.D0BAR_STAGE === "worker"
-        ? "worker"
-        : process.env.D0BAR_STAGE === "dev"
-          ? "dev"
-          : 1;
+    : process.env.D0BAR_STAGE === "dev2"
+      ? "dev2"
+      : process.env.D0BAR_STAGE === "sw"
+        ? "sw"
+        : process.env.D0BAR_STAGE === "worker"
+          ? "worker"
+          : process.env.D0BAR_STAGE === "dev"
+            ? "dev"
+            : 1;
 
 /**
  * A fifth artifact: stage 1 with `__DEV__` compiled in.
@@ -134,7 +136,7 @@ const stage: 1 | 2 | "sw" | "worker" | "dev" =
  * measured arms stay the shipped bytes, because a build carrying development assertions is not
  * what a customer runs and must not be what a budget is measured against.
  */
-const isDev = stage === "dev";
+const isDev = stage === "dev" || stage === "dev2";
 
 /**
  * The service worker is a third artifact for the same reason stage 2 is a second one: it is
@@ -223,12 +225,19 @@ export default defineConfig(({ mode }) => ({
                   ? SW_ENTRIES[swVariant].file.replace(/\.js$/, ".mjs")
                   : SW_ENTRIES[swVariant].file,
             }
-          : stage === 2
+          : stage === 2 || stage === "dev2"
             ? {
                 entry: "src/panel/index.ts",
                 /* ES only. Stage 2 is always reached through `import()`, from either build. */
                 formats: ["es"],
-                fileName: () => "d0bar.panel.js",
+                /* A dev *panel*, for the same reason there is a dev stage 1: `__DEV__` is
+                   compiled per artifact, so a diagnostic the panel gates on it is absent from
+                   both builds unless one of them is built with it on. The dev self-report was
+                   written without this and shipped its strings to customers — 103 B of the
+                   ceiling breach in `add-self-attribution` — while never rendering in the one
+                   arm it exists for, because `?d0bar=dev` loads dev stage 1 beside the
+                   *production* panel. `shared/stage2.ts` picks the sibling by `__DEV__`. */
+                fileName: () => (stage === "dev2" ? "d0bar.dev.panel.js" : "d0bar.panel.js"),
               }
             : isDev
               ? {
