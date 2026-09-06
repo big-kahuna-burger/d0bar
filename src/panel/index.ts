@@ -36,24 +36,16 @@ import {
 } from "./shell";
 
 /**
- * Stage 2: the panel.
- *
- * Loaded on first open, or by a background prefetch after the load phase settles. Nothing in
- * this file is on a host page's critical path, which is why it can afford a stylesheet and a
- * few dozen nodes where stage 1 could not.
- *
- * Mounted into the closed shadow root stage 1 already owns, so the panel adds no second host
- * element and remains unreachable from the customer's page.
+ * Stage 2: the panel. Loaded on first open (or a post-settle prefetch), so nothing here is on the
+ * critical path — which is why it can afford a stylesheet and a few dozen nodes. Mounted into the
+ * closed shadow root stage 1 already owns: no second host element, unreachable from the page.
  */
 
 export interface PanelOptions {
   root: ShadowRoot;
   onClose(): void;
-  /**
-   * Tier 2's state, resolved by stage 1. Passed rather than imported: the two stages are
-   * separate bundles and do not share module state, so `sw.ts`'s registration outcome does
-   * not cross the boundary on its own.
-   */
+  /** Tier 2's state, resolved by stage 1. Passed, not imported — see the duplication rule in
+   * `shared/stage2.ts`. */
   tier2: Tier2State;
   /** Tier 4's state, resolved by stage 1. Passed for the same reason as `tier2`. */
   otel: OtelState;
@@ -84,15 +76,10 @@ const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
 ];
 
 /**
- * The four observation tiers, in the order the handoff lists them.
- *
- * Additive, not alternatives: each answers a question the others cannot, so a tier going dark
- * subtracts a column rather than downgrading the whole reading.
- *
- * Resolved by `tier.ts` from real capability checks rather than declared here — this file
- * only paints them. The table used to be a constant with tier 2 hardcoded to `off`, which
- * was honest only by accident: it read correctly because tier 2 did not exist yet, and would
- * have gone on reading `off` after it did.
+ * The four tiers are additive, not alternatives: a dark tier subtracts a column rather than
+ * downgrading the reading. Resolved by `tier.ts` from real capability checks; this file only paints
+ * them. It used to be a constant with tier 2 hardcoded `off` — honest only by accident, and it
+ * would have kept reading `off` after tier 2 shipped.
  */
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -105,17 +92,10 @@ function el<K extends keyof HTMLElementTagNameMap>(
 }
 
 /**
- * Attaches a hover tooltip to `trigger`, wrapping it in an anchor so the bubble positions
- * against it.
- *
- * Deliberately not the `title` attribute. A native tooltip cannot be positioned, themed or
- * kept inside the panel; it appears over the host page's own UI after an OS-controlled delay,
- * and renders a sentence of explanation as unstyled grey text. Every one of these strings
- * explains provenance — the reason a number is trustworthy — which is exactly the copy that
- * must not look like an accident.
- *
- * Only one bubble is open at a time, enforced by the shared {@link tip} signal rather than by
- * each trigger clearing its neighbours.
+ * Hover tooltip, wrapping `trigger` in an anchor so the bubble positions against it. Not `title`:
+ * a native tooltip cannot be positioned or themed, appears over the host's UI after an OS delay,
+ * and renders as unstyled grey text — and every one of these strings explains provenance, the copy
+ * that must not look like an accident. One bubble at a time, via the shared {@link tip} signal.
  */
 function tooltip(
   bindings: { add(dispose: () => void): void },
@@ -167,12 +147,10 @@ const UNTRACED_TAB_NOTE =
 export function openPanel(options: PanelOptions): PanelHandle {
   const { root, onClose } = options;
   /**
-   * Ring indices the service worker produced a record for, filled by the correlation flush.
-   *
-   * Empty until then, and empty forever when tier 2 is off — which is why the untraced view
-   * asks whether coverage is determinable before it reads this at all. A `Set` rather than a
-   * flag on the record: this is stage 2's knowledge about stage 1's ring, and writing it back
-   * into the ring would spend a bit on something only one tab reads.
+   * Ring indices the worker produced a record for; filled by the correlation flush. Empty until
+   * then, and forever with tier 2 off — hence the untraced view asking whether coverage is
+   * determinable first. A `Set`, not a record flag: this is stage 2's knowledge about stage 1's
+   * ring, and a flag would spend a bit for one tab.
    */
   let workerSaw: ReadonlySet<number> = new Set();
   /* Before anything renders: the footer must never paint a stale `off` and then correct
@@ -206,10 +184,8 @@ export function openPanel(options: PanelOptions): PanelHandle {
   const hint = el("span", "hint");
   hint.textContent = "⌘⇧0";
 
-  /* The connect affordance. A dot rather than a word, because it is a status first — the
-     panel works without a token, and only the trace jump needs one. Its tooltip carries the
-     whole state, including where the token is kept, which is the part a developer needs to be
-     able to check without hunting for it. */
+  /* A dot, not a word: status first, since the panel works without a token and only the trace jump
+     needs one. Its tooltip carries the whole state, including where the token is kept. */
   const conn = el("button", "conn-chip");
   conn.type = "button";
   const connDot = el("i", "conn-dot");
@@ -273,25 +249,16 @@ export function openPanel(options: PanelOptions): PanelHandle {
     tabs.appendChild(button);
 
     if (item.id === "untraced") {
-      /* Attached after the badge and after the tab is in the DOM, so the anchor wraps the
-         whole tab including its count.
+      /* ORDERING IS LOAD-BEARING: `tooltip()` assumes its trigger is already parented. A second,
+         earlier `tooltip()` call here ran before `tabs.appendChild(button)`, so
+         `trigger.replaceWith(anchor)` had no parent and did nothing — the anchor adopted the
+         button, the append moved it back out, and the anchor was left detached with two live
+         bindings still writing the count into it. Copy that existed, updated, and no pointer could
+         reach. Verified in-browser (one anchor, not the two the first explanation predicted) and
+         guarded by `tests/perf/untraced-view.spec.ts`.
 
-         One tooltip, not two. The merge left this tab with a `tooltip()` call for the live
-         reading and a second for the static explanation, and the first one was silently dead:
-         it ran before `tabs.appendChild(button)`, so `trigger.replaceWith(anchor)` had no
-         parent to replace into and did nothing. The anchor adopted the button, the append then
-         moved the button straight back out, and the anchor — with its bubble and two live
-         bindings still writing the count into it — was left detached from the document. The
-         copy existed, updated correctly and could not be reached by any pointer.
-
-         That is why the ordering here is load-bearing rather than incidental: `tooltip()`
-         assumes its trigger is already parented. Verified against the browser (the probe that
-         settled it found one anchor, not the two the first explanation of this bug predicted)
-         and guarded by `tests/perf/untraced-view.spec.ts`.
-
-         The reading leads and the explanation follows, because the number is what the reader
-         hovered for. Bound rather than set, so it is the current count and not the one from
-         when the panel opened. */
+         Reading first, explanation second — the number is what the reader hovered for. Bound, not
+         set, so it is current rather than from when the panel opened. */
       tooltip(bindings, button, "untraced", "below", {
         body: () => `${untracedTooltip()} ${UNTRACED_TAB_NOTE}`,
       });
@@ -331,18 +298,11 @@ export function openPanel(options: PanelOptions): PanelHandle {
   bindings.add(bindHidden(vitals.el, () => !showVitals()));
 
   /**
-   * The layout worker's client, and the trace query built on it.
-   *
-   * The worker is **not** started here. `layoutClient` creates one lazily on the first trace it
-   * is asked to lay out and terminates it after an idle period, so opening the panel costs a
-   * panel and a developer who never opens a trace never pays for a thread.
-   *
-   * This is what `add-trace-view` left as a declared boundary with no implementation. Both
-   * halves have now landed: `add-pasted-token` supplies the credential, and the layout worker
-   * turns a response body into positioned rows without the main thread touching it. The
-   * `unqueryable` state remains reachable and correct — it is what a selection resolves to when
-   * no token is connected, which is a thing the developer can fix rather than a claim about the
-   * trace.
+   * The layout worker's client and the trace query on it. The worker is **not** started here:
+   * `layoutClient` creates one lazily on the first trace and terminates it after an idle period, so
+   * opening the panel costs a panel and a developer who never opens a trace never pays for a
+   * thread. `unqueryable` stays reachable — what a selection means with no token connected, which
+   * is fixable rather than a claim about the trace.
    */
   const layout = layoutClient();
   const trace0Query = createTraceQuery({
@@ -355,10 +315,9 @@ export function openPanel(options: PanelOptions): PanelHandle {
   });
 
   /**
-   * The trace surface, mounted alongside the list rather than swapped for it.
-   *
-   * With tier 2 off, which is the default, no request carries a traceparent at all and the
-   * surface never reaches the query: every selection resolves to the no-span state.
+   * The trace surface, mounted alongside the list rather than swapped for it. With tier 2 off (the
+   * default) nothing carries a traceparent, so every selection resolves to the no-span state
+   * without reaching the query.
    */
   /* Mounted once and hidden, like the other two. It also owns the untraced badge, which has
      to be right before anyone opens the tab — so this view exists and counts from the moment
@@ -386,10 +345,9 @@ export function openPanel(options: PanelOptions): PanelHandle {
   const connectSurface = connectView();
   bindings.add(bindHidden(connectSurface.el, () => view() !== "connect"));
 
-  /* Focus follows the pushed surface. Without this Escape stops working the moment the
-     surface opens — see the note on `TraceView.focus`. Ordered after the `hidden` binding
-     above, because a `focus()` on a hidden element is a no-op and the effect graph runs
-     these in registration order. */
+  /* Focus follows the pushed surface, or Escape stops working the moment it opens. After the
+     `hidden` binding: `focus()` on a hidden element is a no-op and effects run in registration
+     order. */
   bindings.add(
     effect(() => {
       if (view() === "trace") trace.focus();
@@ -429,16 +387,10 @@ export function openPanel(options: PanelOptions): PanelHandle {
   );
 
   /**
-   * Scroll memory, per tab.
-   *
-   * Tracked continuously rather than captured at the moment of leaving: by the time a tab
-   * switch or a trace push has been observed, the list it is leaving may already have been
-   * torn down, and `scrollTop` on a detached or re-populated node reads zero. Keeping the map
-   * current means the value is already right when it is needed.
-   *
-   * Passive, because the handler never calls `preventDefault` and a non-passive scroll
-   * listener on a scroller blocks the compositor from scrolling until script has run — the
-   * exact class of cost this toolbar exists not to impose.
+   * Per-tab scroll memory, tracked continuously rather than captured on leave: by the time a switch
+   * is observed the old list may be torn down, and `scrollTop` on a detached node reads zero.
+   * Passive — a non-passive scroll listener blocks the compositor until script runs, the exact cost
+   * this toolbar exists not to impose.
    */
   bindings.add(
     on(body, "scroll", () => rememberScroll(tab.peek(), body.scrollTop), { passive: true }),
@@ -527,16 +479,11 @@ export function openPanel(options: PanelOptions): PanelHandle {
   );
 
   /**
-   * Focus trap.
-   *
-   * The panel is a top-layer popover over a page that is still fully interactive, so without
-   * this a Tab off the last control lands somewhere in the customer's own UI with the panel
-   * still open — and the way back is not discoverable. `manual` popover mode means the
-   * browser does not do this for us, unlike `<dialog>`'s modal mode, which we cannot use
-   * because it would make the host page inert.
-   *
-   * Queried per keypress rather than cached: the tab row's contents change with state, and a
-   * stale list would trap focus on a node that is no longer there.
+   * Focus trap. The panel is a top-layer popover over a still-interactive page, so a Tab off the
+   * last control otherwise lands in the customer's UI with no discoverable way back. `manual`
+   * popover mode does not trap for us, and `<dialog>`'s modal mode would make the host inert.
+   * Queried per keypress: the tab row changes with state, and a cached list traps focus on a node
+   * that is gone.
    */
   const FOCUSABLE =
     'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -568,10 +515,9 @@ export function openPanel(options: PanelOptions): PanelHandle {
   );
 
   /**
-   * `will-change` promotes the panel to its own layer for the entry animation, and is removed
-   * the moment it ends. Left on permanently it is a standing instruction to the compositor to
-   * keep a layer for an element that is no longer animating — memory the host page pays for,
-   * on a page whose memory is not ours to spend.
+   * `will-change` promotes the panel to its own layer for the entry animation and is removed the
+   * moment it ends. Left on, it is a standing instruction to keep a layer for a static element —
+   * memory the host pays for, which is not ours to spend.
    */
   bindings.add(
     on(panel, "animationend", () => {
@@ -591,16 +537,11 @@ export function openPanel(options: PanelOptions): PanelHandle {
   );
 
   /**
-   * The correlation flush.
-   *
-   * Deliberately here and not in stage 1. Registration has to happen whether or not the
-   * panel is ever opened — the worker writes the log either way — but nothing *reads* that
-   * log until someone is looking at it, so the join, the interning of leftovers and the ring
-   * write-back all live in stage 2 and cost a page that never opens the panel nothing.
-   *
-   * Not awaited: the panel renders immediately with tier 1's data and fills in tier 2's when
-   * it arrives. A panel that waited on IndexedDB before painting would make the toolbar feel
-   * slow in exchange for a field that is meaningless on most rows anyway.
+   * The correlation flush, in stage 2 by design: the worker writes its log whether or not the panel
+   * opens, but nothing *reads* it until someone looks, so the join, the interning and the ring
+   * write-back cost a page that never opens the panel nothing. Not awaited — the panel paints from
+   * tier 1 and fills tier 2 in on arrival, rather than waiting on IndexedDB for a field most rows
+   * do not have.
    */
   void flushCorrelation({
     tier2: options.tier2,
@@ -613,13 +554,10 @@ export function openPanel(options: PanelOptions): PanelHandle {
          tell a request the worker watched go out bare from one it never saw at all — two
          different findings that would otherwise both read as "no trace id". */
       workerSaw = result.seen;
-      /* Repaint, because the flush wrote into the ring behind the list's back.
-     
-         The rows were painted from records that had no trace id yet — the join is
-         deliberately post-settle and asynchronous — and nothing else will repaint them: the
-         list refreshes on a resource batch, and on a page that has gone quiet the next batch
-         may never come. Tier 2's chips had the same latent bug and it was invisible because
-         a busy fixture always produced another batch. */
+      /* Repaint: the flush wrote into the ring behind the list's back. Rows were painted from
+         records with no trace id yet, and nothing else will repaint them — the list refreshes on a
+         resource batch, and a quiet page may never produce another. Tier 2's chips had the same
+         latent bug, invisible only because a busy fixture kept producing batches. */
       requests.refresh();
       /* The same repaint, for the same reason: the flush wrote trace ids into the ring, and
          a coverage count taken before it would report every request as a gap. This also

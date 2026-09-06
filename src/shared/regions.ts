@@ -1,27 +1,19 @@
 /**
  * The Dash0 API origins the token may be sent to.
  *
- * **A fixed list, compiled in, and that is the security property.** The connect surface lets a
- * developer pick an environment and a region, but what crosses to the worker is an *id* from
- * this table, never a URL — the worker looks the id up in its own copy and refuses anything it
- * does not find. A page that could name an arbitrary origin could name one it controls, and the
- * worker would attach the token to it. Choosing from a list cannot do that.
+ * **A fixed list, compiled in, and that is the security property.** The connect surface passes an
+ * *id* from this table to the worker, never a URL; the worker looks the id up in its own copy and
+ * refuses anything else. A page that could name an arbitrary origin could name one it controls, and
+ * the worker would attach the token to it. Ids are environment-qualified (`prod:eu-west-1`) because
+ * region names repeat across environments.
  *
- * Ids are qualified with the environment (`prod:eu-west-1`) because the region names repeat
- * across environments and a bare `eu-west-1` names two different origins. One flat id keeps
- * resolution a single lookup and keeps the message a single field.
+ * **Two independent sources that agree**, which is why this is a list and not a guess.
  *
- * ## Where this list came from
+ * The configuration: `dash0hq/dash0-configuration`, `platform/environments/<cloud>/`, one file per
+ * cluster. Only `-regional` clusters are customer-facing (`-global` is the control plane, `-syn` are
+ * check runners), so only those belong in a picker.
  *
- * Two independent sources that agree, which is why it is a list and not a guess.
- *
- * **The configuration.** `dash0hq/dash0-configuration`, `platform/environments/<cloud>/` — one
- * file per deployed cluster, suffixed by role. `-regional` clusters are the customer-facing
- * ones; `-global` is the control plane (a comment in the regional values says so: "No org-whois
- * here: it needs a control-plane-api address, which only the global clusters run"), and `-syn`
- * / `-synthetics` are check runners. Only `-regional` belongs in a picker.
- *
- * **The probe.** Every host below was then confirmed live, three ways:
+ * The probe — every host below confirmed live, three ways:
  *
  * ```
  *                                          issuer   GET /api/spans   OPTIONS, foreign Origin
@@ -33,38 +25,21 @@
  * api.europe-west4.gcp.dash0-dev.com       self     401              204, allow-origin: *
  * ```
  *
- * `401` and not `404` is the test that matters: it separates a region that serves the data API
- * from a name that merely resolves. The preflight column is what makes this whole design work —
- * `OPTIONS /api/spans` from `Origin: https://shop.example.com` asking for `Authorization`
- * answers `204` with `access-control-allow-origin: *`. The OAuth endpoints on these same hosts
- * do not; they are origin-allowlisted, which is why d0bar cannot run a sign-in flow and asks
- * for a pasted token instead.
+ * `401` not `404` separates a region that serves the data API from a name that merely resolves. The
+ * preflight column is what makes the design work: `OPTIONS /api/spans` from a foreign origin asking
+ * for `Authorization` answers `204` with `allow-origin: *`. The OAuth endpoints on these same hosts
+ * are origin-allowlisted, which is why d0bar asks for a pasted token instead of running a sign-in.
  *
- * ### What the two sources caught that one would not
+ * What one source alone would have got wrong: a DNS sweep of AWS region names finds four and misses
+ * two, because GCP regions are named `europe-west4` (crt.sh surfaced the pattern). Going the other
+ * way, `us-east-2` has a wildcard cert and a `-global` cluster but no `api.` host — it is the
+ * production control plane — and `api.dash0.com` has a cert and does not resolve. Certificates alone
+ * would have listed both.
  *
- * A DNS sweep of AWS region names found four hosts and missed two: GCP regions are named
- * `europe-west4`, not `eu-west-1`, so a sweep built from AWS names cannot see them. Certificate
- * transparency (`crt.sh`) surfaced `*.europe-west4.gcp.dash0.com` and named the pattern.
- *
- * Going the other way, two names that look like regions are not:
- *
- *   - `us-east-2` has a wildcard certificate and a `production-us-east-2-global` cluster, but
- *     no `api.` host resolves. It is the production control plane, not a region.
- *   - `api.dash0.com` has a certificate and does not resolve. There is still no
- *     region-independent issuer, which is why the picker exists at all.
- *
- * Both would have been listed by reading certificates alone. Neither is reachable.
- *
- * Adding a region from documentation alone would put a guess where a measurement belongs; a host
- * in a region this list does not carry uses the escape hatch below.
- *
- * The escape hatch is the worker's script URL:
+ * A region not carried here uses the escape hatch, which is host-controlled rather than
+ * page-controlled — chosen when the site is built, not by whatever runs in the page later:
  *
  *   navigator.serviceWorker.register("/d0bar-sw.js?api=https://api.<region>.aws.dash0.com")
- *
- * That is host-controlled rather than page-controlled — it is chosen when the site is built,
- * not by whatever is running in the page later — which is why it is allowed to be arbitrary
- * where the picker is not.
  */
 
 export interface Region {
@@ -168,14 +143,10 @@ export function environmentOf(id: string): EnvironmentId {
 }
 
 /**
- * Host-supplied origins, added at worker startup from the script URL.
- *
- * Separate from `REGIONS` on purpose. `REGIONS` is a constant the page may pick from; this is
- * what the site's own build added, which is a different trust level — see the note above. The
- * lookup below searches both, so `originFor` remains the one place a destination is resolved.
- *
- * An override lands in `prod`: it is the environment a host deploying d0bar is in, and the `dev`
- * list is Dash0's own.
+ * Host-supplied origins, added at worker startup from the script URL. Separate from `REGIONS` by
+ * trust level: that is a constant the page may pick from, this is what the site's own build added.
+ * The lookup searches both, so `originFor` stays the one place a destination is resolved. An
+ * override lands in `prod` — the environment a host deploying d0bar is in.
  */
 const extra: Region[] = [];
 

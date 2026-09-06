@@ -16,17 +16,12 @@ import {
 } from "../shared/protocol";
 
 /**
- * Trace flattening: OTLP JSON text in, positioned rows out.
+ * Trace flattening: OTLP JSON text in, positioned rows out. Separate from `layout.worker.ts` (four
+ * lines of `onmessage`) so every decision here is a node test against a fixture rather than
+ * something only observable through `postMessage`.
  *
- * Separate from `layout.worker.ts` — which is four lines of `onmessage` — so that every
- * decision in here is a node test against a crafted fixture rather than something only
- * observable through a `postMessage`. The worker entry owns the realm; this owns the work.
- *
- * ## Nothing is repaired silently
- *
- * A trace arrives mid-ingest, from a system that was itself partly broken, and the shapes that
- * result are not exceptional — they are the normal reason someone opened this panel. Each one
- * is rendered and flagged:
+ * **Nothing is repaired silently.** A mid-ingest trace from a partly broken system is the normal
+ * reason someone opened this panel, not an exceptional case:
  *
  * ```
  *   parent absent from the response   ──▶  depth 0, F_ORPHAN
@@ -35,15 +30,11 @@ import {
  *   more spans than the cap           ──▶  emitted up to it, summary.truncated
  * ```
  *
- * The alternative — dropping a row — produces a waterfall that looks complete and is not, which
- * is the failure this whole toolbar is built to avoid. A hole the reader can see is a finding;
- * a hole they cannot is a lie.
+ * Dropping a row instead produces a waterfall that looks complete and is not. A hole the reader can
+ * see is a finding; a hole they cannot is a lie.
  *
- * ## The main thread's share
- *
- * Zero, by construction rather than by care. Everything below — the parse, the parent
- * resolution, the ordering, the arithmetic, the string interning — happens here, and what
- * crosses back is a buffer of numbers. See `src/shared/protocol.ts`.
+ * The main thread's share is zero by construction: parse, parent resolution, ordering, arithmetic
+ * and interning all happen here, and a buffer of numbers crosses back (`src/shared/protocol.ts`).
  */
 
 /** Fraction of the trace's extent given to a span with no measurable duration. */
@@ -90,23 +81,17 @@ function fail(reason: LayoutFailure): LayoutErr {
 }
 
 /**
- * Nanosecond timestamps arrive as strings in OTLP's JSON mapping.
+ * Nanosecond timestamps arrive as strings — protojson encodes int64 as a string because JSON
+ * numbers are doubles, and 2^53 ns is 1970 plus 104 days, so every real timestamp is past exact.
  *
- * protojson encodes a 64-bit integer as a *string* precisely because JSON numbers are doubles
- * and would lose the low bits — and 2^53 nanoseconds is 1970 plus 104 days, so every real
- * timestamp is past the point where a double stops being exact. Read as a `Number` anyway, and
- * that is a considered loss with a measured bound: at a 2026 epoch a double's spacing is 256 ns,
- * so each endpoint rounds by up to 128 ns and a duration inherits up to 256 ns of error.
+ * Read as `Number` anyway: a considered loss with a **measured** bound. At a 2026 epoch a double's
+ * spacing is 256 ns, so each endpoint rounds by up to 128 ns and a duration inherits up to 256 ns.
+ * A 50 ms span in `layout.test.ts` reads back 49 999 872 ns — 128 ns short. (Subtracting nearby
+ * values does *not* cancel it: the rounding happens per endpoint at parse time. An earlier comment
+ * here claimed otherwise.) The test asserts the bound, not exactness.
  *
- * **Measured, not reasoned about.** A 50 ms span in `layout.test.ts` reads back as 49 999 872 ns
- * — 128 ns short. An earlier version of this comment claimed durations "keep far more precision
- * than that bound suggests", on the theory that subtracting two nearby values cancels the error;
- * it does not, because the rounding happens at parse time on each endpoint independently. The
- * test asserts the bound rather than exactness, and would catch a regression past it.
- *
- * 256 ns is 0.00026 ms in a column that renders milliseconds, so the exact alternatives —
- * `BigInt` per endpoint, or splitting the digit string at the nanosecond boundary and rebasing —
- * buy nothing visible for real per-span cost. Recorded so the ceiling is known.
+ * 256 ns is 0.00026 ms in a column rendering milliseconds, so `BigInt` per endpoint or rebasing the
+ * digit string buys nothing visible for real per-span cost.
  */
 function nanos(value: unknown): number {
   if (typeof value === "number") return value;
@@ -130,11 +115,9 @@ function stringAttribute(attributes: unknown, key: string): string {
 }
 
 /**
- * OTLP's status enum, in both of the shapes protojson emits.
- *
- * The canonical JSON mapping writes an enum as its *name*, but every generator that round-trips
- * through the binary form emits the number instead, and Dash0's API is not the only thing that
- * will ever be pointed at this. Both are accepted; anything else is not an error.
+ * OTLP's status enum in both shapes protojson emits: the canonical mapping writes the enum *name*,
+ * but anything round-tripping through the binary form emits the number. Both accepted; anything
+ * else is not an error.
  */
 function isError(status: unknown): boolean {
   if (!status || typeof status !== "object") return false;
@@ -143,10 +126,8 @@ function isError(status: unknown): boolean {
 }
 
 /**
- * Reads every span out of an OTLP payload, with its resource's service name attached.
- *
- * `resourceSpans[].scopeSpans[].spans[]`, and the older `instrumentationLibrarySpans` under it —
- * the field was renamed in OTLP 0.16 and collectors in the wild still emit the old name.
+ * Every span in an OTLP payload, with its resource's service name. `resourceSpans[].scopeSpans[]`
+ * plus the older `instrumentationLibrarySpans` — renamed in OTLP 0.16, still emitted in the wild.
  */
 function readSpans(payload: Record<string, unknown>, out: Span[]): void {
   const resourceSpans = payload["resourceSpans"];
@@ -194,16 +175,11 @@ function readSpans(payload: Record<string, unknown>, out: Span[]): void {
 }
 
 /**
- * The browser web event, laid out as the root of the tree.
- *
- * Dash0 records the browser's own view of the request as a `webEvent` rather than as a span, so
- * without this the waterfall would begin at the first *backend* span and silently omit
- * everything the browser paid for — which is the half of the trace the person holding this
- * toolbar actually controls.
- *
- * Read as a span with no parent, so the ordinary depth resolution below adopts the real backend
- * roots underneath it. Accepted in the two shapes the API uses, and absent without complaint:
- * a trace queried for a server-side request has no web event and is not degraded by that.
+ * The browser web event, as the tree's root. Dash0 records the browser's view as a `webEvent`, not
+ * a span, so without this the waterfall starts at the first *backend* span and silently omits the
+ * half of the trace the person holding this toolbar controls. Read as a parentless span, so the
+ * depth pass adopts the backend roots under it. Two accepted shapes; absent without complaint,
+ * since a server-side request has no web event.
  */
 function readWebEvents(payload: Record<string, unknown>, out: Span[]): void {
   const events = payload["webEvents"];
@@ -286,15 +262,10 @@ interface LogLine {
 }
 
 /**
- * Resolves each span's depth, cutting cycles.
- *
- * Iterative and memoised rather than recursive: a 4000-span trace can legitimately be 4000 deep
- * if it is a chain, and a recursive walk would overflow the worker's stack on a payload the
- * backend considers perfectly valid.
- *
- * A cycle is cut at the span that closes it — that span is treated as a root and flagged
- * {@link F_CYCLE} — which is deterministic given the input order rather than dependent on where
- * the walk happened to enter the loop.
+ * Depth resolution, cutting cycles. Iterative and memoised, not recursive: a 4000-span chain is
+ * legitimately 4000 deep and would overflow the worker's stack on a payload the backend considers
+ * valid. A cycle is cut at the span that closes it (root + {@link F_CYCLE}) — deterministic in
+ * input order rather than dependent on where the walk entered the loop.
  */
 function resolveDepths(spans: Span[], byId: Map<string, Span>): void {
   /* 0 unvisited, 1 on the current path, 2 settled. Cheaper than two sets, and the "on the
@@ -354,11 +325,9 @@ function resolveDepths(spans: Span[], byId: Map<string, Span>): void {
 }
 
 /**
- * Render order: a depth-first pre-order walk, roots in input order, children in start order.
- *
- * This is the order the main thread renders straight out of the array — it never sorts and
- * never traverses, so the traversal has to be done here and its result baked into the row
- * indices.
+ * Render order: depth-first pre-order, roots in input order, children in start order. The main
+ * thread renders straight out of the array and never sorts or traverses, so the traversal happens
+ * here and is baked into the row indices.
  */
 function orderChildren(spans: Span[]): Span[] {
   const children = new Map<string, Span[]>();
@@ -527,12 +496,9 @@ export function layout(request: LayoutRequest, options: LayoutOptions = {}): Lay
 }
 
 /**
- * Turns a {@link LayoutResult} into the message to post, and the transfer list to post it with.
- *
- * Here rather than in the entry so that the *transfer* — the property task 4.2 asserts and the
- * spec requires — is covered by a node test, instead of only by whatever a browser happens to
- * do. Returning the list alongside the message makes forgetting it a type error rather than a
- * silent structured clone.
+ * A {@link LayoutResult} as the message to post plus its transfer list. Here rather than in the
+ * entry so the *transfer* is covered by a node test rather than by whatever a browser happens to
+ * do; returning the list alongside makes forgetting it a type error, not a silent clone.
  */
 export function toResponse(
   id: number,

@@ -2,30 +2,24 @@ import { assertSettled } from "./phase";
 import { createSpanSink, type ReadOnlySpanProcessor } from "./otel-sink";
 
 /**
- * Tier 4 — adopting the host's own OpenTelemetry spans.
+ * Tier 4 — adopting the host's own OpenTelemetry spans. **d0bar never installs an SDK**: an OTel
+ * browser SDK patches `fetch` and `XHR`, legitimate for a customer who chose it and illegitimate
+ * for a toolbar measuring the page. This reads a provider the host registered, or reports there is
+ * none. No OpenTelemetry package is imported — the API is a global or it is absent, which is what
+ * makes tier 4 free for pages with no SDK.
  *
- * The constraint is the design: **d0bar never installs an SDK.** An OTel browser SDK patches
- * `fetch` and `XMLHttpRequest`; that is a legitimate cost for a customer who chose it and an
- * illegitimate one for a toolbar measuring the page. So this module reads a provider the host
- * already registered, or reports that there is none. It imports no OpenTelemetry package —
- * the API is a global or it is absent, which is what makes tier 4 free for the overwhelming
- * majority of pages that have no SDK at all.
+ * Three outcomes, the same shape as scope contention in `sw.ts` — a host-owned resource d0bar may
+ * use but never seize:
  *
- * Three outcomes, mirroring scope contention in `sw.ts` because it is the same shape of
- * problem — a resource the host owns, which d0bar may use but never seize:
+ *   1. no API registered            → off, `no-sdk`          (the ordinary case)
+ *   2. provider accepts a processor → live, owner `d0bar`
+ *   3. provider is sealed           → host installs ours     → live, owner `host`
+ *                                     or does not            → off, `provider-sealed`
  *
- *   1. no API registered            → tier 4 off, `no-sdk`      (the ordinary case)
- *   2. provider accepts a processor → d0bar attaches            → live, owner `d0bar`
- *   3. provider is sealed           → the host installs ours    → live, owner `host`
- *                                     or does not               → off, `provider-sealed`
- *
- * Outcome 3 is not an edge case. Measured 2026-09-05 against `@opentelemetry/sdk-trace-web`
- * 2.11.0 — what a browser host actually installs — `addSpanProcessor` is `undefined`: the 2.x
- * line takes its processors at construction and exposes no supported way to add one
- * afterwards. Self-attachment is the legacy path; the host-installed processor is the real
- * one. The only way to self-attach on 2.x is to reach into the provider's own
- * `_activeSpanProcessor` field, which is precisely the monkey-patching this file exists to
- * refuse.
+ * Outcome 3 is the common one, not an edge case: measured 2026-09-05, `@opentelemetry/sdk-trace-web`
+ * 2.11.0 has `addSpanProcessor === undefined` — 2.x takes processors at construction only. The lone
+ * way to self-attach there is reaching into `_activeSpanProcessor`, the monkey-patching this file
+ * exists to refuse.
  */
 
 /** Where `@opentelemetry/api` registers itself. Versioned by design, so it is matched exactly. */
@@ -40,18 +34,16 @@ export type OtelBlocked =
      covers an SDK that was imported and never started: measured, the global does not exist at
      all until something registers a provider on it. */
   | "no-sdk"
-  /* The global carries a `trace` that does not unwrap to a usable provider. Defensive: no
-     measured configuration produced it, since registration is what creates the global in the
-     first place. Kept distinct so that if it ever happens it is not mislabelled as a sealed
-     provider, which would send a host to install a processor they do not need. */
+  /* A `trace` that does not unwrap to a usable provider. Defensive — no measured configuration
+     produced it — but kept distinct so it is never mislabelled as sealed, which would send a host
+     to install a processor they do not need. */
   | "no-provider"
   /* The provider cannot take a processor after construction, and the host has not installed
      d0bar's own. The 2.x default. */
   | "provider-sealed"
-  /* The provider offered `addSpanProcessor` and then threw when it was called — a provider
-     that has already been shut down does this. Distinct from `provider-sealed` because the
-     remedy is different: a sealed provider needs the host to install `otelSpanProcessor()`,
-     and this one needs nothing, because the SDK it belongs to has stopped. */
+  /* Offered `addSpanProcessor`, then threw on the call — a shut-down provider does this. Distinct
+     from `provider-sealed`: that one needs the host to install `otelSpanProcessor()`, this one
+     needs nothing, because its SDK has stopped. */
   | "attach-failed";
 
 let state: OtelState = { kind: "off", reason: "no-sdk" };
@@ -61,12 +53,10 @@ export function otelState(): OtelState {
 }
 
 /**
- * The shape d0bar reads off the global.
- *
- * Structural and minimal on purpose: these are the only members touched, so a change anywhere
- * else in the API cannot affect this module. Every one is optional because the symbol's key
- * set genuinely varies — `context` and `propagation` appear only once a provider registers
- * them, so a fixed-shape check would reject a perfectly good 1.x registration.
+ * The shape read off the global: only the members touched, so a change elsewhere in the API cannot
+ * affect this module. All optional because the key set genuinely varies — `context` and
+ * `propagation` appear only once a provider registers them, and a fixed-shape check would reject a
+ * good 1.x registration.
  */
 interface ApiGlobal {
   version?: unknown;
@@ -84,11 +74,9 @@ interface Attachable {
 }
 
 /**
- * What d0bar writes into the ring for each adopted span.
- *
- * Primitives only, copied out and the span dropped. A `ReadableSpan` holds its attributes,
- * links, events and the whole resource; retaining one to read later would retain all of it,
- * on a page whose memory is not ours to spend.
+ * What is written into the ring per adopted span: primitives only, copied out, span dropped. A
+ * `ReadableSpan` holds its attributes, links, events and the whole resource — retaining one retains
+ * all of it, on a page whose memory is not ours to spend.
  */
 export interface SpanRecord {
   traceId: string;
@@ -99,12 +87,9 @@ export interface SpanRecord {
 }
 
 /**
- * The processor a host installs themselves.
- *
- * The analogue of `d0bar-sw-module`: where d0bar cannot reach in, the host reaches out. On
- * the 2.x line — which is what a browser host installs today — a provider takes its
- * processors at construction and exposes no supported way to add one afterwards, so this is
- * the *primary* path, not a fallback for exotic setups:
+ * The processor a host installs themselves — the analogue of `d0bar-sw-module`: where d0bar cannot
+ * reach in, the host reaches out. On 2.x, processors are construction-time only, so this is the
+ * *primary* path, not an exotic fallback:
  *
  * ```js
  * import { WebTracerProvider } from "@opentelemetry/sdk-trace-web";
@@ -129,16 +114,10 @@ export function otelSpanProcessor(): ReadOnlySpanProcessor {
 let sink: ReadOnlySpanProcessor | undefined;
 
 /**
- * Reads the registered provider, attaches the sink where that is supported, and reports why
- * it could not where it is not.
- *
- * Never throws. A page with no SDK, a page whose SDK failed to register, and a page whose
- * provider is sealed are three different supported states, and the panel says which.
- *
- * Nothing is patched. The only mutation attempted is `addSpanProcessor`, which is the
- * provider's own supported API for exactly this; a provider that does not offer it is left
- * untouched and reported as sealed. Reaching into `_activeSpanProcessor` would work on the
- * 2.x line and is the one thing this file exists to refuse.
+ * Reads the registered provider, attaches the sink where supported, reports why where not. Never
+ * throws: no SDK, a failed registration and a sealed provider are three supported states and the
+ * panel says which. Nothing is patched — the only mutation attempted is the provider's own
+ * `addSpanProcessor`, and a provider without it is left untouched and reported sealed.
  */
 export function detectOtel(scope: object = globalThis): OtelState {
   /* Detection is a derivation and a decision, so it is not permitted during the load phase —
@@ -171,10 +150,8 @@ export function detectOtel(scope: object = globalThis): OtelState {
     try {
       (add as (processor: ReadOnlySpanProcessor) => void).call(delegate, sink);
     } catch {
-      /* Non-fatal, and reported rather than swallowed into a live state. The provider offered
-         the method and then refused the call — a shut-down provider does exactly this — so
-         d0bar is not attached, and saying "live" here would put a tier badge on a panel that
-         will never receive a span. */
+      /* Reported, not swallowed into a live state: the method existed and the call was refused,
+         so d0bar is not attached, and "live" would badge a panel that never receives a span. */
       state = { kind: "off", reason: "attach-failed" };
       return state;
     }
@@ -205,18 +182,14 @@ function readApi(scope: object): ApiGlobal | undefined {
 }
 
 /**
- * Unwraps the `ProxyTracerProvider` the API registers, to reach the real provider.
+ * Unwraps the `ProxyTracerProvider` to reach the real one. Required, not a refinement: measured,
+ * `trace` is a proxy on every line tested, and the proxy has no `addSpanProcessor` regardless of
+ * what it wraps — testing it would read every host as sealed.
  *
- * Required, not an optional refinement: measured, `trace` on the global is a
- * `ProxyTracerProvider` on every line tested, and a capability test run against the proxy
- * tests the wrong object — the proxy has no `addSpanProcessor` regardless of what it wraps,
- * so every host would have read as sealed.
- *
- * No attempt is made to recognise a no-op delegate. An unregistered proxy does return one —
- * `NoopTracerProvider`, which answers `getTracer` and has no `addSpanProcessor`, so it is not
- * distinguishable by surface — but that state is unreachable from here: the global does not
- * exist until something registers, so `readApi` has already returned `no-sdk`. Matching on the
- * class name would be the alternative, and a host's minifier renames it.
+ * No-op delegates are not detected. An unregistered proxy returns `NoopTracerProvider`, which is
+ * not distinguishable by surface, but that state is unreachable: no global exists until something
+ * registers, so `readApi` already returned `no-sdk`. Class-name matching is the alternative, and a
+ * host's minifier renames it.
  */
 function unwrap(provider: ProxyLike | undefined): unknown {
   if (!provider) return undefined;

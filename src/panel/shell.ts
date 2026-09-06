@@ -4,15 +4,10 @@ import { DISCONNECTED, type TokenStatus } from "../shared/broker";
 import type { OtelState } from "../shared/stage2";
 
 /**
- * Shell state.
- *
- * Five signals, and everything else derived. `plan.md` specified XState for this; a state
- * chart earns its cost when transitions are the hard part, and here they are not — the shell
- * has one boolean, one enum and three selections, with no illegal intermediate states to
- * guard. XState is retained for the trace and auth flows, which do have them.
- *
- * Nothing here knows what a view renders. Views read these signals; the shell never reaches
- * into a view.
+ * Shell state: five signals, everything else derived. `plan.md` specified XState; a state chart
+ * earns its cost when transitions are hard, and here it is one boolean, one enum and three
+ * selections with no illegal intermediates. Nothing here knows what a view renders — views read
+ * these signals, the shell never reaches into a view.
  */
 
 export type Tab = "requests" | "vitals" | "untraced";
@@ -31,21 +26,13 @@ export const selected = signal(-1);
 export const tip = signal("");
 
 /**
- * Tooltip timing.
+ * Tooltip timing: hovering *through* is free, hovering *at* is immediate. The footer puts four
+ * triggers in a row, so crossing it to reach close must not flash four explanations.
  *
- * A bubble that appears the instant the pointer touches its trigger is not helpful, it is
- * noise: the footer strip puts four triggers in a row, so crossing it to reach the close
- * button flashes four explanations at someone who asked for none of them. Everything below
- * exists to make hovering *through* free and hovering *at* immediate.
- *
- * - Nothing opens until the pointer has stayed put for {@link TIP_OPEN_MS}. Passing over a
- *   trigger costs nothing at all.
- * - Once one bubble is open the group is warm, and its neighbours open with no delay — four
- *   triggers on one strip read as a single surface, not four independent ones.
- * - Leaving closes after {@link TIP_CLOSE_MS} rather than at once, so the gap between two
- *   adjacent triggers does not blink the bubble off and on again.
- * - The group goes cold {@link TIP_WARM_MS} after the last bubble closes, so returning later
- *   is treated as a fresh intent and waits again.
+ *   open   after {@link TIP_OPEN_MS} of the pointer staying put
+ *   warm   once one is open, neighbours open with no delay — one surface, not four
+ *   close  after {@link TIP_CLOSE_MS}, so the gap between triggers does not blink it off
+ *   cold   {@link TIP_WARM_MS} after the last closes, so returning later waits again
  */
 const TIP_OPEN_MS = 400;
 const TIP_CLOSE_MS = 120;
@@ -106,10 +93,9 @@ export function dismissTip(): void {
 }
 
 /**
- * Scroll offset per tab, so returning from a trace lands where the user left.
- *
- * Held here rather than read back off the DOM: the list is virtualized, so by the time the
- * trace view has been torn down the rows that were on screen no longer exist to measure.
+ * Per-tab scroll offset, so returning from a trace lands where the user left. Held here, not read
+ * back off the DOM: the list is virtualized, so the rows that were on screen no longer exist by
+ * teardown.
  */
 const scrollByTab = new Map<Tab, number>();
 
@@ -125,48 +111,35 @@ export function recallScroll(which: Tab): number {
 export const inTrace = computed(() => view() === "trace");
 
 /**
- * Tier 2 (the service worker) is what supplies trace context.
- *
- * The whole state, not a boolean: the footer's tooltip has to say *why* it is off, and the
- * five reasons are not interchangeable — an insecure context, a scope the host owns, and a
- * worker file that 404s send a reader to three different places. A boolean here would have
- * forced the panel to re-derive the reason from somewhere else, or to stop stating it.
- *
- * A signal because it genuinely changes after mount: registration completes asynchronously
- * after settle, and a host worker can claim the scope at any time.
+ * Tier 2's whole state, not a boolean: the footer must say *why* it is off, and the five reasons
+ * send a reader to different places (insecure context / host-owned scope / a worker file that
+ * 404s). A signal because it changes after mount — registration completes post-settle, and a host
+ * worker can claim the scope at any time.
  */
 export const tier2 = signal<Tier2State>({ kind: "off", reason: "not-registered" });
 
 export const tier2Live = computed(() => tier2().kind === "live");
 
 /**
- * Tier 4's state.
- *
- * A signal for the same reason `tier2` is one: detection runs at settle and a host can call
- * `otelSpanProcessor()` at any point after that, so a value read once at mount would report
- * `no-sdk` on a page that has since gone live.
+ * Tier 4's state. A signal for `tier2`'s reason: detection runs at settle and a host can call
+ * `otelSpanProcessor()` later, so a mount-time read would report `no-sdk` on a live page.
  */
 export const otel = signal<OtelState>({ kind: "off", reason: "no-sdk" });
 
 /**
- * The toolbar's own measured INP cost, in milliseconds, or `null` when nothing has measured
- * it yet. `add-self-attribution` supplies the value; until then it is null everywhere.
- *
- * Null is not zero. Zero is a claim that the toolbar cost nothing, which is the single
- * most self-serving number this panel could print, and printing it unmeasured would be the
- * toolbar lying about exactly the property it exists to defend.
+ * The toolbar's own measured INP cost in ms, or `null` when unmeasured (`add-self-attribution`
+ * supplies it). **Null is not zero**: zero claims the toolbar cost nothing — the most self-serving
+ * number this panel could print, and unmeasured it would be a lie about the property d0bar exists
+ * to defend.
  */
 export const inpDelta = signal<number | null>(null);
 
 export type Perturbation = { text: string; state: "ok" | "degraded" | "unknown" };
 
 /**
- * The footer's right-hand reading, down the honest-degradation ladder.
- *
- * The degraded case outranks the measurement: with tier 2 off there is no trace context, so
- * the panel cannot offer a jump from a request to its trace. Reporting `Δ INP 0.4ms` there
- * would answer a question nobody can act on while staying silent about the capability that
- * is actually missing, so the missing capability is stated instead.
+ * The footer's right-hand reading, down the honest-degradation ladder: the degraded case outranks
+ * the measurement. With tier 2 off there is no trace jump, and `Δ INP 0.4ms` would answer a
+ * question nobody can act on while staying silent about the missing capability.
  */
 export const perturbation = computed<Perturbation>(() => {
   if (!tier2Live()) return { text: "degraded — no trace jump", state: "degraded" };
@@ -177,32 +150,25 @@ export const perturbation = computed<Perturbation>(() => {
 
 /** The untraced badge is hidden at zero but the tab is retained, per the handoff. */
 /**
- * Whether a Dash0 token is connected, and where it is kept.
- *
- * The status only — never the token. `TokenStatus` has nowhere to put one, which is what keeps
- * this signal from becoming the place a credential leaks into the page's state.
+ * Whether a token is connected and where it is kept — the status only, never the token.
+ * `TokenStatus` has nowhere to put one, which is what stops this signal leaking a credential into
+ * page state.
  */
 export const connection = signal<TokenStatus>(DISCONNECTED);
 
 export const untracedCount = signal(0);
 /**
- * The untraced tab's hover copy, written by the view from the same reading the badge and the
- * headline come from.
- *
- * A string rather than the numbers, so there is exactly one place that decides how a coverage
- * reading is worded — including the case where it cannot be worded as a count at all, because
+ * The untraced tab's hover copy, from the same reading as the badge and headline. A string, not the
+ * numbers, so one place decides the wording — including where it cannot be a count at all, because
  * tier 2 is off and there is nothing to compare.
  */
 export const untracedTooltip = signal("");
 export const showUntracedBadge = computed(() => untracedCount() > 0);
 
 /**
- * Pops the trace surface back to the list.
- *
- * Clearing `selected` is the load-bearing half: the trace view's only entry point into the
- * query machine is an effect over `open`, `view` and `selected`, so this is also what aborts
- * whatever that surface had in flight. Leaving the index set would keep a query alive behind
- * a surface nobody is looking at.
+ * Pops the trace surface back to the list. Clearing `selected` is the load-bearing half: the trace
+ view's only entry into the query machine is an effect over `open`/`view`/`selected`, so this is
+ * also what aborts an in-flight query rather than leaving one alive behind a hidden surface.
  */
 export function popToList(): void {
   view.set("list");
