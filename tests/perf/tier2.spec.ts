@@ -128,9 +128,16 @@ test.describe("registration", () => {
 });
 
 /**
- * Service-worker dispatch, p95. Raised from 5 ms, then from 25 — see the note at the assertion.
+ * Steady-state service-worker dispatch, at the median. The row that means something: see the note
+ * at the assertion for why the median is the steady state and the p95 is the runner.
  */
-const DISPATCH_BUDGET_MS = 35;
+const DISPATCH_STEADY_MS = 8;
+
+/**
+ * The burst tail, at p95. A ceiling on the machine rather than a measurement of d0bar — kept so a
+ * catastrophic regression still fails, set wide because the runner moves it 5x between runs.
+ */
+const DISPATCH_TAIL_MS = 35;
 
 test.describe("observation without interception", () => {
   test("adds no measurable worker-attributable delay", { tag: "@timing" }, async ({ page }) => {
@@ -166,33 +173,34 @@ test.describe("observation without interception", () => {
        passed on a page with no worker, which proves nothing about this one.
 
        What is claimable is that the overhead is bounded and disclosed: `fetchStart - workerStart`
-       is the worker's dispatch cost.
+       is the worker's dispatch cost. Six CI runs, 250 requests each:
 
-           dev laptop      p50 0.5   p90 3.3    p95 3.4    p99 3.5    max 3.6
-           CI run 1                              p95 16.10             (n=250)
-           CI run 2                              p95 9.10              (n=250)
-           CI run 3        p50 1.50  p90 14.40  p95 19.90  p99 23.20  max 23.40
-           CI run 4        p50 3.20  p90 17.90  p95 18.90  p99 21.90  max 22.00
-           CI run 5        p50 2.90  p90 19.60  p95 20.60  p99 22.20  max 22.30
+                           p50    p90    p95    p99    max
+           run 1                         16.10
+           run 2                          9.10
+           run 3           1.50  14.40  19.90  23.20  23.40
+           run 4           3.20  17.90  18.90  21.90  22.00
+           run 5           2.90  19.60  20.60  22.20  22.30
+           run 6           1.10   3.60   4.40   5.30   5.40
+           dev laptop      0.5    3.3    3.4    3.5    3.6
 
-       THE THRESHOLD IS 35 ms. The old 5 ms was set from the laptop column and failed on CI at
-       16.10 — not a regression but a two-core shared runner dispatching a service worker, which is
-       the machine every number this project quotes comes from (`CLAUDE.md`: CI calibrates, local
-       never does). 25 replaced it, from that one sample, and was itself too fine: across five runs
-       the p95 has ranged 9.10 to 20.60, and a gate 5 ms above the highest reading is finer than the
-       metric's own spread — the defect the `attributedFrameMsP95.gated <= 2` control was deleted
-       for. 35 clears the highest observed p95 by more than the spread and still fails on a doubling.
+       **TWO ROWS, BECAUSE THE COLUMNS BEHAVE DIFFERENTLY.** The p50 spans 1.10-3.20 across runs
+       and the p95 spans 4.40-20.60 — a 5x swing in the same measurement on the same code. One p95
+       gate therefore reports which runner a run drew, not what dispatch costs, which is why it read
+       16.10 once and 4.40 another time with nothing changed between them.
 
-       THE SHAPE IS THE OPEN QUESTION. p50 ~3 ms against p90 ~19 ms is bimodal, and this row's p95
-       therefore reports how many slow requests a run happened to contain rather than what dispatch
-       costs. An earlier version of this comment named worker cold start as the cause. THAT IS
-       CONTRADICTED BY THE DATA AND HAS BEEN REMOVED: cold start is paid once, and p90 ~19 ms means
-       roughly a quarter of 250 requests are slow, not one. The candidates now are queueing on the
-       worker's single thread and CPU contention on a two-core runner, and neither is established.
-       `series` above carries what separates them — issue order, and concurrency at the moment each
-       request reached the worker — and the block printed below is the probe. Splitting this row
-       into a steady-state gate and a reported tail is worth doing once the tail has a name; doing
-       it now would be splitting on a guess.
+       The median is gated at 8 ms: its own spread is 2.1 ms, so 8 clears the highest reading by
+       more than that, and a steady dispatch cost that doubled would fail. The p95 is gated at 35 ms
+       and is explicitly a ceiling on the machine — wide enough to survive the swing, tight enough
+       that a categorical regression still fails.
+
+       WHAT THE TAIL IS, AND WHAT IT IS NOT. An earlier version of this comment named worker cold
+       start. The probe below falsified it on run 6: cold start is paid once, and the slow requests
+       were not in the first tenth of issue order (1 of 25) but in the second (18 of 25), clustered
+       at two burst onsets — the ten slowest all arrived with 21 to 99 other requests already at the
+       worker and unfinished. That is queueing on the worker's single thread, plus the runner's own
+       CPU. Neither is d0bar's handler, and the probe stays so the next run that produces a real
+       tail is read rather than guessed at.
 
        Note what this does *not* establish. It bounds service-worker dispatch, which any registered
        worker imposes; it does not attribute that to d0bar's handler versus the browser's own
@@ -204,40 +212,43 @@ test.describe("observation without interception", () => {
     expect(deltas.length).toBeGreaterThan(0);
     const at = (p: number): number =>
       deltas[Math.min(Math.floor(deltas.length * p), deltas.length - 1)] ?? 0;
+    const median = at(0.5);
     const p95 = at(0.95);
     const report =
       `worker dispatch over ${deltas.length} requests: ` +
-      `p50 ${at(0.5).toFixed(2)} p90 ${at(0.9).toFixed(2)} p95 ${p95.toFixed(2)} ` +
+      `p50 ${median.toFixed(2)} p90 ${at(0.9).toFixed(2)} p95 ${p95.toFixed(2)} ` +
       `p99 ${at(0.99).toFixed(2)} max ${(deltas[deltas.length - 1] ?? 0).toFixed(2)} ms ` +
-      `(budget ${DISPATCH_BUDGET_MS} ms)`;
+      `(steady ${DISPATCH_STEADY_MS} ms, tail ${DISPATCH_TAIL_MS} ms)`;
     console.log(report);
 
-    /* The probe. Three views of the same series, printed rather than asserted, because the
-       question is which of them the tail correlates with:
+    /* The probe that separated the two rows, kept because the question it answers recurs. Three
+       views of one series:
 
-         by tenth of issue order   cold start would put every slow request in the first tenth
-         by concurrency            queueing would put them where inFlight is high
+         by tenth of issue order   cold start would put every slow request in tenth 0
+         by concurrency            queueing puts them where inFlight is high
          the ten slowest           their index and inFlight say which story fits */
-    const slow = deltas[Math.floor(deltas.length * 0.9)] ?? 0;
+    const slow = at(0.9);
     const tenths: string[] = [];
     for (let t = 0; t < 10; t++) {
       const from = Math.floor((t * series.length) / 10);
       const to = Math.floor(((t + 1) * series.length) / 10);
       const slice = series.slice(from, to);
-      const over = slice.filter((sample) => sample.delta >= slow).length;
-      tenths.push(`${t}:${over}/${slice.length}`);
+      tenths.push(
+        `${t}:${slice.filter((sample) => sample.delta >= slow).length}/${slice.length}`,
+      );
     }
-    const buckets = new Map<number, { n: number; over: number }>();
-    for (const sample of series) {
-      const key = Math.min(sample.inFlight, 8);
-      const bucket = buckets.get(key) ?? { n: 0, over: 0 };
-      bucket.n += 1;
-      if (sample.delta >= slow) bucket.over += 1;
-      buckets.set(key, bucket);
-    }
-    const byConcurrency = [...buckets.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([key, bucket]) => `${key}:${bucket.over}/${bucket.n}`)
+    /* Widening ranges, not a flat cap: the fixture issues in bursts, so nearly every request sees
+       double-digit concurrency and a cap at 8 put 241 of 250 in one bucket that said nothing. */
+    const EDGES = [0, 2, 5, 10, 25, 50, Infinity];
+    const byConcurrency = EDGES.slice(0, -1)
+      .map((low, k) => {
+        const high = EDGES[k + 1] ?? Infinity;
+        const slice = series.filter(
+          (sample) => sample.inFlight >= low && sample.inFlight < high,
+        );
+        const over = slice.filter((sample) => sample.delta >= slow).length;
+        return `${low}-${high === Infinity ? "∞" : high - 1}:${over}/${slice.length}`;
+      })
       .join(" ");
     const worst = [...series]
       .sort((a, b) => b.delta - a.delta)
@@ -252,7 +263,11 @@ test.describe("observation without interception", () => {
     console.log(`  over-p90 by concurrency at workerStart: ${byConcurrency}`);
     console.log(`  ten slowest: ${worst.join(" | ")}`);
 
-    expect(p95, report).toBeLessThan(DISPATCH_BUDGET_MS);
+    /* The gate that means something. Steady-state dispatch resolves: 1.10-3.20 over six runs. */
+    expect(median, report).toBeLessThan(DISPATCH_STEADY_MS);
+
+    /* The ceiling on the machine. Not a claim about d0bar — see above. */
+    expect(p95, report).toBeLessThan(DISPATCH_TAIL_MS);
   });
 
   test("logs the traceparent the page cannot see", async ({ page }) => {

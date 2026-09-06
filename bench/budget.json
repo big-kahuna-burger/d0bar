@@ -93,13 +93,22 @@
       "rationale": "Reported, not gated. The 4ms difference is the host's own request for the bundle, which a host pays deliberately. LCP on this fixture is dominated by a fixed server delay and its run-to-run spread is wider than any toolbar effect, so gating it would be noise."
     },
     {
-      "metric": "swDispatchP95",
+      "metric": "swDispatchMedian",
+      "threshold": 8,
+      "unit": "ms between `workerStart` and `fetchStart`, median over one load's requests",
+      "lastMeasured": 1.1,
+      "spread": "CI medians over four runs that reported one: 1.50, 3.20, 2.90, 1.10 \u2014 a 2.1 ms spread. Dev laptop 0.5.",
+      "instrument": "PerformanceResourceTiming.fetchStart - workerStart on a controlled page \u2014 tests/perf/tier2.spec.ts",
+      "rationale": "Steady-state service-worker dispatch, and the half of the old `swDispatchP95` row that is actually a measurement. Split out on 2026-09-06 after six CI runs showed the two columns behaving differently: the median spans 1.10-3.20 while the p95 spans 4.40-20.60 \u2014 a 5x swing on identical code, which means a single p95 gate reports which runner a run drew rather than what dispatch costs. 8 ms clears the highest median by more than the median's own 2.1 ms spread and fails on a steady dispatch cost that doubled. Bounds dispatch, which any registered worker imposes; `swDeltaP95` is what attributes cost to d0bar's handler."
+    },
+    {
+      "metric": "swDispatchTailP95",
       "threshold": 35,
       "unit": "ms between `workerStart` and `fetchStart`, p95 over one load's requests",
-      "lastMeasured": 19.9,
-      "spread": "CI p95 over four runs: 16.10, 9.10, 19.90, 18.90 \u2014 a 10.8 ms spread. Full distribution on the third: p50 1.50 / p90 14.40 / p95 19.90 / p99 23.20 / max 23.40 over 250 requests. Dev laptop, for contrast: p50 0.5 / p90 3.3 / p95 3.4 / p99 3.5 / max 3.6",
+      "lastMeasured": 4.4,
+      "spread": "CI p95 over six runs: 16.10, 9.10, 19.90, 18.90, 20.60, 4.40 \u2014 a 16.2 ms spread on identical code.",
       "instrument": "PerformanceResourceTiming.fetchStart - workerStart on a controlled page \u2014 tests/perf/tier2.spec.ts",
-      "rationale": "RAISED FROM 5 ms ON CI EVIDENCE, then from 25 to 35 on the next run's evidence. The 5 ms was set from the dev-laptop column above, which is the mistake `CLAUDE.md` names outright: CI calibrates, local never does. It failed on CI at 16.10 ms, which is not a regression \u2014 it is a two-core shared GitHub runner dispatching a service worker, the machine every number this project quotes comes from.\n\n25 was chosen from that single sample and was itself too fine. Once the spec printed the whole distribution the p95 read 19.90, and across three runs the p95 has ranged 9.10 to 19.90 \u2014 a 10.8 ms spread against a gate sitting 5.1 ms above the highest reading. A threshold finer than its metric's own run-to-run spread is the exact defect the `attributedFrameMsP95.gated <= 2` control was deleted for, and repeating it one row over would mean a green run today and a flake next week. 35 clears the highest observed p95 by more than the observed spread, and still fails on a dispatch cost that doubles.\n\nTHE REAL FINDING IS THE SHAPE, NOT THE NUMBER: p50 1.50 against p95 19.90 is bimodal, and the tail is almost certainly service-worker cold start \u2014 the first requests after registration pay for booting the worker thread and evaluating its script, and steady-state dispatch is the p50. This row averages the two together and therefore gates mostly on how many cold requests a run happened to catch. Splitting them \u2014 gating steady-state dispatch and reporting cold start separately \u2014 is the correct row and has not been built.\n\nWhat this bounds is service-worker dispatch, a cost any registered worker imposes; it does not attribute that cost to d0bar's handler. `swDeltaP95` does, and it passed at 12 ms on every CI run this row failed \u2014 which is the evidence that these numbers are the runner rather than the toolbar."
+      "rationale": "The burst tail, and explicitly a ceiling on the machine rather than a measurement of d0bar. History: the threshold was 5 ms, set from a dev laptop (p95 3.4, max 3.6), which is the mistake `CLAUDE.md` names outright \u2014 CI calibrates, local never does. It failed at 16.10, was raised to 25 from that single sample, and 25 was itself finer than the metric's spread once more runs arrived. It is 35 because the p95 has ranged 4.40 to 20.60 across six runs with nothing changed between them.\n\nWHAT THE TAIL IS. An earlier rationale here named service-worker cold start. THE PROBE IN THE SPEC FALSIFIED THAT: cold start is paid once, and on run 6 the requests above the p90 were not in the first tenth of issue order (1 of 25) but the second (18 of 25), clustered at two burst onsets, and the ten slowest all reached the worker with 21 to 99 other requests already there and unfinished. That is queueing on the worker's single thread plus the runner's own CPU \u2014 neither of them d0bar's handler. The probe is retained so the next run with a real tail is read rather than guessed at.\n\nThe row that carries the claim is `swDispatchMedian`, split out of this one at the same time."
     }
   ],
   "bundle": [
