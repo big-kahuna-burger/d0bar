@@ -125,7 +125,7 @@ describe("inputFor", () => {
       inputFor({
         tier2Live: false,
         hasSpan: true,
-        xhr: false,
+        cause: () => "not-propagated",
         traceId: TRACE_ID,
         confident: true,
         at: AT,
@@ -133,43 +133,41 @@ describe("inputFor", () => {
     ).toEqual({ kind: "none", why: "tier-2-off" });
   });
 
-  it("names XHR as the cause where the entry says so", () => {
-    expect(
-      inputFor({
-        tier2Live: true,
-        hasSpan: false,
-        xhr: true,
-        traceId: "",
-        confident: true,
-        at: AT,
-      }),
-    ).toEqual({ kind: "none", why: "xhr" });
+  it("takes the cause from the coverage classification rather than deriving one", () => {
+    /* Any of the six, unchanged. This function used to decide between exactly two of them
+       itself, and the two it could not express — a subresource the browser issued and a
+       third-party URL — both came out as "no traceparent". */
+    for (const cause of [
+      "subresource",
+      "transport-xhr",
+      "third-party",
+      "not-propagated",
+      "unseen",
+      "unknown",
+    ] as const) {
+      expect(
+        inputFor({ tier2Live: true, hasSpan: false, cause: () => cause, traceId: "", confident: true, at: AT }),
+      ).toEqual({ kind: "none", why: cause });
+    }
   });
 
-  it("falls back to the observed absence of a traceparent", () => {
-    expect(
-      inputFor({
-        tier2Live: true,
-        hasSpan: false,
-        xhr: false,
-        traceId: "",
-        confident: true,
-        at: AT,
-      }),
-    ).toEqual({ kind: "none", why: "no-traceparent" });
-  });
-
-  it("produces a trace input only with a live tier 2 and a real id", () => {
-    expect(
-      inputFor({
-        tier2Live: true,
-        hasSpan: true,
-        xhr: false,
-        traceId: TRACE_ID,
-        confident: false,
-        at: AT,
-      }),
-    ).toEqual({ kind: "trace", traceId: TRACE_ID, confident: false, at: AT });
+  it("does not classify a request that has a span", () => {
+    /* Classifying costs a URL parse. The overwhelmingly common selection has a span and needs
+       none, which is why the cause is a thunk rather than a value. */
+    let called = 0;
+    const input = inputFor({
+      tier2Live: true,
+      hasSpan: true,
+      cause: () => {
+        called += 1;
+        return "unknown";
+      },
+      traceId: TRACE_ID,
+      confident: false,
+      at: AT,
+    });
+    expect(input).toEqual({ kind: "trace", traceId: TRACE_ID, confident: false, at: AT });
+    expect(called).toBe(0);
   });
 });
 
@@ -356,16 +354,16 @@ describe("createTraceMachine", () => {
     await settled();
 
     /* The user clicks another request while the first query is still open. */
-    machine.select({ kind: "none", why: "xhr" });
+    machine.select({ kind: "none", why: "transport-xhr" });
     await settled();
-    expect(machine.state()).toEqual({ name: "none", why: "xhr" });
+    expect(machine.state()).toEqual({ name: "none", why: "transport-xhr" });
 
     /* The first query now resolves — with a trace, which is the worst case: it would look
        entirely plausible in the panel and would belong to a different request. */
     q.settle(0, { kind: "found", summary: SUMMARY });
     await settled();
 
-    expect(machine.state()).toEqual({ name: "none", why: "xhr" });
+    expect(machine.state()).toEqual({ name: "none", why: "transport-xhr" });
     expect(seen.map((state) => state.name)).toEqual(["fetching", "none"]);
   });
 
@@ -401,14 +399,14 @@ describe("createTraceMachine", () => {
     expect(machine.state().name).toBe("waiting");
     expect(clock.pending()).toBe(1);
 
-    machine.select({ kind: "none", why: "no-traceparent" });
+    machine.select({ kind: "none", why: "not-propagated" });
     await settled();
     expect(clock.pending()).toBe(0);
 
     clock.flush();
     await settled();
     expect(q.calls).toHaveLength(1);
-    expect(machine.state()).toEqual({ name: "none", why: "no-traceparent" });
+    expect(machine.state()).toEqual({ name: "none", why: "not-propagated" });
   });
 
   it("aborts and goes idle on stop, which is what closing the panel does", async () => {

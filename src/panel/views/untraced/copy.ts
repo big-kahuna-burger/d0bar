@@ -15,6 +15,11 @@ import type { Cause, Coverage } from "../../../collector/coverage";
 /**
  * One sentence per cause, stating the observation and stopping there.
  *
+ * **Also the trace surface's cause line.** `views/trace/index.ts` prints these for its no-span
+ * state, so the sentences are worded for the cause and not for this tab — "counted here for
+ * completeness" was dropped from the subresource line for exactly that reason. The alternative
+ * was a second set of sentences about the same six causes, which is a second thing to keep true.
+ *
  * None of these names a configuration file, a match list or a likely mistake. d0bar does not
  * read the host's SDK config and cannot see why a request went out without a `traceparent`;
  * it can only report that it did. The spec originally asked for a `PROPAGATOR_EXCLUDED` cause
@@ -23,7 +28,7 @@ import type { Cause, Coverage } from "../../../collector/coverage";
  */
 export const CAUSE_COPY: Record<Cause, string> = {
   subresource:
-    "Fetched by the browser itself — a script, stylesheet, image or font referenced by the markup. No application code issued it, so there was nothing to attach trace context to. Counted here for completeness, not as a gap to close.",
+    "Fetched by the browser itself — a script, stylesheet, image or font referenced by the markup. No application code issued it, so there was nothing to attach trace context to. Not a gap to close.",
   "transport-xhr":
     "Sent with XMLHttpRequest. A fetch-only instrumentation does not see this transport at all, so no span was ever started for it.",
   "third-party":

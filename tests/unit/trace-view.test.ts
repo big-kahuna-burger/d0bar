@@ -3,11 +3,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { traceView } from "../../src/panel/views/trace";
 import { connection, open, resetShell, selected, view } from "../../src/panel/shell";
 import type { TraceContext } from "../../src/collector/correlate";
+import { CAUSE_COPY } from "../../src/panel/views/untraced/copy";
 import { F_HAS_SPAN, F_XHR } from "../../src/shared/flags";
 import { scratch, type RequestRecord } from "../../src/shared/record";
 import type { Tier1Access, Tier2State } from "../../src/shared/stage2";
 import {
-  NONE_COPY,
+  TIER2_OFF_COPY,
   UNQUERYABLE_COPY,
   type TraceQuery,
   type TraceQueryOutcome,
@@ -149,6 +150,8 @@ function mount(
     withQuery?: boolean;
     context?: TraceContext | undefined;
     ceiling?: number;
+    /** Ring indices the worker held a record for — the untraced tab's set, same source. */
+    seen?: number[];
   },
   records: RequestRecord[],
 ): Mounted {
@@ -169,6 +172,7 @@ function mount(
        index 0 is reserved as absent, so a record with no trace context resolves to undefined
        rather than borrowing its neighbour's id. */
     context: (id: number) => (id === 0 ? undefined : context),
+    seen: () => new Set(options.seen ?? []),
     ...(options.ceiling === undefined ? {} : { machine: { ceiling: options.ceiling } }),
     ...(options.withQuery === false ? {} : { query }),
   });
@@ -230,14 +234,17 @@ describe("traceView", () => {
     expect(visible(surface.el, ".trace-wait")).toBe(false);
     expect(visible(surface.el, ".trace-found")).toBe(false);
     expect(textOf(surface.el, ".trace-none-title")).toBe("No span exists for this request.");
-    expect(textOf(surface.el, ".trace-none-why")).toBe(NONE_COPY["tier-2-off"]);
+    expect(textOf(surface.el, ".trace-none-why")).toBe(TIER2_OFF_COPY);
     /* Nothing was seen by any worker, so the line that claims one saw it is not printed. */
     expect(visible(surface.el, ".trace-none-sw")).toBe(false);
     expect(surface.calls).toHaveLength(0);
     surface.destroy();
   });
 
-  it("names XHR as the cause and credits the worker's observation", async () => {
+  it("names XHR as the cause, in the untraced tab's own words", async () => {
+    /* Task 4.2. The sentence is `CAUSE_COPY`'s, from `classify()`'s answer — the same two
+       functions the untraced tab uses on the same record, so the two surfaces cannot give a
+       reader different reasons for the same missing span. */
     const surface = mount({ tier2: LIVE, context: undefined }, [
       requestRecord({ flags: F_XHR, contextId: 0 }),
     ]);
@@ -246,13 +253,73 @@ describe("traceView", () => {
     selected.set(0);
     await settled();
 
-    expect(textOf(surface.el, ".trace-none-why")).toBe(NONE_COPY.xhr);
-    expect(visible(surface.el, ".trace-none-sw")).toBe(true);
-    expect(textOf(surface.el, ".trace-none-sw")).toBe(
-      "seen by the SW · never reached the backend",
-    );
+    expect(textOf(surface.el, ".trace-none-why")).toBe(CAUSE_COPY["transport-xhr"]);
     expect(surface.calls).toHaveLength(0);
     surface.destroy();
+  });
+
+  it("credits the worker's observation only where the worker made one", async () => {
+    /* Task 4.4, tightened by the classification. `not-propagated` *is* "the worker held a
+       record and there was no traceparent on it", so it is the only cause that entails the
+       line. The same record with the worker's set empty classifies as `unseen` and must not
+       print it — which the old three-way copy did, on a request no worker ever saw. */
+    const seenSurface = mount({ tier2: LIVE, context: undefined, seen: [0] }, [
+      requestRecord({ flags: 0, contextId: 0 }),
+    ]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+
+    expect(textOf(seenSurface.el, ".trace-none-why")).toBe(CAUSE_COPY["not-propagated"]);
+    expect(visible(seenSurface.el, ".trace-none-sw")).toBe(true);
+    expect(textOf(seenSurface.el, ".trace-none-sw")).toBe(
+      "seen by the SW · never reached the backend",
+    );
+    seenSurface.destroy();
+
+    resetShell();
+    document.body.replaceChildren();
+
+    const unseenSurface = mount({ tier2: LIVE, context: undefined, seen: [] }, [
+      requestRecord({ flags: 0, contextId: 0 }),
+    ]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+
+    expect(textOf(unseenSurface.el, ".trace-none-why")).toBe(CAUSE_COPY.unseen);
+    expect(visible(unseenSurface.el, ".trace-none-sw")).toBe(false);
+    unseenSurface.destroy();
+  });
+
+  it("distinguishes causes the old three-way copy could not express", async () => {
+    /* Both of these used to render as "no traceparent" — a claim that instrumentation failed,
+       about a stylesheet the browser fetched itself and about an origin nobody could have
+       propagated into. */
+    const subresource = mount({ tier2: LIVE, context: undefined, seen: [0] }, [
+      requestRecord({ url: `${ORIGIN}/app.css`, initiator: "css", contextId: 0, flags: 0 }),
+    ]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+    expect(textOf(subresource.el, ".trace-none-why")).toBe(CAUSE_COPY.subresource);
+    subresource.destroy();
+
+    resetShell();
+    document.body.replaceChildren();
+
+    const thirdParty = mount({ tier2: LIVE, context: undefined, seen: [0] }, [
+      requestRecord({ url: "https://cdn.example.net/rates.json", contextId: 0, flags: 0 }),
+    ]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+    expect(textOf(thirdParty.el, ".trace-none-why")).toBe(CAUSE_COPY["third-party"]);
+    thirdParty.destroy();
   });
 
   it("tells an unconnected developer the one thing they can do about it", async () => {

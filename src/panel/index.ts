@@ -331,13 +331,14 @@ export function openPanel(options: PanelOptions): PanelHandle {
   /**
    * The trace surface, mounted alongside the list rather than swapped for it.
    *
-   * No `query` is passed. Issuing the backend call needs a credential that
-   * `add-credential-broker` supplies, and that change is blocked on this one — so the query
-   * boundary is declared, injected and driven by a fake in tests, and left unimplemented
-   * here. The machine renders that as `unqueryable`, which is a statement about d0bar rather
-   * than a fourth way of saying "not found". With tier 2 off, which is the default, no
-   * request carries a traceparent at all and the surface never gets that far: every
-   * selection resolves to the no-span state.
+   * No `query` is passed. The credential is no longer what is missing — `add-pasted-token`
+   * shipped it — but a `TraceQuery` has to return a laid-out summary, and turning a response
+   * body into one is `add-trace-layout-worker`'s job and is not built. Parsing it here instead
+   * would land the parse on the main thread being measured. So the boundary stays declared,
+   * injected and driven by a fake in tests, and the machine renders it as `unqueryable`: a
+   * statement about d0bar rather than a fourth way of saying "not found". With tier 2 off,
+   * which is the default, no request carries a traceparent at all and the surface never gets
+   * that far — every selection resolves to the no-span state.
    */
   /* Mounted once and hidden, like the other two. It also owns the untraced badge, which has
      to be right before anyone opens the tab — so this view exists and counts from the moment
@@ -350,7 +351,13 @@ export function openPanel(options: PanelOptions): PanelHandle {
   const showUntraced = () => tab() === "untraced" && view() === "list";
   bindings.add(bindHidden(untraced.el, () => !showUntraced()));
 
-  const trace = traceView({ tier1: options.tier1, tier2: () => tier2() });
+  /* Same `seen` set as the untraced tab, and deliberately the same source rather than a second
+     one: the two surfaces classify the same request and must not be able to disagree. */
+  const trace = traceView({
+    tier1: options.tier1,
+    tier2: () => tier2(),
+    seen: () => workerSaw,
+  });
   bindings.add(bindHidden(trace.el, () => view() !== "trace"));
 
   /* The connect surface, pushed like the trace one. A fourth tab for something a developer

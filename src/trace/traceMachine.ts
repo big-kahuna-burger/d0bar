@@ -42,6 +42,8 @@
  * outcomes the spec forbids conflating.
  */
 
+import type { Cause } from "../collector/coverage";
+
 /** Half-width of the query's time range, in milliseconds. The handoff's `timeRange ±2s`. */
 export const RANGE_MS = 2000;
 
@@ -66,8 +68,14 @@ export function backoffFor(attempt: number, base = BASE_DELAY_MS, max = MAX_DELA
   return Math.min(base * 2 ** (attempt - 1), max);
 }
 
-/** Why a request has no span at all. Never a synonym for "not found yet". */
-export type NoneCause = "tier-2-off" | "xhr" | "no-traceparent";
+/**
+ * Why a request has no span at all. Never a synonym for "not found yet".
+ *
+ * The six coverage causes plus one this surface owns. `tier-2-off` is not a classification —
+ * it is the statement that no classification was possible, which is why `coverage.ts` carries
+ * it as `determinable: false` rather than as a seventh {@link Cause}.
+ */
+export type NoneCause = "tier-2-off" | Cause;
 
 export interface TimeRange {
   from: number;
@@ -371,43 +379,42 @@ export function createTraceMachine(options: TraceMachineOptions = {}): TraceMach
 export function inputFor(args: {
   tier2Live: boolean;
   hasSpan: boolean;
-  xhr: boolean;
+  /**
+   * The coverage classification for this request, from `classify()`.
+   *
+   * A thunk because classifying costs a URL parse and a set lookup, and the overwhelmingly
+   * common path — the request has a span — needs neither. Nothing here re-derives a cause of
+   * its own: this surface and the untraced tab now answer "why is there no span" from the
+   * same function, so they can no longer disagree about the same request.
+   */
+  cause: () => Cause;
   traceId: string;
   confident: boolean;
   /** Wall clock of the request's completion, in milliseconds. */
   at: number;
 }): TraceInput {
   if (!args.tier2Live) return { kind: "none", why: "tier-2-off" };
-  if (!args.hasSpan || !args.traceId) {
-    return { kind: "none", why: args.xhr ? "xhr" : "no-traceparent" };
-  }
+  if (!args.hasSpan || !args.traceId) return { kind: "none", why: args.cause() };
   return { kind: "trace", traceId: args.traceId, confident: args.confident, at: args.at };
 }
 
 /**
- * The cause line under "No span exists for this request."
+ * The one cause line this module still owns.
  *
- * Two of these are the design handoff's copy verbatim. The third is not, deliberately.
+ * **The other six moved.** This file used to carry its own three-way `NONE_COPY`, written
+ * before `add-untraced-view` existed and reasoning independently about the same question the
+ * coverage classifier now answers — with a coarser answer: everything that was not an XHR came
+ * out as "no traceparent", including subresources the browser issued itself and third-party
+ * URLs nobody could have propagated into. Two surfaces deriving the same cause twice is two
+ * chances to disagree in front of the same user, so the derivation is `classify()`'s and the
+ * sentences are `CAUSE_COPY`'s. See `views/trace/index.ts` for the composition.
  *
- * The handoff renders the non-XHR case as *"Outside your PropagatorConfig.match list —
- * deliberately not propagated."* — a specific claim about a configuration file d0bar does
- * not read. The observation the toolbar actually holds is narrower: the service worker saw
- * the request leave with no `traceparent`. Which propagator rule, sampler or missing SDK
- * left it out is not knowable from here, and naming one would be the toolbar guessing about
- * a customer's code in the one panel whose whole purpose is to be trustworthy about
- * absences. The rule in CLAUDE.md is explicit — *cannot infer → say "unavailable", never
- * name a likely cause* — and it outranks the mock.
- *
- * The XHR line survives verbatim because it is grounded: `F_XHR` is set from the resource
- * entry's own `initiatorType`, so "this was an XMLHttpRequest" is observed, not inferred.
+ * This one stays because it is not a classification. With tier 2 off nothing was observed at
+ * all, so there is no cause to name — only the absence of the measurement, which is what the
+ * sentence says.
  */
-export const NONE_COPY: Record<NoneCause, string> = {
-  "tier-2-off":
-    "Tier 2 is unavailable on this origin, so d0bar never saw a traceparent. It says so rather than guessing.",
-  xhr: "XMLHttpRequest — the SDK instruments fetch only, so no traceparent was attached.",
-  "no-traceparent":
-    "The service worker saw this request leave with no traceparent header, so nothing propagated a span. Which propagator rule or sampler left it out is in the host's SDK configuration, which d0bar cannot read and does not guess at.",
-};
+export const TIER2_OFF_COPY =
+  "Tier 2 is unavailable on this origin, so d0bar never saw a traceparent. It says so rather than guessing.";
 
 /**
  * Why a trace id d0bar can see cannot be asked about.

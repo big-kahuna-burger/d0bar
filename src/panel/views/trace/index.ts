@@ -1,19 +1,20 @@
 import { bindAttr, bindHidden, bindText, on } from "spark-signals/bind";
 import { effect, scope, signal } from "spark-signals/signal";
+import { classify } from "../../../collector/coverage";
 import { traceContext, type TraceContext } from "../../../collector/correlate";
-import { F_XHR } from "../../../shared/flags";
 import { scratch, type RequestRecord } from "../../../shared/record";
 import type { Tier1Access, Tier2State } from "../../../shared/stage2";
 import { connection, open, popToList, selected, view } from "../../shell";
 import { traceJumpAvailable } from "../../tier";
 import { virtualList, type VirtualList } from "../../virtual";
 import { displayPath, formatDuration } from "../requests/format";
+import { CAUSE_COPY } from "../untraced/copy";
 import {
   CEILING,
   createTraceMachine,
   inputFor,
-  NONE_COPY,
   RANGE_MS,
+  TIER2_OFF_COPY,
   UNQUERYABLE_COPY,
   type SpanRow,
   type TraceMachine,
@@ -31,11 +32,19 @@ import {
  * `src/trace/traceMachine.ts` and is a node test; this file paints the result and owns no
  * policy of its own.
  *
- * **The query is not built.** `add-credential-broker` supplies the credential the backend
- * call needs and is blocked on this change. `options.query` is therefore left undefined in
- * `panel/index.ts`, and the machine's `unqueryable` state is what a real deployment sees for
- * an instrumented request today. That is a fourth reading, not a fudged version of one of
- * the three: it says the span exists and that *d0bar* cannot ask about it.
+ * **The query is not built, and the reason changed.** It was the credential; `add-pasted-token`
+ * shipped that, and the worker will now issue an authenticated call for anyone who connects a
+ * token. What is still missing is the other end: a `TraceQuery` must return a laid-out
+ * {@link TraceSummary}, and producing one from a response body means parsing OTLP JSON —
+ * thousands of spans — which `add-trace-layout-worker` exists to do off-thread and has not been
+ * built. Doing it here instead would put a multi-millisecond parse on the main thread of the
+ * page whose INP this toolbar is reporting, which is the one trade this project refuses.
+ *
+ * So `options.query` is left undefined in `panel/index.ts` and the machine's `unqueryable`
+ * state is what a real deployment sees for an instrumented request today. That is a fourth
+ * reading, not a fudged version of one of the three: it says the span exists and that *d0bar*
+ * cannot ask about it. With a token connected it now says so in those words — see
+ * `UNQUERYABLE_COPY`.
  *
  * With tier 2 off — the default on any origin that has not been given a worker path — no
  * request carries a traceparent at all, so every selection resolves to the no-span state
@@ -48,11 +57,24 @@ const SPAN_ROW_HEIGHT = 22;
 /** How often the ingest countdown redraws. One decimal place needs nothing finer. */
 const TICK_MS = 100;
 
+/** Shared, because the default is read on every selection and a fresh `Set` each time is litter. */
+const EMPTY_SEEN: ReadonlySet<number> = new Set<number>();
+
 export interface TraceViewOptions {
   tier1: Tier1Access;
   /** Tier 2's live state, read reactively — registration can complete after the panel opens. */
   tier2(): Tier2State;
   origin?: string;
+  /**
+   * Ring indices the service worker produced a record for — the same set the untraced tab
+   * classifies against, read at selection time rather than captured.
+   *
+   * It is what separates a request the worker watched go out bare from one it never saw, and
+   * without it this surface cannot use the coverage classifier at all. Defaults to empty, which
+   * classifies every same-origin application request as `unseen` — the honest answer for a
+   * caller that has no worker knowledge to give.
+   */
+  seen?: () => ReadonlySet<number>;
   /**
    * The backend query. Absent in every shipped path today — see the note above. Injected so
    * that the machine, the backoff and the cancellation guarantee are driven by a fake in
@@ -132,6 +154,7 @@ export function traceView(options: TraceViewOptions): TraceView {
   const now = options.now ?? (() => Date.now());
   const timeOrigin = options.timeOrigin ?? performance.timeOrigin;
   const contextOf = options.context ?? traceContext;
+  const seenByWorker = options.seen ?? (() => EMPTY_SEEN);
   const record: RequestRecord = scratch();
   const bindings = scope();
 
@@ -389,19 +412,30 @@ export function traceView(options: TraceViewOptions): TraceView {
     bindText(noneWhyText, () => {
       const at = state();
       if (at.name === "unqueryable") return UNQUERYABLE_COPY[at.why];
-      if (at.name === "none") return NONE_COPY[at.why];
+      /* The cause sentence is the untraced tab's, from the untraced tab's classifier. The two
+         surfaces answer the same question about the same request, and a reader who checks one
+         against the other has to find the same answer — which they would not have before, when
+         this file derived its own coarser three-way version. */
+      if (at.name === "none") {
+        return at.why === "tier-2-off" ? TIER2_OFF_COPY : CAUSE_COPY[at.why];
+      }
       return "";
     }),
   );
   /**
    * The `seen by the SW` line is a claim about an observation, so it appears only where the
-   * observation happened. With tier 2 off nothing was seen by any worker, and printing it
-   * there would attribute a reading to a capability that is not running.
+   * observation happened — and the classifier now says exactly where that is.
+   *
+   * `not-propagated` is *defined* as "the worker held a record for this request and there was
+   * no traceparent on it", so it is the one cause that entails the observation. `unseen` is its
+   * complement and previously printed this line anyway, telling the reader the worker saw a
+   * request it explicitly did not; the other four are decided before the worker is consulted at
+   * all, so for them the claim is simply unknown.
    */
   bindings.add(
     bindHidden(noneSw, () => {
       const at = state();
-      return !(at.name === "none" && at.why !== "tier-2-off");
+      return !(at.name === "none" && at.why === "not-propagated");
     }),
   );
   bindings.add(
@@ -532,7 +566,10 @@ export function traceView(options: TraceViewOptions): TraceView {
         inputFor({
           tier2Live: traceJumpAvailable(tier2),
           hasSpan: context !== undefined,
-          xhr: (record.flags & F_XHR) !== 0,
+          /* `index` and `record` are both live here, so the classification is made against the
+             same row the surface is about. Deferred: `inputFor` calls it only when there is no
+             span to show, which is the minority of selections. */
+          cause: () => classify(record, origin, seenByWorker().has(index)),
           traceId: context?.traceId ?? "",
           confident: context?.confident ?? true,
           at: timeOrigin + record.startTime + record.duration,

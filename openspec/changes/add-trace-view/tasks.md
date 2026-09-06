@@ -58,10 +58,10 @@
 
 ## 4. State 7b — no span exists
 
-- [x] 4.1 Centred column with a dashed warning ring, per handoff §7b
-- [ ] 4.2 Cause line taken from the coverage classification for untraced requests — **not done**: `add-untraced-view` has not landed, so there is no coverage classification to take it from. The line is derived here from what is actually observed (`F_XHR`, and the absence of a traceparent). The handoff's non-XHR copy — _"Outside your PropagatorConfig.match list"_ — was **deliberately not used**: it names a cause in a config file d0bar does not read. Rationale in `NONE_COPY`'s doc comment.
+- [x] 4.1 Centred column with a dashed warning ring, per handoff §7b — and `tests/perf/trace-view.spec.ts` now drives 4.2/4.4 in a real browser against the real ring, four rows on one fixture load resolving to four different causes
+- [x] 4.2 Cause line taken from the coverage classification for untraced requests — **done**, now that `add-untraced-view` has landed. `inputFor` no longer derives a cause: it takes `collector/coverage.ts`'s `Cause` and the view prints the untraced tab's own `CAUSE_COPY`, so the two surfaces answer the same question about the same record through the same two functions. This file's three-way `NONE_COPY` is gone; only `TIER2_OFF_COPY` remains, because "tier 2 is off" is the absence of a classification rather than one of them. Two causes the old copy could not express — a subresource the browser issued, a third-party origin — used to render as "no traceparent", i.e. as an instrumentation failure. The handoff's _"Outside your PropagatorConfig.match list"_ is still not used, for the reason recorded in `copy.ts`.
 - [x] 4.3 Degraded variant states that tier 2 is unavailable so no traceparent was ever seen
-- [x] 4.4 `seen by the SW · never reached the backend` line where the worker observed it — and suppressed where tier 2 is off, since then no worker saw anything
+- [x] 4.4 `seen by the SW · never reached the backend` line where the worker observed it — and suppressed where tier 2 is off, since then no worker saw anything. **Tightened by 4.2**: the line is now printed only for `not-propagated`, which is *defined* as the worker holding a record with no traceparent on it. It was previously printed for every non-`tier-2-off` cause, including requests the worker never saw at all (`unseen`) — a claim about an observation that had not happened.
 
 ## 5. State 7c — waiting for ingest
 
