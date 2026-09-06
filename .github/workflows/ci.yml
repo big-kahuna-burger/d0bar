@@ -14,6 +14,19 @@
 # run: 317 s of the perf suite is timing-sensitive and 158 s is not, and the second 158 s was
 # running one test at a time because it shared a config with the first. Each job builds its own
 # `dist/` rather than taking one from `check`, so none of them waits on another.
+#
+# What is cached, and what deliberately is not:
+#
+#   pnpm store          keyed on the lockfile; `--frozen-lockfile` makes a hit a hardlink pass
+#   Playwright browsers keyed on the lockfile, exact match only — a `restore-keys` fallback
+#                       would leave a wrong-version browser on disk
+#   .cache              eslint's and prettier's own caches, content-keyed (check job only)
+#
+#   dist/               NOT cached, in any job. Each perf job builds its own. A cache key would
+#                       have to enumerate every build input — src, six vite configs, the token
+#                       generator, the spark-signals workspace package — and a key that misses
+#                       one measures a stale bundle and reports the number as this commit's.
+#                       That is the stale-fixture-server bug with a longer feedback loop.
 name: ci
 
 on:
@@ -47,6 +60,20 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      # eslint's and prettier's own caches, not a build artifact — both re-hash every file's
+      # content (`--cache-strategy content`, because a fresh checkout's mtimes are all new) and
+      # a miss simply re-lints. So a stale restore cannot pass a file that would fail.
+      #
+      # The key covers the two configs and the lockfile; `restore-keys` falls back within the
+      # same lockfile, so a config edit starts cold rather than reusing entries whose config
+      # hash no longer matches.
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: ${{ runner.os }}-lintcache-${{ hashFiles('pnpm-lock.yaml', 'eslint.config.js', '.prettierrc', '.prettierignore') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-lintcache-${{ hashFiles('pnpm-lock.yaml', 'eslint.config.js', '.prettierrc', '.prettierignore') }}-
 
       - run: pnpm lint
 

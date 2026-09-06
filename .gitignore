@@ -6,6 +6,11 @@ bench/last-budget.json
 test-results
 playwright-report
 
+# eslint's and prettier's own caches. Both key entries on file content, so a stale entry
+# misses rather than lying; `--cache-strategy content` is set because mtime is meaningless
+# on a fresh CI checkout.
+.cache
+
 # Bundled by scripts/build-otel-fixture.mjs on every perf run. A committed copy of someone
 # else's SDK is a stale copy waiting to happen.
 bench/fixtures/host/otel-sdk.js
