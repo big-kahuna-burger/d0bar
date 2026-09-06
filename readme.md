@@ -228,9 +228,14 @@ from JavaScript reports LCP long after load.
 **LCP quiet period** — the 500 ms without a new `largest-contentful-paint` entry that is taken
 as the browser having stopped raising it.
 
-**`assertSettled`** — the development-only guard. Anything that derives, touches the DOM, posts
-to a worker or fetches calls it first, so a moratorium violation throws in development instead
-of silently costing a customer main-thread time in production.
+**`assertSettled`** — the development-only guard. Every operation the moratorium forbids calls
+it first — the pill's DOM write and stylesheet adoption, the stage-2 prefetch, service-worker
+registration, OpenTelemetry detection — so a violation throws in development instead of
+silently costing a customer main-thread time in production. Compiled out of the published
+build, which is why `?d0bar=dev` exists: it loads a stage-1 build with the guard in, and
+`tests/perf/dev-guard.spec.ts` runs a page against it. A guard no test executes is a comment,
+and until that arm existed this one had a single call site while this paragraph described
+many.
 
 ### Storage
 

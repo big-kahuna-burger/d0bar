@@ -144,7 +144,7 @@ let sink: ReadOnlySpanProcessor | undefined;
 export function detectOtel(scope: object = globalThis): OtelState {
   /* Detection is a derivation and a decision, so it is not permitted during the load phase —
      the same rule that governs everything except recording an entry. */
-  assertSettled("OpenTelemetry detection");
+  if (__DEV__) assertSettled("OpenTelemetry detection");
 
   /* A host who installed `otelSpanProcessor()` themselves is already live, and their provider
      is sealed by construction — running the ladder below would demote them to

@@ -13,6 +13,8 @@
  * everything issued before mount, and fights whatever else patched the same global.
  */
 
+import { assertSettled } from "./phase";
+
 export type Tier2State =
   { kind: "live"; owner: "d0bar" | "host" } | { kind: "off"; reason: Tier2Blocked };
 
@@ -82,6 +84,9 @@ export async function startTier2(config: SwConfig): Promise<Tier2State> {
     return state;
   }
 
+  /* The actual call, not just its caller. `index.ts` guards the scheduling decision; this
+     guards the side effect, so a second registration path added later is caught too. */
+  if (__DEV__) assertSettled("registering the service worker");
   const registration = await safe(() =>
     container.register(
       config.path as string,

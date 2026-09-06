@@ -2,7 +2,7 @@ import { HEALTHY, WARNING, worstVital } from "./vitals";
 import { size, stats } from "./ring";
 import { PRELUDE, V } from "./tokens.gen";
 import pillCss from "./pill.css?inline";
-import { onVisibility, whenSettled } from "./phase";
+import { assertSettled, onVisibility, whenSettled } from "./phase";
 
 /**
  * The collapsed pill.
@@ -230,9 +230,17 @@ export function mountPill(onActivate: () => void): PillHandle {
 
   whenSettled(() => {
     if (destroyed) return;
+    /* The toolbar's only write into the host document, and the moratorium's headline case.
+       Guarded rather than trusted to its caller: a future path that mounts the pill without
+       going through `whenSettled` is exactly the regression this is here to catch. */
+    if (__DEV__) assertSettled("mounting the pill");
     host = document.createElement(TAG);
     const root = host.attachShadow({ mode: "closed" });
     shadow = root;
+    /* A second guard, deliberately. Adopting a stylesheet is style-recalculation work on the
+       host's own document, and a refactor that moved it out of this callback would otherwise
+       be silent. */
+    if (__DEV__) assertSettled("adopting the pill stylesheet");
     root.adoptedStyleSheets = [styleSheet()];
     nodes = build(root, onActivate);
     button = root.querySelector("button") ?? undefined;

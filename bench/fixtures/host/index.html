@@ -55,9 +55,12 @@
         var arm = new URLSearchParams(location.search).get("d0bar") || "off";
         if (arm === "off") return;
         var script = document.createElement("script");
-        script.src = "/dist/d0bar.iife.js";
+        /* `?d0bar=dev` loads the build with `__DEV__` compiled in, so `assertSettled` actually
+           runs. It is not a measured arm and must never become one — the budget compares the
+           shipped bytes — but without it the moratorium guard has never executed anywhere. */
+        script.src = arm === "dev" ? "/dist/d0bar.dev.iife.js" : "/dist/d0bar.iife.js";
         script.defer = true;
-        if (arm === "on") {
+        if (arm === "on" || arm === "dev") {
           script.setAttribute("data-d0bar-enabled", "");
           /* Tier 2. Served from the root so the worker's scope covers the whole origin —
              see the `/d0bar-sw.js` route in server.mjs for why that is a constraint and not

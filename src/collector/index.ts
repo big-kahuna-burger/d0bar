@@ -2,6 +2,7 @@ import {
   beginPhaseTracking,
   currentPhase,
   isVisible,
+  assertSettled,
   onVisibility,
   resetPhase,
   whenNetworkPermitted,
@@ -282,12 +283,17 @@ export function init(config: D0barConfig): D0barHandle {
      starting a second one. */
   let cancelPrefetch: (() => void) | undefined;
   whenNetworkPermitted(() => {
+    /* Guarded here rather than inside `prefetchStage2`: that module is `shared/`, and stage 2
+       imports it. Stage 2 gets its own copy of `phase.ts` whose phase is never advanced, so a
+       guard living there would throw on every panel open in the dev arm. */
+    if (__DEV__) assertSettled("prefetching stage 2");
     cancelPrefetch = prefetchStage2();
     /* Registration is a network fetch for the worker file plus an install event, so it waits
        for settle exactly as the prefetch does. Deliberately not awaited and deliberately not
        reported: a host with no worker path, no HTTPS, or a scope of their own is in a
        supported state, not an error one, and the panel reads the outcome from
        `tier2State()` when it opens. */
+    if (__DEV__) assertSettled("registering the service worker");
     void startTier2(config.sw ?? {});
     /* Tier 4, on the same settle boundary and for the same reason: reading the API global and
        attaching a processor are derivations, and derivations do not run while the host's load

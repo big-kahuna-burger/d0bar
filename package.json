@@ -1,12 +1,14 @@
 {
   "name": "d0bar",
   "version": "0.1.0",
-  "description": "A Dash0-branded observability toolbar for your own web app — that does not distort what it measures.",
+  "description": "A Dash0-branded observability toolbar for your own web app \u2014 that does not distort what it measures.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
   "files": [
     "dist",
+    "!dist/d0bar.dev.iife.js",
+    "!dist/d0bar.dev.iife.js.map",
     "readme.md",
     "architecture.md",
     "LICENSE"
@@ -23,7 +25,7 @@
   },
   "scripts": {
     "tokens": "node scripts/vendor-tokens.mjs",
-    "build": "pnpm tokens && pnpm -F spark-signals build && pnpm typecheck && vite build && D0BAR_STAGE=2 vite build && D0BAR_STAGE=sw vite build && D0BAR_STAGE=sw D0BAR_SW=module vite build && D0BAR_STAGE=worker vite build && tsc -p tsconfig.build.json",
+    "build": "pnpm tokens && pnpm -F spark-signals build && pnpm typecheck && vite build && D0BAR_STAGE=2 vite build && D0BAR_STAGE=sw vite build && D0BAR_STAGE=sw D0BAR_SW=module vite build && D0BAR_STAGE=worker vite build && D0BAR_STAGE=dev vite build && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/sw && tsc --noEmit -p src/worker",
     "test": "vitest run && pnpm -F spark-signals test",
     "test:watch": "vitest",

@@ -46,15 +46,25 @@ The highest-leverage rule in the system, and it costs nothing.
       │                             │
       │  PERMITTED                  │  PERMITTED
       │  ─────────                  │  ─────────
-      │  • ring writes              │  • everything
+      │  • record entries           │  • everything
+      │  • bounded accumulation     │
+      │    (CLS session windows,    │
+      │     the INP top ten, the    │
+      │     LCP element's selector) │
       │                             │
       │  FORBIDDEN                  │
       │  ─────────                  │
-      │  • derive / aggregate       │     assertSettled() throws in
+      │  • unbounded derivation     │     assertSettled() throws in
       │  • touch the DOM            │     dev if anything on the left
       │  • postMessage to a worker  │     is attempted early
       │  • fetch                    │
 ```
+
+"Record, and bounded-accumulate" rather than "record": `noteLcp` derives a selector, CLS
+maintains its session windows and the INP top ten is kept, all inside observer callbacks
+before settle. Each is O(1) per entry against a fixed-size structure and allocates nothing, so
+none of it is what the moratorium is about — but the diagram used to say "derive / aggregate:
+FORBIDDEN", which was simply false about the code beneath it.
 
 **Why it is free:** every observer registers with `buffered: true`, so deferring loses no
 data — an observer attached at any moment still receives every entry from page start. The

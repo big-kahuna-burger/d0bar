@@ -111,14 +111,30 @@ function minifyLibOutput(options: () => MinifyOptions, expectedGlobal: string | 
  * silently inlined back into the IIFE one, putting the panel on the critical path with no
  * error to notice. So stage 2 builds alone, as an ES module, and stage 1 loads it by URL.
  */
-const stage: 1 | 2 | "sw" | "worker" =
+const stage: 1 | 2 | "sw" | "worker" | "dev" =
   process.env.D0BAR_STAGE === "2"
     ? 2
     : process.env.D0BAR_STAGE === "sw"
       ? "sw"
       : process.env.D0BAR_STAGE === "worker"
         ? "worker"
-        : 1;
+        : process.env.D0BAR_STAGE === "dev"
+          ? "dev"
+          : 1;
+
+/**
+ * A fifth artifact: stage 1 with `__DEV__` compiled in.
+ *
+ * `assertSettled` is the mechanism that makes the load-phase moratorium fail loudly instead of
+ * quietly costing a host main-thread time, and it is `__DEV__`-guarded — so in every arm the
+ * perturbation suite measures, it is compiled out and has never run. A guard that no test
+ * executes is a comment.
+ *
+ * Not published: excluded from `package.json`'s `files`, and `?d0bar=on` never loads it. The
+ * measured arms stay the shipped bytes, because a build carrying development assertions is not
+ * what a customer runs and must not be what a budget is measured against.
+ */
+const isDev = stage === "dev";
 
 /**
  * The service worker is a third artifact for the same reason stage 2 is a second one: it is
@@ -152,7 +168,7 @@ export default defineConfig(({ mode }) => ({
      "production" when this config module is evaluated — the earlier form shipped the
      development assertions in a production build. */
   define: {
-    __DEV__: JSON.stringify(mode !== "production"),
+    __DEV__: JSON.stringify(isDev || mode !== "production"),
   },
   plugins: [
     minifyLibOutput(
@@ -214,12 +230,22 @@ export default defineConfig(({ mode }) => ({
                 formats: ["es"],
                 fileName: () => "d0bar.panel.js",
               }
-            : {
-                entry: "src/index.ts",
-                name: GLOBAL_NAME,
-                formats: ["es", "iife"],
-                fileName: (format) => (format === "es" ? "d0bar.js" : "d0bar.iife.js"),
-              },
+            : isDev
+              ? {
+                  entry: "src/index.ts",
+                  name: GLOBAL_NAME,
+                  /* IIFE only. The dev arm is loaded by a script tag in the fixture, exactly
+                     as `?d0bar=on` loads the shipped one, so the two arms differ in one thing
+                     and only one thing. */
+                  formats: ["iife"],
+                  fileName: () => "d0bar.dev.iife.js",
+                }
+              : {
+                  entry: "src/index.ts",
+                  name: GLOBAL_NAME,
+                  formats: ["es", "iife"],
+                  fileName: (format) => (format === "es" ? "d0bar.js" : "d0bar.iife.js"),
+                },
     rollupOptions: {
       output: { compact: true },
     },

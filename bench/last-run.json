@@ -4,7 +4,7 @@
       "/Users/bkb/.n/bin/node",
       "/Users/bkb/d/dash0/d0bar/node_modules/@playwright/test/cli.js",
       "test",
-      "tests/perf/moratorium.spec.ts"
+      "tests/perf/dev-guard.spec.ts"
     ],
     "configFile": "/Users/bkb/d/dash0/d0bar/playwright.config.ts",
     "rootDir": "/Users/bkb/d/dash0/d0bar/tests/perf",
@@ -71,14 +71,14 @@
   },
   "suites": [
     {
-      "title": "moratorium.spec.ts",
-      "file": "moratorium.spec.ts",
+      "title": "dev-guard.spec.ts",
+      "file": "dev-guard.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [
         {
-          "title": "touches nothing in the host document until the load phase has settled",
-          "ok": true,
+          "title": "reaches settle with the moratorium guard compiled in, and throws nothing",
+          "ok": false,
           "tags": [],
           "tests": [
             {
@@ -91,57 +91,53 @@
                 {
                   "workerIndex": 0,
                   "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 1946,
-                  "errors": [],
+                  "status": "failed",
+                  "duration": 4274,
+                  "error": {
+                    "message": "Error: d0bar: mounting the pill attempted during the load phase. Only entry recording is permitted before settle.\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 3\u001b[39m\n\n\u001b[32m- Array []\u001b[39m\n\u001b[31m+ Array [\u001b[39m\n\u001b[31m+   \"d0bar: mounting the pill attempted during the load phase. Only entry recording is permitted before settle.\",\u001b[39m\n\u001b[31m+ ]\u001b[39m",
+                    "stack": "Error: d0bar: mounting the pill attempted during the load phase. Only entry recording is permitted before settle.\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 3\u001b[39m\n\n\u001b[32m- Array []\u001b[39m\n\u001b[31m+ Array [\u001b[39m\n\u001b[31m+   \"d0bar: mounting the pill attempted during the load phase. Only entry recording is permitted before settle.\",\u001b[39m\n\u001b[31m+ ]\u001b[39m\n    at /Users/bkb/d/dash0/d0bar/tests/perf/dev-guard.spec.ts:45:37",
+                    "location": {
+                      "file": "/Users/bkb/d/dash0/d0bar/tests/perf/dev-guard.spec.ts",
+                      "column": 37,
+                      "line": 45
+                    },
+                    "snippet": "  43 |   expect(shipped, \"the shipped bundle does not\").toBe(false);\n  44 |\n> 45 |   expect(errors, errors.join(\"\\n\")).toEqual([]);\n     |                                     ^\n  46 |   expect(mountedAt, \"the pill mounted, so the guarded path really ran\").toBeGreaterThan(0);\n  47 | });\n  48 |"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "/Users/bkb/d/dash0/d0bar/tests/perf/dev-guard.spec.ts",
+                        "column": 37,
+                        "line": 45
+                      },
+                      "message": "Error: d0bar: mounting the pill attempted during the load phase. Only entry recording is permitted before settle.\n\n\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoEqual\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // deep equality\u001b[22m\n\n\u001b[32m- Expected  - 1\u001b[39m\n\u001b[31m+ Received  + 3\u001b[39m\n\n\u001b[32m- Array []\u001b[39m\n\u001b[31m+ Array [\u001b[39m\n\u001b[31m+   \"d0bar: mounting the pill attempted during the load phase. Only entry recording is permitted before settle.\",\u001b[39m\n\u001b[31m+ ]\u001b[39m\n\n  43 |   expect(shipped, \"the shipped bundle does not\").toBe(false);\n  44 |\n> 45 |   expect(errors, errors.join(\"\\n\")).toEqual([]);\n     |                                     ^\n  46 |   expect(mountedAt, \"the pill mounted, so the guarded path really ran\").toBeGreaterThan(0);\n  47 | });\n  48 |\n    at /Users/bkb/d/dash0/d0bar/tests/perf/dev-guard.spec.ts:45:37"
+                    }
+                  ],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
-                  "startTime": "2026-09-06T07:41:06.190Z",
+                  "startTime": "2026-09-06T07:51:15.420Z",
                   "annotations": [],
-                  "attachments": []
+                  "attachments": [
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "/Users/bkb/d/dash0/d0bar/test-results/dev-guard-reaches-settle-w-01fac-piled-in-and-throws-nothing-chromium/error-context.md"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "/Users/bkb/d/dash0/d0bar/tests/perf/dev-guard.spec.ts",
+                    "column": 37,
+                    "line": 45
+                  }
                 }
               ],
-              "status": "expected"
+              "status": "unexpected"
             }
           ],
-          "id": "cd7f2460a6d7ed5c1939-e41fd332e8ea02f4fb38",
-          "file": "moratorium.spec.ts",
-          "line": 10,
-          "column": 1
-        },
-        {
-          "title": "issues no request of its own when the page is clicked before it has loaded",
-          "ok": true,
-          "tags": [],
-          "tests": [
-            {
-              "timeout": 600000,
-              "annotations": [],
-              "expectedStatus": "passed",
-              "projectId": "chromium",
-              "projectName": "chromium",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 2574,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "startTime": "2026-09-06T07:41:08.430Z",
-                  "annotations": [],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            }
-          ],
-          "id": "cd7f2460a6d7ed5c1939-3e8a06583eee6ac7e898",
-          "file": "moratorium.spec.ts",
-          "line": 96,
+          "id": "10c21b317b9536f385b5-d72d1431da435abe30a2",
+          "file": "dev-guard.spec.ts",
+          "line": 12,
           "column": 1
         }
       ]
@@ -149,11 +145,11 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-09-06T07:41:05.556Z",
-    "duration": 5483.717,
-    "expected": 2,
+    "startTime": "2026-09-06T07:51:14.763Z",
+    "duration": 5110.870000000001,
+    "expected": 0,
     "skipped": 0,
-    "unexpected": 0,
+    "unexpected": 1,
     "flaky": 0
   }
 }

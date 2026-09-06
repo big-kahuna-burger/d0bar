@@ -5,25 +5,30 @@ Four findings, ordered so each one's verification exists before the next one lea
 
 ## 0. Make the guard runnable
 
-- [ ] 0.1 A `?d0bar=dev` arm in `bench/fixtures/host/index.html`, serving a build with
+- [x] 0.1 A `?d0bar=dev` arm in `bench/fixtures/host/index.html`, serving a build with
       `__DEV__` true. The fixture is the instrument: the arm must be inert unless asked for,
       the way `?live` is
-- [ ] 0.2 `vite.config.ts` — a `D0BAR_STAGE=dev` build emitting `dist/d0bar.dev.iife.js` with
+- [x] 0.2 `vite.config.ts` — a `D0BAR_STAGE=dev` build emitting `dist/d0bar.dev.iife.js` with
       the guard compiled in. Not published; excluded from `package.json` `files`
-- [ ] 0.3 Confirm the dev build is never what `?d0bar=on` loads — the measured arms must stay
+- [x] 0.3 Confirm the dev build is never what `?d0bar=on` loads — the measured arms must stay
       the shipped bytes
 
 ## 1. `assertSettled` guards what it claims
 
-- [ ] 1.1 `pill.ts` — call it before the `document.body` append and before `adoptedStyleSheets`
-- [ ] 1.2 `index.ts` — call it in `prefetchStage2()` and before `startTier2()`
-- [ ] 1.3 `correlate.ts` — call it in `flushCorrelation` before the IndexedDB read
-- [ ] 1.4 `sw/` registration path — call it before `navigator.serviceWorker.register`
-- [ ] 1.5 A perf test on the `dev` arm asserting the page reaches settle with no throw, so the
+- [x] 1.1 `pill.ts` — call it before the `document.body` append and before `adoptedStyleSheets`
+- [x] 1.2 `index.ts` — call it in `prefetchStage2()` and before `startTier2()`
+- [~] 1.3 `correlate.ts` — **not done, and must not be.** `flushCorrelation` runs in stage 2,
+      which is a separate bundle with its own copy of every module — including `phase.ts`,
+      whose phase is never advanced there. `currentPhase()` is `"collecting"` forever in that
+      copy, so the guard would throw on every panel open in the `dev` arm. Found by building
+      against the task. The underlying defect is stage-2 code living under `src/collector/`,
+      which the proposal lists as out of scope
+- [x] 1.4 `sw/` registration path — call it before `navigator.serviceWorker.register`
+- [x] 1.5 A perf test on the `dev` arm asserting the page reaches settle with no throw, so the
       guard is proved to run rather than merely to exist
-- [ ] 1.6 A unit test that calls each guarded entry point pre-settle and expects the throw —
+- [x] 1.6 A unit test that calls each guarded entry point pre-settle and expects the throw —
       one per call site, so deleting a call fails a named test
-- [ ] 1.7 Correct `readme.md` and `architecture.md` where they describe a guard that did not
+- [x] 1.7 Correct `readme.md` and `architecture.md` where they describe a guard that did not
       exist. `architecture.md`'s "derive / aggregate — FORBIDDEN" also overstates: `noteLcp`
       derives a selector, CLS accumulates session windows and the INP top-ten is maintained,
       all inside observer callbacks pre-settle. Bounded and defended; the sentence is still
