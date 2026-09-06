@@ -18,6 +18,8 @@ Web Vital. Click it for the full panel.
 
 ---
 
+`docs/map.md` says which file answers which question.
+
 ## Who this is for
 
 **You, if you have ever asked "why is this page slow?" while looking at someone's staging

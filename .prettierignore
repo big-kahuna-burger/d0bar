@@ -13,3 +13,8 @@ tests/fixtures/vitals-entries.json
 openspec
 .claude
 
+# Run output, rewritten by every perf run. Formatting it means `pnpm lint` goes red after every
+# local run, which trains people to ignore lint.
+bench/last-run.json
+bench/last-budget.json
+

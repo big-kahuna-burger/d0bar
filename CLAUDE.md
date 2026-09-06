@@ -239,6 +239,20 @@ softening the whole sentence.
 
 ---
 
+## Finding things
+
+**`docs/map.md` first.** One line per document, saying which file answers which question — so a
+narrow question costs one targeted `grep -n` rather than four files read whole. Most files here
+are long because the reasoning is written down, and that is worth keeping; reading them
+indiscriminately is not.
+
+The OpenSpec workflows exist as both a skill and a slash command, generated from the same text.
+The command files under `.claude/commands/opsx/` are deliberately thin pointers at the skills;
+`openspec update` will regenerate the long versions over them, and if they grow back that is
+what happened.
+
+---
+
 ## Repo facts worth knowing
 
 |                |                                                                                                                                       |
