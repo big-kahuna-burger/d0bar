@@ -1,0 +1,156 @@
+{
+  "recordedAt": "2026-09-06T06:55:44.758Z",
+  "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+  "largest-contentful-paint": [
+    {
+      "entryType": "largest-contentful-paint",
+      "name": "",
+      "startTime": 88,
+      "duration": 0,
+      "element": "h1"
+    },
+    {
+      "entryType": "largest-contentful-paint",
+      "name": "",
+      "startTime": 1584,
+      "duration": 0,
+      "element": "span.hero-title"
+    }
+  ],
+  "layout-shift": [
+    {
+      "entryType": "layout-shift",
+      "name": "",
+      "startTime": 1251.7000000029802,
+      "duration": 0,
+      "value": 0.006721011797587076,
+      "hadRecentInput": false,
+      "sources": [
+        {
+          "node": "table.rates"
+        },
+        {
+          "node": "p.synced"
+        },
+        {
+          "node": "button#confirm-hold"
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "entryType": "event",
+      "name": "pointerover",
+      "startTime": 1659.1000000014901,
+      "duration": 56,
+      "interactionId": 0,
+      "processingStart": 1665.2000000029802,
+      "target": ""
+    },
+    {
+      "entryType": "event",
+      "name": "pointerenter",
+      "startTime": 1659.1000000014901,
+      "duration": 56,
+      "interactionId": 0,
+      "processingStart": 1666.2000000029802,
+      "target": ""
+    },
+    {
+      "entryType": "event",
+      "name": "pointerenter",
+      "startTime": 1659.1000000014901,
+      "duration": 56,
+      "interactionId": 0,
+      "processingStart": 1666.2000000029802,
+      "target": ""
+    },
+    {
+      "entryType": "event",
+      "name": "pointerenter",
+      "startTime": 1659.1000000014901,
+      "duration": 56,
+      "interactionId": 0,
+      "processingStart": 1666.2000000029802,
+      "target": ""
+    },
+    {
+      "entryType": "event",
+      "name": "pointerenter",
+      "startTime": 1659.1000000014901,
+      "duration": 56,
+      "interactionId": 0,
+      "processingStart": 1666.2000000029802,
+      "target": ""
+    },
+    {
+      "entryType": "event",
+      "name": "mouseover",
+      "startTime": 1659.1000000014901,
+      "duration": 56,
+      "interactionId": 0,
+      "processingStart": 1666.5,
+      "target": "aside.sidebar"
+    },
+    {
+      "entryType": "event",
+      "name": "pointerdown",
+      "startTime": 1660.8000000044703,
+      "duration": 48,
+      "interactionId": 3047,
+      "processingStart": 1667.7000000029802,
+      "target": ""
+    },
+    {
+      "entryType": "event",
+      "name": "mousedown",
+      "startTime": 1660.8000000044703,
+      "duration": 48,
+      "interactionId": 0,
+      "processingStart": 1668.3000000044703,
+      "target": "aside.sidebar"
+    },
+    {
+      "entryType": "event",
+      "name": "pointerup",
+      "startTime": 1660.8999999985099,
+      "duration": 48,
+      "interactionId": 3047,
+      "processingStart": 1671.6000000014901,
+      "target": ""
+    },
+    {
+      "entryType": "event",
+      "name": "mouseup",
+      "startTime": 1660.8999999985099,
+      "duration": 48,
+      "interactionId": 0,
+      "processingStart": 1671.8000000044703,
+      "target": "aside.sidebar"
+    },
+    {
+      "entryType": "event",
+      "name": "click",
+      "startTime": 1660.8999999985099,
+      "duration": 48,
+      "interactionId": 3047,
+      "processingStart": 1671.8000000044703,
+      "target": "aside.sidebar"
+    }
+  ],
+  "long-animation-frame": [
+    {
+      "entryType": "long-animation-frame",
+      "name": "long-animation-frame",
+      "startTime": 351.1000000014901,
+      "duration": 120.316,
+      "scripts": [
+        {
+          "duration": 120.09999999403954,
+          "sourceFunctionName": ""
+        }
+      ]
+    }
+  ]
+}

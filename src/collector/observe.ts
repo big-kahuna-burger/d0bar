@@ -156,7 +156,9 @@ export function startObserving(): () => void {
      without asking the document for it. */
   observe("visibility-state", (entries) => {
     for (let i = 0; i < entries.length; i++) {
-      noteVisibilityState(entries[i]!.name);
+      /* The entry's own `startTime` goes with the state: a hidden entry seals LCP at the
+         moment the page was hidden, not at the moment the toolbar was told. */
+      noteVisibilityState(entries[i]!.name, entries[i]!.startTime);
     }
   });
 
@@ -193,7 +195,9 @@ export function startObserving(): () => void {
 
   /* First input finalizes LCP. Observed as an entry type rather than a listener, so the
      toolbar adds nothing to the host page's event surface. */
-  observe("first-input", () => noteFirstInput());
+  observe("first-input", (entries) => {
+    for (let i = 0; i < entries.length; i++) noteFirstInput(entries[i]!.startTime);
+  });
 
   const Reporting = (globalThis as { ReportingObserver?: ReportingObserverLike })
     .ReportingObserver;

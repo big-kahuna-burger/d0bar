@@ -38,6 +38,24 @@ export type Phase = "collecting" | "settled";
 
 let phase: Phase = "collecting";
 let lcpFinal = false;
+/**
+ * When LCP stopped accruing, on the page timeline. `Infinity` until it does.
+ *
+ * **Deliberately not the same thing as {@link lcpFinal}, and the difference is the point.**
+ * `lcpFinal` is d0bar's *moratorium* trigger — the answer to "may we start deriving yet" — and
+ * it also fires on the quiet timer, which is a heuristic this file invented. The largest
+ * contentful paint stops accruing for two reasons only, both of them in the standard: the user
+ * interacted, or the page was hidden. A page that paints something larger 600 ms after load
+ * with nobody touching it has a larger LCP, and sealing on the quiet timer would report a
+ * smaller number than the browser and every other tool would.
+ *
+ * A *time* rather than a boolean because observers are registered with `buffered: true`. Mount
+ * after an interaction and the first callback delivers every LCP candidate the page ever had;
+ * a boolean seal would reject all of them and report no LCP at all on a page that plainly had
+ * one. Comparing against the seal's own timestamp keeps the candidates that describe paints
+ * from before it.
+ */
+let lcpSealAt = Infinity;
 let cancelSettle: (() => void) | undefined;
 let cancelQuietCheck: (() => void) | undefined;
 /** When the most recent LCP entry arrived, on the page timeline. */
@@ -81,9 +99,34 @@ function finalizeLcp(): void {
   cancelSettle = background(settle);
 }
 
-/** Called by the observer layer when a `first-input` entry arrives. LCP is final now. */
-export function noteFirstInput(): void {
+/**
+ * Called by the observer layer when a `first-input` entry arrives.
+ *
+ * Two separate consequences, and they are not the same consequence: the moratorium may lift,
+ * and LCP stops accruing as of the interaction's own timestamp. `startTime` is passed rather
+ * than read from the clock because the entry says when the interaction happened, and the seal
+ * has to be that moment rather than the moment we were told about it.
+ */
+export function noteFirstInput(startTime: number): void {
+  sealLcp(startTime);
   finalizeLcp();
+}
+
+/** The earliest seal wins: LCP stopped at the first of interaction or hidden, not the last. */
+function sealLcp(at: number): void {
+  if (at < lcpSealAt) lcpSealAt = at;
+}
+
+/**
+ * The page-timeline moment LCP stopped accruing, or `Infinity` while it still is.
+ *
+ * Read by `vitals.ts` for every `largest-contentful-paint` entry. It lives here because the
+ * signals that seal it — first input, first hidden — are lifecycle, and lifecycle is this
+ * file's job; `vitals.ts` owns the value, not the question of when the page stopped producing
+ * candidates for it.
+ */
+export function lcpSealTime(): number {
+  return lcpSealAt;
 }
 
 /** Called by the observer layer for every LCP entry, so we can tell when they stop. */
@@ -147,10 +190,13 @@ export function isVisible(): boolean {
 }
 
 /** Called by the observer layer for every `visibility-state` entry. */
-export function noteVisibilityState(name: string): void {
+export function noteVisibilityState(name: string, startTime = 0): void {
   const visible = name === "visible";
   documentVisible = visible;
-  if (!visible) finalizeLcp();
+  if (!visible) {
+    sealLcp(startTime);
+    finalizeLcp();
+  }
   for (let i = 0; i < visibilityCallbacks.length; i++) visibilityCallbacks[i]!(visible);
 }
 
@@ -189,6 +235,10 @@ export function beginPhaseTracking(): () => void {
      `isVisible()` documents that it may go stale. */
   documentVisible = document.visibilityState !== "hidden";
   if (!supports("visibility-state") && document.visibilityState === "hidden") {
+    /* Already hidden when the toolbar mounted, and no entry type to tell us when it happened.
+       Sealing at zero is the honest reading: LCP stopped accruing at some point we cannot
+       name, and everything after mount is certainly after it. */
+    sealLcp(0);
     finalizeLcp();
   }
 
@@ -211,6 +261,7 @@ export function beginPhaseTracking(): () => void {
 export function resetPhase(): void {
   phase = "collecting";
   lcpFinal = false;
+  lcpSealAt = Infinity;
   lastLcpAt = 0;
   loadedAt = 0;
   cancelSettle = undefined;

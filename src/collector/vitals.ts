@@ -11,6 +11,7 @@
  * definition so those cards do not have to restate it.
  */
 
+import { lcpSealTime } from "./phase";
 import type { VitalsReading } from "../shared/stage2";
 
 export const HEALTHY = 0;
@@ -109,7 +110,14 @@ let inpTargetLatency = -1;
 let loafScript = "";
 
 export function noteLcp(entry: PerformanceEntry): void {
-  /* The last LCP entry before finalization wins; the browser only ever reports larger. */
+  /* The last LCP entry *before the seal* wins; the browser only ever reports larger.
+     Candidates describing a paint after the user interacted or the page was hidden are not
+     this page's LCP by the standard's definition, and taking them would make d0bar report a
+     larger number than the browser's own tooling for the same load. The comparison is on the
+     entry's timestamp rather than on arrival, so a `buffered: true` delivery that arrives
+     after the seal still counts every candidate that happened before it — see
+     `lcpSealTime()`. */
+  if (entry.startTime > lcpSealTime()) return;
   lcp = entry.startTime;
   lcpElement = selectorOf((entry as LcpEntry).element);
 }
