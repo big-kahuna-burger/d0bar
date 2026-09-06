@@ -160,6 +160,19 @@
       </table>
 
       <button id="confirm-hold" class="confirm">Confirm hold</button>
+      <!--
+        A second interaction target whose handler does almost nothing.
+
+        `#confirm-hold` blocks for 84 ms deliberately, which is right for measuring a page that
+        is already struggling and wrong for measuring d0bar: 84 ms quantizes to an INP of 88 on
+        every run of every arm, and a toolbar costing single-digit milliseconds disappears
+        inside that bucket. Sixty CI runs across three arms returned 88 sixty times.
+
+        This one flips a class and nothing else, so INP is dominated by the browser's own
+        event-to-paint path — and anything d0bar contributes is a real fraction of the number
+        rather than four percent of the fixture's own block.
+      -->
+      <button id="cheap-tap" class="cheap">Toggle detail</button>
       <p class="synced">Last synced 12:41 · Quote engine v14</p>
     </main>
 

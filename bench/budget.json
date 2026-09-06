@@ -8,14 +8,24 @@
       "metric": "inpSignificance",
       "threshold": 0.05,
       "unit": "p-value, one-sided",
-      "lastMeasured": null,
+      "lastMeasured": 1.0,
       "arms": {
         "off": 88,
         "gated": 88,
-        "on": 96
+        "on": 88
       },
-      "rationale": "Not a millisecond figure, because no millisecond figure is expressible: Chrome reports INP quantized to 8 ms, so a threshold below 8 cannot be measured and a threshold at or above 8 gates nothing a developer would notice. The previous row was `\u0394p95 INP <= 2 ms` and it failed on CI at exactly 8 \u2014 one quantum, the smallest non-zero value the metric can take, and equally consistent with a 0.1 ms cost that crossed a boundary or with a real 8 ms one. `off` and `gated` both scored 88, so the baseline change was not the cause. The row now compares the arms run by run: the arms alternate within each loop iteration, so pairing is legitimate, and a toolbar costing a fraction of a quantum tips some runs over a boundary and none back. That direction is visible far below one quantum of resolution. Fails when the one-sided binomial probability of seeing this many worse runs by chance falls below 0.05 \u2014 at n=20 with no ties, 15 worse gives p=0.0207 and fails, 14 gives p=0.0577 and passes. Blind to magnitude by construction: a toolbar that cost 200 ms on one run of twenty would pass this row, which is what tbtP95 and attributedFrameMs are for. `bench/quantized-metrics.md` carries the derivation.",
+      "rationale": "Not a millisecond figure, because no millisecond figure is expressible: Chrome reports INP quantized to 8 ms, so a threshold below 8 cannot be measured and a threshold at or above 8 gates nothing a developer would notice. The previous row was `\u0394p95 INP <= 2 ms` and it failed on CI at exactly 8 \u2014 one quantum, the smallest non-zero value the metric can take, and equally consistent with a 0.1 ms cost that crossed a boundary or with a real 8 ms one. `off` and `gated` both scored 88, so the baseline change was not the cause. The row now compares the arms run by run: the arms alternate within each loop iteration, so pairing is legitimate, and a toolbar costing a fraction of a quantum tips some runs over a boundary and none back. That direction is visible far below one quantum of resolution. Fails when the one-sided binomial probability of seeing this many worse runs by chance falls below 0.05 \u2014 at n=20 with no ties, 15 worse gives p=0.0207 and fails, 14 gives p=0.0577 and passes. Blind to magnitude by construction: a toolbar that cost 200 ms on one run of twenty would pass this row, which is what tbtP95 and attributedFrameMs are for. First calibration run: every one of sixty runs across three arms returned exactly 88, so the test saw 20 ties and p=1. GREEN BY VACUITY, not because the toolbar is free \u2014 `#confirm-hold` blocks 84 ms deliberately and there is no variance for the test to read. This row is retained because it is correct and will report a real shift if one ever appears, but the claim about d0bar's interaction cost now rests on `cheapTapsOverFloor`, not on this. `bench/quantized-metrics.md` carries the derivation.",
       "instrument": "Paired sign test over per-run INP, `on` against `gated` \u2014 tests/perf/ab.spec.ts"
+    },
+    {
+      "metric": "cheapTapsOverFloor",
+      "threshold": 5,
+      "provisional": true,
+      "unit": "taps, summed over all runs of an arm (pool of RUNS x 5)",
+      "lastMeasured": null,
+      "arms": {},
+      "instrument": "PerformanceObserver('event', durationThreshold: 16) filtered to #cheap-tap, counted \u2014 bench/fixtures/host/metrics.js",
+      "rationale": "The row that answers what `inpSignificance` cannot. `#confirm-hold` blocks 84 ms deliberately, which quantizes to an INP of 88 on every run of every arm: sixty CI runs across three arms returned 88 sixty times, so the paired sign test read 20 ties and p=1 and could not fail. Green by vacuity is worse than the noisy row it replaced. The cause is the fixture, not the statistic \u2014 the same disease as gating d0bar's cost through `longtask` against a fixture that blocks 240 ms of its own accord. `#cheap-tap` flips an attribute and nothing else, so INP there is dominated by the browser's own event-to-paint path and a few milliseconds of toolbar work is a visible fraction rather than four percent. Counted rather than timed because the `event` entry type clamps `durationThreshold` to a 16 ms minimum: an 8 ms interaction produces no entry at all, so there is no duration to read. What is readable is whether a tap crossed the floor, which has no quantum problem \u2014 0 to 5 per run, 0 to 100 pooled per arm, resolution one tap. THRESHOLD IS PROVISIONAL: 5 is a fifth of one arm's pool, chosen before the first calibration run rather than after it, and it is recorded here as unvalidated rather than presented as measured. Replace it with whatever the `gated` arm's own run-to-run spread turns out to be on CI. See bench/quantized-metrics.md."
     },
     {
       "metric": "tbtP95",

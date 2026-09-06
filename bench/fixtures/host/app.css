@@ -24,6 +24,8 @@ h1 small { font-weight: 400; color: #6b6b63; margin-left: 8px; font-size: 13px; 
 .stat strong { font-size: 20px; font-weight: 500; }
 .rates { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e2e2dd; border-radius: 10px; }
 .rates td { padding: 10px 14px; border-bottom: 1px solid #eeeeea; }
+.cheap { margin-top: 16px; margin-left: 8px; padding: 8px 14px; border: 0; border-radius: 7px; background: #e7ece9; color: #2f4f45; font: inherit; cursor: pointer; }
+.cheap[aria-pressed="true"] { background: #cfdcd6; }
 .confirm { margin-top: 16px; padding: 8px 14px; border: 0; border-radius: 7px; background: #2f6f5e; color: #fff; font: inherit; cursor: pointer; }
 .synced { color: #6b6b63; font-size: 11px; }
 .injected { padding: 10px 14px; background: #fff; border: 1px solid #e2e2dd; border-bottom: 0; }

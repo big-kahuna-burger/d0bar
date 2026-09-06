@@ -212,16 +212,87 @@ Recorded as a scenario in `openspec/specs/observation-core/spec.md`.
 
 ---
 
-## Where this leaves the INP question
+## What the first calibration run said
 
-Unanswered, and now answerable. The old row could not distinguish 0.1 ms from 8 ms; the new
-one can tell whether there is a consistent cost at all. What it will say on CI is not yet
-known — this was pushed to be exercised there, because the machine that produced the failure
-is the machine that can calibrate the fix, and a laptop fast enough to tie every run cannot.
+The sign test was pushed to be exercised on CI, because a laptop fast enough to tie every run
+cannot calibrate it. CI passed. Then the per-run arrays came back:
 
-If it does report a real directional cost, the leading suspect is already identified:
-`pill.ts` refreshes on a 500 ms interval, writing a text node and firing a pulse animation,
-while the A/B test clicks five times at 120 ms spacing. A repaint landing inside an
-interaction's presentation window is real INP — and it is precisely the blind spot
-`attribution.ts` documents, since style and layout provoked by d0bar's writes land in
-`AnimationFrame::StyleAndLayout`, which the browser attributes to no script.
+```
+   on     [88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88]
+   gated  [88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88]
+   off    [88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88]
+
+   sign test:  0 worse, 0 better, 20 tied, p = 1.0000
+```
+
+**Sixty runs, one value.** Two conclusions, and the second is the important one.
+
+The earlier failure was one run of twenty tipping into the next quantum, which `sorted[18]`
+picked up. That diagnosis holds.
+
+But the replacement row **cannot fail on this fixture** — not because the toolbar is free,
+because there is no variance to read. Twenty ties, p = 1, green by vacuity. A row that fails on
+noise was traded for a row that reports nothing, which on the honesty ladder is worse: the old
+one at least moved.
+
+### The cause is the fixture, not the statistic
+
+`bench/README.md` describes *"an 84 ms blocking click handler, so INP has something real to
+measure"*. That is right for a page that is supposed to be struggling and wrong as the place to
+look for a toolbar:
+
+```
+   #confirm-hold, 84 ms of deliberate block
+
+     |<---------------- 88 ms bucket ---------------->|
+     |                                                 |
+     |  fixture's own block  84 ms                     |
+     |  d0bar                 3.5 ms  <-- 4% of the number, never shifts the bucket
+```
+
+Structurally identical to gating d0bar's main-thread cost through `longtask` against a fixture
+that blocks 240 ms of its own accord — the problem `attributedFrameMs` was added to solve. The
+same disease was left untreated one row over.
+
+### The cheap target
+
+`#cheap-tap` flips an `aria-pressed` attribute and does nothing else, so INP there is dominated
+by the browser's own event-to-paint path and a toolbar cost is a real fraction of the result.
+
+It is **counted, not timed**, and that is a platform constraint rather than a preference:
+
+> `PerformanceObserver`'s `event` entry type clamps `durationThreshold` to a **minimum of
+> 16 ms**. An interaction cheaper than that produces no entry at all.
+
+So there is no way to ask the browser how long an 8 ms interaction took. What is observable is
+whether a tap *crossed* the floor:
+
+```
+   five taps per run, twenty runs
+
+     arm pool:   0 .. 100 taps over the floor
+     resolution: one tap
+     no quantum, no order statistic, no floor below the threshold
+```
+
+The threshold is **5, and provisional** — a fifth of one arm's pool, chosen before the first
+calibration run rather than after it, and recorded in `budget.json` as unvalidated. The number
+to replace it with is whatever `gated`'s own run-to-run spread turns out to be on CI. Setting it
+from the first green run would be tuning a threshold until CI agrees, which is the thing this
+repository refuses.
+
+`inpSignificance` is kept. It is correct, and it will report a real shift if one ever appears.
+It is simply no longer where the claim about d0bar's interaction cost rests.
+
+---
+
+## The pill clock, still open
+
+If a directional cost does show up, the leading suspect is identified: `pill.ts` refreshes on a
+500 ms interval, writing a text node and firing a pulse animation, while the A/B test clicks at
+120 ms spacing. A repaint landing inside an interaction's presentation window is real INP — and
+precisely the blind spot `attribution.ts` documents, since style and layout provoked by d0bar's
+writes land in `AnimationFrame::StyleAndLayout`, which the browser attributes to no script.
+
+That probe was not runnable before: toggling the clock and comparing INP gave 88 against 88
+either way. Against `#cheap-tap` it becomes a question the instrument can answer.

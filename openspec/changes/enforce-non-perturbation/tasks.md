@@ -128,9 +128,29 @@ runner. `bench/quantized-metrics.md` carries the failure, the arithmetic and the
 - [x] 7.5 `CLAUDE.md` — CI calibrates and checks, local runs one targeted spec briefly. Two
       failures established this: a `tier2` p95 of 5.60 ms locally that passed on CI, and an
       INP row that could not fail on hardware fast enough to tie every run
-- [ ] 7.6 Calibrate on CI. The reworked rows are **implemented, not exercised** — typecheck
+- [x] 7.6 Calibrate on CI. The reworked rows are **implemented, not exercised** — typecheck
       and lint pass and nothing has been run. Push and read the run
 - [ ] 7.7 If the sign test reports a real directional cost, probe the pill's 500 ms refresh
       clock: it writes a text node and fires a pulse animation while the A/B test clicks five
       times at 120 ms spacing, and style/layout from d0bar's writes is the blind spot
       `attribution.ts` documents
+
+## 8. The fixture can express a toolbar-sized interaction cost
+
+- [x] 8.1 The first calibration run passed with 20 ties and p=1: every one of sixty runs across
+      three arms returned an INP of exactly 88. Green by vacuity — `#confirm-hold` blocks 84 ms
+      deliberately and there is no variance to read
+- [x] 8.2 `#cheap-tap` in the fixture — one attribute flip, no block, no layout thrash, no
+      network. Inert unless clicked, like every other opt-in in `bench/fixtures/host/`
+- [x] 8.3 `metrics.js` counts taps that crossed the `event` type's 16 ms `durationThreshold`
+      floor rather than timing them: an 8 ms interaction produces no entry at all, so there is
+      no duration to read. The count has no quantum and no order statistic
+- [x] 8.4 `ab.spec.ts` — two `#confirm-hold` clicks (INP is the slowest interaction below fifty,
+      so two preserve the fixture's poor INP) plus five `#cheap-tap` clicks. `cheapTapsOverFloor`
+      summed across runs, gated against `gated`
+- [x] 8.5 `budget.json` and `quantized-metrics.md` record the vacuity finding and mark the new
+      threshold **provisional** — 5 was chosen before any calibration run
+- [ ] 8.6 Calibrate the threshold on CI from `gated`'s own spread. Setting it from the first
+      green run would be tuning until CI agrees
+- [ ] 8.7 Only once the row resolves: the pill-clock probe from 7.7, which was unrunnable
+      against an instrument that returned 88 either way

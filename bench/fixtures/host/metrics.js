@@ -13,6 +13,22 @@
     longTasks: 0,
     inp: 0,
     interactions: [],
+    /**
+     * The cheap interaction target, counted rather than timed.
+     *
+     * `PerformanceObserver`'s `event` type clamps `durationThreshold` to a minimum of 16 ms, so
+     * an interaction cheaper than that produces no entry at all — there is no way to ask the
+     * browser how long an 8 ms interaction took. That floor is what makes a duration the wrong
+     * thing to record here.
+     *
+     * So this counts how many taps on `#cheap-tap` were slow enough to be reported at all. A
+     * tap that does nothing but flip an attribute sits below the floor and is invisible; a tap
+     * that something pushed over 16 ms appears. The count is the metric, and it has no quantum
+     * problem: 0 to 5 per run, pooled across runs.
+     */
+    cheapTapsOverFloor: 0,
+    /** The worst reported cheap tap, for reading. 0 means none crossed the floor. */
+    cheapTapMax: 0,
     d0barMountedAt: -1,
     /* The LCP the browser had reported at the moment the pill was inserted. The final LCP is
        not the right comparison and cannot be: on this fixture the hero paints at ~1.6 s from
@@ -133,7 +149,15 @@
       if (!e.interactionId) return;
       m.interactions.push(e.duration);
       if (e.duration > m.inp) m.inp = e.duration;
+      /* `target` is null once the element is gone; both fixture buttons outlive the run. */
+      if (e.target && e.target.id === "cheap-tap") {
+        m.cheapTapsOverFloor++;
+        if (e.duration > m.cheapTapMax) m.cheapTapMax = e.duration;
+      }
     },
+    /* 16 is the floor the spec allows; anything lower is clamped to it. Stated rather than
+       left as a magic number, because the clamp is the whole reason `cheapTapsOverFloor`
+       counts instead of timing. */
     { durationThreshold: 16 },
   );
 })();

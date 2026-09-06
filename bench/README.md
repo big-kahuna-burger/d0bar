@@ -43,7 +43,11 @@ realistic pressure rather than on an empty document:
   that — an earlier version of this fixture measured nothing because of it.
 - A 120 ms long task during load, so total blocking time is non-zero in both arms.
 - A layout shift after load.
-- An 84 ms blocking click handler, so INP has something real to measure.
+- An 84 ms blocking click handler (`#confirm-hold`), so INP has something real to measure.
+- A second, near-free interaction target (`#cheap-tap`) that flips one attribute. The blocking
+  handler quantizes INP to 88 ms on every run of every arm — sixty CI runs returned 88 sixty
+  times — so a toolbar costing single-digit milliseconds is invisible inside it. The cheap
+  target is where that cost is a visible fraction of the number.
 
 Every delay is fixed. Nothing depends on wall-clock time or network conditions, so a measured
 delta reflects a code change rather than fixture variance.

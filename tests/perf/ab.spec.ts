@@ -41,6 +41,10 @@ interface Sample {
   attributedFrameMs: number;
   /** d0bar-attributed script time across the whole run, in ms. */
   attributedTotalMs: number;
+  /** Taps on the fixture's cheap target that were slow enough to be reported at all, of 5. */
+  cheapTapsOverFloor: number;
+  /** The worst reported cheap tap, in ms. 0 means none crossed the 16 ms reporting floor. */
+  cheapTapMax: number;
 }
 
 interface Budget {
@@ -49,6 +53,7 @@ interface Budget {
   tbtP95: number;
   longTaskCount: number;
   attributedFrameMs: number;
+  cheapTapsOverFloor: number;
 }
 
 /** Committed thresholds. Raising one requires reviewer sign-off in the PR body. */
@@ -70,6 +75,22 @@ const BUDGET: Budget = {
    * *worst* task of a run, not an average.
    */
   attributedFrameMs: 8,
+  /**
+   * How many more of the twenty runs' cheap taps may cross the 16 ms reporting floor in `on`
+   * than in `gated`, summed across the run.
+   *
+   * Five taps per run, twenty runs, so the pool is 0-100 per arm and the resolution is one
+   * tap. This is the row that answers the question `inp` cannot: `#confirm-hold` blocks for
+   * 84 ms deliberately, which quantizes to 88 on every run of every arm — sixty CI runs
+   * returned 88 sixty times — so a toolbar costing single-digit milliseconds is invisible
+   * inside it. `#cheap-tap` flips an attribute and nothing else, so it sits just under the
+   * floor and anything that pushes it over is visible as a count.
+   *
+   * Five is provisional and marked as such in `bench/budget.json`: it is a fifth of one arm's
+   * pool, chosen before the first calibration run rather than after it. The number to replace
+   * it with is whatever `gated`'s own run-to-run spread turns out to be on CI.
+   */
+  cheapTapsOverFloor: 5,
 };
 
 type Arm = "off" | "gated" | "on";
@@ -80,6 +101,10 @@ function percentile(values: number[], p: number): number {
   const sorted = [...values].sort((a, b) => a - b);
   const rank = Math.ceil((p / 100) * sorted.length) - 1;
   return sorted[Math.min(Math.max(rank, 0), sorted.length - 1)] as number;
+}
+
+function sum(values: number[]): number {
+  return values.reduce((a, b) => a + b, 0);
 }
 
 function mean(values: number[]): number {
@@ -180,9 +205,18 @@ async function measure(page: Page, arm: Arm): Promise<Sample> {
     );
 
     /* Real input events, so the browser produces genuine `event` entries with interaction ids
-       rather than synthetic ones that never reach INP. */
-    for (let i = 0; i < 5; i++) {
+       rather than synthetic ones that never reach INP.
+
+       Two targets, measuring two different things. `#confirm-hold` blocks 84 ms and gives the
+       fixture the poor INP it is supposed to have; two clicks are enough, because with fewer
+       than fifty interactions INP is simply the slowest one. `#cheap-tap` does almost nothing
+       and is where a toolbar cost is actually visible — see `cheapTapsOverFloor`. */
+    for (let i = 0; i < 2; i++) {
       await page.click("#confirm-hold");
+      await page.waitForTimeout(120);
+    }
+    for (let i = 0; i < 5; i++) {
+      await page.click("#cheap-tap");
       await page.waitForTimeout(120);
     }
     await page.waitForTimeout(300);
@@ -196,6 +230,8 @@ async function measure(page: Page, arm: Arm): Promise<Sample> {
       tbt: metrics.tbt,
       longTasks: metrics.longTasks,
       inp: metrics.inp,
+      cheapTapsOverFloor: metrics.cheapTapsOverFloor,
+      cheapTapMax: metrics.cheapTapMax,
     };
   });
   return {
@@ -300,6 +336,19 @@ test(
          is the bundle's own evaluation and `off` is zero; both are asserted as controls. */
         attributedFrameMsP95: { ...row("attributedFrameMs"), budget: BUDGET.attributedFrameMs },
         attributedTotalMsP95: row("attributedTotalMs"),
+      /**
+       * Summed across runs, not aggregated at a percentile — the per-run value is 0 to 5 and
+       * a percentile of it has the same resolution problem as the long-task row did. The sum
+       * over twenty runs is 0 to 100 per arm and its resolution is one tap.
+       */
+      cheapTapsOverFloor: {
+        off: sum(pick("off", "cheapTapsOverFloor")),
+        gated: sum(pick("gated", "cheapTapsOverFloor")),
+        on: sum(pick("on", "cheapTapsOverFloor")),
+        budget: BUDGET.cheapTapsOverFloor,
+      },
+      /* For reading: what a cheap tap actually cost when it did cross the floor. */
+      cheapTapMaxP95: row("cheapTapMax"),
         /* Reported for visibility, not gated: LCP on this fixture is dominated by a fixed
          server delay, so its run-to-run spread is wider than any toolbar effect. */
         lcpP95: row("lcp"),
@@ -315,6 +364,7 @@ test(
       tbtP95: against("tbtP95"),
       cls: against("clsMax"),
       longTasksMean: against("longTasksMean"),
+    cheapTapsOverFloor: against("cheapTapsOverFloor"),
       lcpP95: against("lcpP95"),
       /* Deliberately absent: `attributedFrameMsP95` is not a difference, and INP is not
        compared as one — see `inpSign`. */
@@ -330,7 +380,9 @@ test(
 
     console.log("observer-effect deltas (on − gated):", deltas);
     console.log("attributed d0bar main-thread time:", result.metrics.attributedFrameMsP95);
-    console.log("INP per arm (median / p95):", {
+    console.log("cheap taps over the 16 ms floor:", result.metrics.cheapTapsOverFloor);
+  console.log("worst cheap tap p95 (ms):", result.metrics.cheapTapMaxP95);
+  console.log("INP per arm (median / p95):", {
       off: result.metrics.inp.off,
       gated: result.metrics.inp.gated,
       on: result.metrics.inp.on,

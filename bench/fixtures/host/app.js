@@ -107,6 +107,17 @@
     }
   });
 
+  /* The cheap one. An attribute flip and a class toggle -- no blocking, no layout thrash, no
+     network. Its whole purpose is to leave INP dominated by the browser's own event-to-paint
+     path, so a toolbar costing a few milliseconds is a visible fraction of the result instead
+     of vanishing into the 88 ms bucket that `confirm-hold` pins every run to. */
+  var cheap = document.getElementById("cheap-tap");
+  cheap.setAttribute("aria-pressed", "false");
+  cheap.addEventListener("click", function () {
+    var on = cheap.getAttribute("aria-pressed") === "true";
+    cheap.setAttribute("aria-pressed", on ? "false" : "true");
+  });
+
   /* The fixture declares its own readiness, so the harness never guesses with a sleep. */
   window.__fixtureReady = new Promise(function (resolve) {
     addEventListener("load", function () {
