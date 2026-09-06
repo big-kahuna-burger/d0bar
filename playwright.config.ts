@@ -18,7 +18,10 @@ export default defineConfig({
     video: "off",
   },
   webServer: {
-    command: "node bench/fixtures/server.mjs",
+    /* The OTel fixture's SDK bundle is rebuilt here rather than committed: it is a bundle of
+       someone else's package, and a stale one is exactly the kind of thing that gets debugged
+       for an hour. Cheap — esbuild, one entry point. */
+    command: "node scripts/build-otel-fixture.mjs && node bench/fixtures/server.mjs",
     url: "http://127.0.0.1:8732/health",
     /* Never reuse locally: the fixture server is part of what the tests measure, so a
        process left over from before a fixture edit silently serves the old routes. That

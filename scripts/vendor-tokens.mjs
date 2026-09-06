@@ -43,6 +43,7 @@ const WANTED = {
   lvl2Bg: "--lvl-2-bg",
   lvl2Stroke: "--lvl-2-stroke",
   lvl3Bg: "--lvl-3-bg",
+  lvl3Stroke: "--lvl-3-stroke",
   shadowXl: "--shadow-xl",
   shadow2xl: "--shadow-2xl",
 };

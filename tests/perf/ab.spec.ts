@@ -51,7 +51,9 @@ function mean(values: number[]): number {
 
 async function measure(page: Page, arm: "on" | "off"): Promise<Sample> {
   await page.goto(`/?d0bar=${arm}`, { waitUntil: "load" });
-  await page.evaluate(() => (window as unknown as { __fixtureReady: Promise<void> }).__fixtureReady);
+  await page.evaluate(
+    () => (window as unknown as { __fixtureReady: Promise<void> }).__fixtureReady,
+  );
 
   /* Real input events, so the browser produces genuine `event` entries with interaction ids
      rather than synthetic ones that never reach INP. */

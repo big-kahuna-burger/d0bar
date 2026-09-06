@@ -4,7 +4,7 @@
    Dash0 token and falling back to the design system's resolved value — so the pill is
    correct on a page that has neither. V references those aliases from TypeScript. */
 
-export const PRELUDE = ":host{--d0-bg:var(--lvl-1-bg, #1f1f22);--d0-stroke:var(--lvl-1-stroke, #38383b);--d0-hover-bg:var(--lvl-1-hover-bg, #27272a);--d0-hover-stroke:var(--lvl-1-hover-stroke, #414144);--d0-badge-bg:var(--lvl-2-bg, #27272a);--d0-text-intense:var(--lvl-0-intense-text, #ffffff);--d0-text:var(--lvl-0-text, #bdbdc0);--d0-text-subtle:var(--lvl-subtle-text, #939396);--d0-cta:var(--cta-bg, #7c3aed);--d0-healthy:var(--healthy-bg, #48b78c);--d0-warning:var(--warning-bg, #ffe54f);--d0-warning-inline:var(--warning-text-inline, #ffe54f);--d0-error:var(--error-bg, #e33238);--d0-shadow:var(--shadow-lg, 0 10px 15px -3px rgb(0 0 0 / 0.2), 0 4px 6px -2px rgb(0 0 0 / 0.15));--d0-font-sans:var(--font-sans, \"Inter\", \"Inter Variable\", system-ui, -apple-system, \"Segoe UI\", sans-serif);--d0-font-mono:var(--font-mono, \"JetBrains Mono\", \"Fira Code\", ui-monospace, \"SF Mono\", Menlo, monospace);--d0-lvl2-bg:var(--lvl-2-bg, #27272a);--d0-lvl2-stroke:var(--lvl-2-stroke, #414144);--d0-lvl3-bg:var(--lvl-3-bg, #303033);--d0-shadow-xl:var(--shadow-xl, 0 20px 25px -5px rgb(0 0 0 / 0.2), 0 8px 10px -6px rgb(0 0 0 / 0.15));--d0-shadow2xl:var(--shadow-2xl, 0 25px 50px -12px rgb(0 0 0 / 0.4))}";
+export const PRELUDE = ":host{--d0-bg:var(--lvl-1-bg, #1f1f22);--d0-stroke:var(--lvl-1-stroke, #38383b);--d0-hover-bg:var(--lvl-1-hover-bg, #27272a);--d0-hover-stroke:var(--lvl-1-hover-stroke, #414144);--d0-badge-bg:var(--lvl-2-bg, #27272a);--d0-text-intense:var(--lvl-0-intense-text, #ffffff);--d0-text:var(--lvl-0-text, #bdbdc0);--d0-text-subtle:var(--lvl-subtle-text, #939396);--d0-cta:var(--cta-bg, #7c3aed);--d0-healthy:var(--healthy-bg, #48b78c);--d0-warning:var(--warning-bg, #ffe54f);--d0-warning-inline:var(--warning-text-inline, #ffe54f);--d0-error:var(--error-bg, #e33238);--d0-shadow:var(--shadow-lg, 0 10px 15px -3px rgb(0 0 0 / 0.2), 0 4px 6px -2px rgb(0 0 0 / 0.15));--d0-font-sans:var(--font-sans, \"Inter\", \"Inter Variable\", system-ui, -apple-system, \"Segoe UI\", sans-serif);--d0-font-mono:var(--font-mono, \"JetBrains Mono\", \"Fira Code\", ui-monospace, \"SF Mono\", Menlo, monospace);--d0-lvl2-bg:var(--lvl-2-bg, #27272a);--d0-lvl2-stroke:var(--lvl-2-stroke, #414144);--d0-lvl3-bg:var(--lvl-3-bg, #303033);--d0-lvl3-stroke:var(--lvl-3-stroke, #505053);--d0-shadow-xl:var(--shadow-xl, 0 20px 25px -5px rgb(0 0 0 / 0.2), 0 8px 10px -6px rgb(0 0 0 / 0.15));--d0-shadow2xl:var(--shadow-2xl, 0 25px 50px -12px rgb(0 0 0 / 0.4))}";
 
 export const V = {
   bg: "var(--d0-bg)",
@@ -26,6 +26,7 @@ export const V = {
   lvl2Bg: "var(--d0-lvl2-bg)",
   lvl2Stroke: "var(--d0-lvl2-stroke)",
   lvl3Bg: "var(--d0-lvl3-bg)",
+  lvl3Stroke: "var(--d0-lvl3-stroke)",
   shadowXl: "var(--d0-shadow-xl)",
   shadow2xl: "var(--d0-shadow2xl)",
 } as const;

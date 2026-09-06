@@ -1,4 +1,6 @@
 import { background } from "./schedule";
+import type { RequestRecord } from "./record";
+import type { SpanEntry } from "../collector/join";
 
 /**
  * The stage-2 boundary.
@@ -74,7 +76,177 @@ export interface PanelOptions {
   root: ShadowRoot;
   /** Returns focus to the pill on close. */
   onClose(): void;
+  /**
+   * Tier 2's state, resolved by stage 1 and handed over at open time.
+   *
+   * The two stages are separate bundles, so every module exists twice with its own
+   * module-level state. `sw.ts` records the registration outcome in a variable that stage 2's
+   * copy never sees — the panel read `off` for a worker that was registered, active and
+   * controlling the page. Anything stage 1 resolves and stage 2 needs has to cross here.
+   *
+   * Structural, like the rest of this interface, so stage 1 still imports none of stage 2's
+   * types: this is the shape both sides agree on, declared once, on the boundary.
+   */
+  tier2: Tier2State;
+  /**
+   * Tier 4's state, resolved by stage 1 and handed over at open time.
+   *
+   * Crosses the boundary for exactly the reason `tier2` does, and the failure would be the
+   * same shape: `otel.ts` records the detection outcome in a module-level variable, so
+   * stage 2's copy of that module is a second one that has never run detection and reports
+   * `no-sdk` on a page whose provider d0bar is attached to.
+   */
+  otel: OtelState;
+  /**
+   * Access to the request ring, which stage 1 owns.
+   *
+   * Handed over rather than imported, for the same reason as `tier2` and with a sharper
+   * failure: `ring.ts` holds its records in a module-level typed array, so stage 2's copy of
+   * that module is a *second, empty ring*. Importing it from the panel produced a join with
+   * nothing on the tier 1 side, which reported every one of the worker's records as an
+   * untraced request — a badge reading 307 on a page where almost everything was traced.
+   *
+   * Not a data copy: `entries()` projects the three fields the join needs, and `correlate()`
+   * writes results back into the real ring in stage 1.
+   */
+  tier1: Tier1Access;
 }
+
+export interface Tier1Access {
+  /** The current ring contents, projected to what the join keys on. */
+  entries(): Array<{ index: number; url: string; startTime: number }>;
+  /** Writes tier 2's fields back. Timings and status are not passed and cannot be touched. */
+  correlate(
+    index: number,
+    fields: { method: string; contextId: number; hasSpan: boolean },
+  ): void;
+  /**
+   * The spans tier 4 has adopted, projected to what the join keys on.
+   *
+   * Handed across for the same reason as the ring: `otel-sink.ts` holds its spans in
+   * module-level typed arrays, so stage 2's copy of that module is a second, empty sink. An
+   * empty array here is the ordinary case — most pages have no OpenTelemetry SDK.
+   */
+  spans(): SpanEntry[];
+  /**
+   * Writes tier 4's identity onto a record tier 2 never matched.
+   *
+   * Identity only, and the type is what enforces it: there is no field here for a timing, a
+   * status or a size, so tier 4 cannot overwrite a number tier 1 measured. A record tier 2
+   * already gave a trace id keeps tier 2's — the header is what the backend received.
+   */
+  adoptSpan(index: number, contextId: number): void;
+  /**
+   * Marks a record where tier 2 and tier 4 disagree about the trace id.
+   *
+   * Sets `F_TRACE_CONFLICT` and nothing else. The disagreement is not resolved here or
+   * anywhere: one of the two joins matched the wrong pair, and picking a winner would print
+   * a wrong trace id with full confidence.
+   */
+  flagConflict(index: number): void;
+  /**
+   * Records currently retained, and how many were lost to overflow.
+   *
+   * `written` is the absolute count of everything ever recorded, which is what tells the
+   * list that the ring's base moved: on overflow every retained record's index shifts down
+   * by one, so a scroll offset and a selected index that are not adjusted by the same amount
+   * silently come to mean different rows.
+   */
+  stats(): { written: number; dropped: number; capacity: number };
+  /**
+   * Fills `out` with the record at `index`, counting from the oldest retained record.
+   * Returns false when the index is out of range.
+   *
+   * Fill-a-scratch rather than return-a-record, across the boundary as well as inside it:
+   * the list re-reads its whole window on every repaint, and a per-row object would put an
+   * allocation per row per frame on the main thread of the page being measured.
+   */
+  read(index: number, out: RequestRecord): boolean;
+  /**
+   * Notified once after each post-settle batch of resource entries. Returns a teardown.
+   *
+   * Push, not poll. The alternative — the panel checking the ring's length every frame while
+   * open — burns a frame's worth of work on every frame in which nothing happened.
+   */
+  onBatch(fn: () => void): () => void;
+  /**
+   * Document visibility, read from the `visibility-state` entry type rather than from a
+   * `visibilitychange` listener, and handed across the boundary for that reason: stage 2
+   * registering its own listener would break the zero-host-listeners property that
+   * `non-perturbation.spec.ts` asserts against the browser's real listener registry.
+   */
+  onVisibility(fn: (visible: boolean) => void): () => void;
+  visible(): boolean;
+  /**
+   * The vitals accumulator's current reading, plus the entry types this browser accepted.
+   *
+   * Handed across for the same reason as the ring, and it is not a hypothetical: the
+   * accumulator in `collector/vitals.ts` keeps its totals in module-level variables, so
+   * importing that module from the panel yields a second, empty copy that would report
+   * `LCP unavailable` on a page where the browser had reported one. This is the only way
+   * stage 2 sees stage 1's numbers.
+   */
+  vitals(): VitalsReading;
+  /**
+   * Notified once after each batch of vitals entries. Returns a teardown.
+   *
+   * Its own signal, not the resource batch: a layout shift is not a request, and firing the
+   * two together would repaint the requests list once per shift on the page being measured.
+   */
+  onVitals(fn: () => void): () => void;
+}
+
+/**
+ * What the vitals surface is allowed to know.
+ *
+ * Every field is a number or a string — never a browser entry and never a DOM node. The
+ * absence conventions are load-bearing and are the whole reason this shape is declared on the
+ * boundary rather than inferred:
+ *
+ *   - `lcp`, `inp`, `ttfb` are `-1` when the browser has reported none. Not zero: a zero here
+ *     would render as a very good score for a measurement that never happened.
+ *   - `cls` and `loafCount` start at zero legitimately — an observer registered with
+ *     `buffered: true` that has delivered no shift is reporting that the page did not shift.
+ *     Whether the observer exists at all is `entryTypes`, not the value.
+ *   - the attribution strings are empty when the entry carried no attribution. The card then
+ *     states that attribution is unavailable rather than naming a likely element.
+ */
+export interface VitalsReading {
+  lcp: number;
+  cls: number;
+  inp: number;
+  ttfb: number;
+  loafCount: number;
+  loafLongest: number;
+  lcpElement: string;
+  clsSource: string;
+  inpTarget: string;
+  inpTargetIsScored: boolean;
+  loafScript: string;
+  /** Entry types this browser accepted. An absent type is a state to report, not an error. */
+  entryTypes: readonly string[];
+}
+
+/** Mirrors `collector/otel.ts`. Duplicated deliberately — see the note on `PanelModule`. */
+export type OtelState =
+  | { kind: "live"; owner: "d0bar" | "host" }
+  | {
+      kind: "off";
+      reason: "no-sdk" | "no-provider" | "provider-sealed" | "attach-failed";
+    };
+
+/** Mirrors `collector/sw.ts`. Duplicated deliberately — see the note on `PanelModule`. */
+export type Tier2State =
+  | { kind: "live"; owner: "d0bar" | "host" }
+  | {
+      kind: "off";
+      reason:
+        | "unsupported"
+        | "insecure-context"
+        | "scope-owned"
+        | "registration-failed"
+        | "not-registered";
+    };
 
 export interface PanelHandle {
   show(): void;

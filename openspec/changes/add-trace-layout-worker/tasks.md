@@ -1,36 +1,78 @@
 # Tasks — trace layout worker
 
+> **Measured, on this tree.** A 4001-row trace (4000 spans plus the browser web event, 41
+> services, max depth 25, 951 kB of OTLP JSON) through the shipped
+> `dist/d0bar-layout-worker.js` in Chromium:
+>
+> | | |
+> | --- | --- |
+> | worker | **12.2 ms** |
+> | main thread | **0.10 ms** (budget 16 ms) |
+> | long tasks during the layout | **0** |
+>
+> `tests/perf/trace-layout.spec.ts`, run. The design's estimate for `JSON.parse` inside the
+> worker was "tens of milliseconds"; the streaming decoder and the WASM protobuf path stay
+> deferred, and the recorded ceiling is now a number rather than an expectation.
+>
+> **This change closes `add-trace-view` 2.1 and 2.4.** The panel now issues
+> `POST /api/trace/details` through the credentialed service worker and hands the body to this
+> worker as text. `TraceSummary.spans: SpanRow[]` became `rows: SpanRows` — a `read(index, out)`
+> accessor over the transferred buffer, the same scratch pattern the request ring uses.
+> Materialising 4000 objects on arrival would have put back most of the allocation cost the
+> worker exists to move off that thread.
+
 ## 1. Protocol
-- [ ] 1.1 `src/shared/protocol.ts` — discriminated-union message types, versioned
-- [ ] 1.2 Request: raw OTLP JSON text plus the trace's time bounds
-- [ ] 1.3 Response: transferable `ArrayBuffer` (SoA rows) plus a string table plus a summary
-- [ ] 1.4 Error response type — malformed payload never throws across the boundary as an unhandled rejection
-- [ ] 1.5 Type tests asserting main thread and worker agree on the layout constants
+
+- [x] 1.1 `src/shared/protocol.ts` — discriminated-union message types, versioned (`LAYOUT_PROTOCOL_VERSION`, checked on both sides)
+- [x] 1.2 Request: raw OTLP JSON text plus the trace's time bounds. The bounds are **not** the denominator — a trace scaled to a ±2s query window is a smudge — they are the fallback scale when the spans supply none (one instantaneous span). Recorded on `LayoutRequest.from`.
+- [x] 1.3 Response: transferable `ArrayBuffer` (SoA rows, 27 B each) plus a string table plus a summary
+- [x] 1.4 Error response type — five named reasons; `layout.worker.ts` wraps the call so a bug becomes `internal` rather than an unhandled rejection the panel waits on forever
+- [x] 1.5 Both realms agree on the layout **because there is only one**: `layoutViews()` is called by the worker to write and by the panel to read, so an offset cannot be computed twice and differ. A type test cannot catch a wrong offset; this makes one unnecessary. `layout.test.ts` asserts alignment at odd counts and pins `ROW_BYTES` at 27.
 
 ## 2. Worker
-- [ ] 2.1 `src/worker/layout.worker.ts` as a module worker; built as its own entry
-- [ ] 2.2 Created lazily on first trace open; terminated after an idle period
-- [ ] 2.3 Parse OTLP `resourceSpans` → spans, `resourceLogs` → correlated logs, `webEvents` → the browser root
-- [ ] 2.4 Resolve parent links to depth; emit rows in render order
-- [ ] 2.5 Compute `left` / `width` as percentages of the trace's total bounds
-- [ ] 2.6 Assign palette index per service on first appearance; stable across renders
-- [ ] 2.7 Flags: root, error (from span status), orphan
-- [ ] 2.8 Summary: span count, service count, log count, total duration
+
+- [x] 2.1 `src/worker/layout.worker.ts` as a module worker, built as its own entry (`D0BAR_STAGE=worker` → `dist/d0bar-layout-worker.js`, 2.52 kB gzipped)
+- [x] 2.2 Created lazily on the first trace laid out; terminated after 30 s idle, and never while a layout is in flight — `layout-client.ts`, asserted in `layout-client.test.ts`
+- [x] 2.3 Parse OTLP `resourceSpans` → spans, `resourceLogs` → correlated logs, `webEvents` → the browser root. Also accepts the pre-0.16 `instrumentationLibrarySpans` / `instrumentationLibraryLogs`, which collectors in the wild still emit.
+- [x] 2.4 Resolve parent links to depth; emit rows in render order. Both walks are iterative — a legitimately 4000-deep chain must not take the worker's stack with it.
+- [x] 2.5 `left` / `width` as fractions of the trace's own extent, taken from the *emitted* rows so a capped row cannot shrink a bar the reader can see
+- [x] 2.6 Palette index per service on first appearance in render order, wrapped into the nine-slot palette; stable across renders because ties break on input order
+- [x] 2.7 Flags: root, error (span status, both the enum name and the number), orphan — plus cycle and degenerate
+- [x] 2.8 Summary: span count, `spansSeen`, service count, log count, total duration, and the most severe correlated log
 
 ## 3. Robustness
-- [ ] 3.1 Orphan spans rendered at depth 0 and flagged, never dropped
-- [ ] 3.2 Cycles broken deterministically and flagged
-- [ ] 3.3 Zero-duration and negative-duration spans clamped to a minimum visible width, flagged
-- [ ] 3.4 Malformed JSON returns an error response with a reason
-- [ ] 3.5 Span count cap with an explicit truncation flag the UI must surface
-- [ ] 3.6 Unit tests for each of the above against crafted fixtures
+
+- [x] 3.1 Orphan spans rendered at depth 0 and flagged, never dropped — and not passed off as the root
+- [x] 3.2 Cycles broken at the span that closes the chain, flagged `F_CYCLE`; deterministic given the input order rather than dependent on where the walk entered
+- [x] 3.3 Zero- and negative-duration spans widened to a minimum visible width and flagged `F_DEGENERATE`; `durationNs` stays 0, so the width is never read back as a measurement
+- [x] 3.4 Malformed JSON returns `malformed-json` with a displayable message that does not echo the body
+- [x] 3.5 `SPAN_CAP` = 8192 with `truncated`, and both `spanCount` and `spansSeen` so the UI can say how much is missing. Set above the 4000-span budget case on purpose, so the benchmark measures a whole trace; truncation is exercised with an injected cap.
+- [x] 3.6 Unit tests for each of the above — `tests/unit/layout.test.ts`, 26 tests
 
 ## 4. Budget
-- [ ] 4.1 Bench: 4000-span fixture end to end — worker time recorded, main-thread time asserted at zero beyond the message handler
-- [ ] 4.2 Assert the response buffer is transferred, not copied
-- [ ] 4.3 Playwright: open a 4000-span trace while measuring INP — assert no long task on the main thread
-- [ ] 4.4 Budget rows committed for worker time and main-thread time
+
+- [x] 4.1 `bench/fixtures/trace-4000.json` generated by `scripts/build-trace-fixture.mjs` (deterministic, seeded) and driven end to end. **Synthetic, and said so** — capturing a real 4000-span trace would put a customer's service names and URLs in this repository. The shape is faithful, including nanosecond timestamps as protojson strings and spans in emission rather than tree order. This also satisfies `add-perturbation-budget` 2.2.
+- [x] 4.2 Transfer asserted twice: `toResponse` returns the buffer in its transfer list (node), and the browser demonstrates ownership by transferring the received buffer onward
+- [x] 4.3 `tests/perf/trace-layout.spec.ts` — 0 long tasks during the layout, from the browser's own `longtask` observer with `buffered: false`
+- [x] 4.4 Budget rows committed — `bench/budget.json` `traceLayout`: `workerMs` reported, `layoutMainThreadMs` gated at 16 ms, `layoutLongTasks` gated at 0
 
 ## 5. Independent cross-check
-- [ ] 5.1 Test that takes a trace id the toolbar rendered and fetches it via the Dash0 MCP `getTraceDetails` tool
-- [ ] 5.2 Assert the span sets agree — catches flattening bugs the UI would hide
+
+- [ ] 5.1 Test that takes a trace id the toolbar rendered and fetches it via the Dash0 MCP `getTraceDetails` tool — **not built.** See below.
+- [ ] 5.2 Assert the span sets agree — **not built**, blocked on 5.1.
+
+> **Why 5.1 and 5.2 are unchecked.** They need a *live tenant*: `getTraceDetails` takes a real
+> `traceId` and a `dataset`, and the trace has to be one this toolbar actually rendered, which
+> means a real page, a real token and a real ingested trace. Nothing in this repository has
+> those, and nothing in CI can. Writing a test that skips itself whenever they are absent would
+> be a green check for a cross-check that never runs — which is exactly the shape of dishonesty
+> the rest of this file is built to avoid.
+>
+> The gap it leaves is real and worth naming: every assertion above compares the worker against
+> a fixture **this repository generated**, so a systematic misreading of OTLP — a wrong field
+> name, a parent link read from the wrong place — would be encoded identically in the generator
+> and the reader and would pass. What guards against it today is that the fixture is written
+> against the published OTLP JSON mapping rather than against the reader, and that the reader
+> accepts shapes the generator never emits (`instrumentationLibrarySpans`, the numeric *and*
+> named status enums). That is weaker than an independent source and is not presented as
+> equivalent to one.

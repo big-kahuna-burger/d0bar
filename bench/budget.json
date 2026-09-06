@@ -82,5 +82,105 @@
       "lastMeasured": null,
       "rationale": "Stage 2, fetched only on first open or by a post-settle background prefetch, so it is off the host's critical path by construction. Measured separately because it is a separate artifact: IIFE output cannot code-split, so the panel is built as its own ES module and loaded by runtime URL from either build."
     }
+  ],
+  "bundleSize": [
+    {
+      "artifact": "dist/d0bar.js / dist/d0bar.iife.js",
+      "limit": "8.5 kB",
+      "previousLimit": "8 kB",
+      "lastMeasured": "7.72 kB ESM, 7.83 kB IIFE",
+      "raisedLastBy": "the pill's activity dot, on the user's explicit instruction",
+      "raisedLastRationale": "180 B, measured rather than estimated: stage 1 built with the dot removed is 7.54 kB ESM / 7.65 kB IIFE, and with it 7.72 / 7.83. Almost all of that is the stylesheet — the keyframes, the resting rule and the reduced-motion override — plus the `fire()` restart, which is four lines because the animation is CSS. The alternative considered and rejected was driving the colour from JS, which is smaller in bytes and worse on the only axis that matters: it would put a style write per frame on the main thread of the page whose INP d0bar reports. The restart is `Animation.currentTime = 0` rather than the usual remove-class / read-offsetWidth / add-class trick, because that trick forces a synchronous layout in the host document and this file exists to not do that. The dot is not decoration: the request counter only moves on the 500ms clock and only by one, so a busy page and an idle one look alike until you read the number. Verified in Chromium (`tests/perf/pulse.spec.ts`): purple at rest, yellow at the blink, an oklab midpoint on the settle, purple at the end, and no animation at all under `prefers-reduced-motion: reduce`. The structural fix recorded below is still available and still not taken.",
+      "previousRaisedBy": "add-vitals-view and add-otel-adoption, on the user's explicit instruction",
+      "previousRaisedRationale": "Raised on the user's explicit instruction, after being deliberately left alone twice. This is the number the product's central claim rests on, so what it now covers is recorded rather than absorbed. Two changes account for the 1.01 kB: add-vitals-view cost about 410 B for vital attribution (`selectorOf`, six module-level strings and the four capture sites), none of which can move to stage 2 because the selector has to be derived while the entry's element is still alive and the panel loads long after; add-otel-adoption cost about 850 B for tier 4's detection ladder, the span sink and the three new boundary methods. THE HONEST OBJECTION TO THE SECOND ONE: the sink is roughly 500 B of code that is dead on any page without an OpenTelemetry SDK, which is the overwhelming majority of them, and it is on the critical path because `otelSpanProcessor()` must be callable synchronously when a host constructs their provider — long before a dynamic import could resolve. The structural fix for the whole budget is still the one recorded below and still not taken: deferring the pill behind a post-settle dynamic import restores roughly 1.7 kB, which is more than both changes combined.",
+      "rationale": "Stage 1 is the only bundle on a host page's critical path, so this is the number the product's central claim rests on. Unchanged by add-sw-correlator, which cost it 0.28 kB (5.49 -> 5.77) for worker registration alone; the join and the log read deliberately live in stage 2. Unchanged by add-requests-view, which cost it 0.48 kB (5.77 -> 6.25): the ring stays in stage 1 and the panel is given a window onto it, so the boundary gained `stats`, `read`, `onBatch`, `onVisibility` and `visible` — five object-literal keys that cannot be mangled — plus the resource-batch notifier in observe.ts and the visibility reader in phase.ts. The list, the virtualizer and every row's markup are stage 2. 0.25 kB of headroom remains; the next stage-1 addition needs a measurement before it is written, not after."
+    },
+    {
+      "artifact": "dist/d0bar.panel.js",
+      "limit": "23.5 kB",
+      "previousLimit": "22 kB",
+      "lastMeasured": "23.07 kB",
+      "$historyNote": "Raises are newest-first in `history`. Previously these were `raisedNowBy` / `raisedLastBy` / `raisedAgainBy` / `raisedNowestBy` key pairs, which had run out of adjectives; the rationales below are those keys' values verbatim, in order, and nothing was rewritten.",
+      "history": [
+        {
+          "by": "1.5 kB (22 -> 23.5 kB); measured 23.07 kB, leaving 0.43 kB of headroom",
+          "rationale": "Raised for `add-trace-layout-worker`, which is the change that makes the previous raise pay off. That entry recorded, honestly, that roughly half the 3.19 kB it bought was \"paying for a screen no user can currently reach\", because the trace surface could not reach its `found` state without a credential and a flattener. Both have now landed: `add-pasted-token` supplies the credential and this change supplies the layout. The 1.07 kB overage is the panel's half of it — `layout-client.ts` (the worker's lifecycle, the typed-array row accessor), `trace/query.ts` (the POST, the four connection-failure sentences) and the constants and views from `shared/protocol.ts`. The flattening itself is not in this number at all: it is a separate 2.52 kB artifact fetched only when a trace is first opened, which is the whole point of the split. Measured before raising and trimmed before measuring — `LAYOUT_FAILURE_COPY` was shipping all five worker-side sentences into stage 2 for the one the panel can raise itself, and `VERSION_MISMATCH_COPY` was split out so the record tree-shakes. Stage 1 is unchanged at 7.72 / 7.83 kB, so nothing followed this onto the critical path."
+        },
+        {
+          "by": "add-pasted-token's environment toggle",
+          "rationale": "653 B (20.61 -> 21.26, settling at 21.24) for the dev/prod environment toggle and the region table it drives, which put the panel 263 B over 21 kB. Measured before raising. What bought it: the toggle's two buttons with their radiogroup semantics and the `fillRegions` rebuild that swaps the region control when the environment changes; `regionsIn` and `environmentOf`; two more rows in the compiled table; ~1 kB of new CSS for the segmented control, which gzips to very little; and two environment notes plus `SOLE_REGION_NOTE`, which are prose. The prose is the part worth defending. The dev note says that a production token is rejected in the development environment and that the rejection looks exactly like a revoked token — which is the failure this whole control exists to prevent, and is unguessable from a 401. Trimming it buys perhaps 60 B and costs a developer an afternoon. The table rows are not trimmable either: they are measurements, not decoration — see the probe block at the top of `src/shared/regions.ts`. Stage 2 is fetched at background priority after settle and is never on the critical path, which is why its budget can move where stage 1's cannot. Stage 1 is unmoved by this change at 7.72 kB ESM / 7.83 kB IIFE, and the worker moved 2.33 -> 2.38 kB against a 3 kB limit; neither the toggle nor the copy is on a host page's critical path. Re-measured after the region table was corrected against `dash0hq/dash0-configuration`: two more regions (gcp europe-west4 in both environments) and the removal of the single-region branch — which the corrected table made unreachable, dev now carrying two regions — net to -20 B. So the six-region table costs nothing over the four-region one; the raise is the toggle and its copy, as recorded above."
+        },
+        {
+          "by": "add-untraced-view's `subresource` cause",
+          "rationale": "190 B (17.77 -> 17.96) for one more cause and its sentence, and the headroom to keep the tab honest as causes are added. Raised on the user's instruction to go wider and measure. What it bought: `/app.css`, `/app.js` and `/metrics.js` were being listed as instrumentation gaps — true, and useless, because no SDK can put a `traceparent` on a request the parser issued, and they were burying the API calls the tab exists to surface. The new cause keys off the browser's own `initiatorType`, not off the file extension, so it is an observation like every other cause here. Stage 2 is fetched at background priority after settle and is never on the critical path, which is why its budget can move where stage 1's cannot."
+        },
+        {
+          "by": "add-untraced-view",
+          "rationale": "1.27 kB for the last placeholder tab: the coverage classifier, the view, its stylesheet, and five cause sentences plus three headline states. The copy is the tab — the entire argument for tier 2 is that 'missing' is not a finding and that a wrong-transport gap, a third-party gap and a request the worker watched go out bare have three different fixes. Stage 1 moved 30 B (7.51 -> 7.54): the classifier and the view are stage 2, and the only stage-1 change was the `seen` set crossing the boundary. Stage 2 is fetched at background priority after settle and is never on the critical path."
+        },
+        {
+          "by": "add-otel-adoption",
+          "rationale": "660 B for tier 4's panel side: the four `OTEL_BLOCKED_COPY` strings and the two live-tier explanations, which are the tab's honest-degradation ladder rather than trimmable prose, plus the tier 4 join and the conflict path. Stage 2 is fetched at background priority after settle and is never on the critical path, which is why its budget can move where stage 1's could not."
+        },
+        {
+          "by": "add-pasted-token",
+          "rationale": "2.18 kB (17.98 -> 20.18) for the connect surface. Measured before raising, and split before deciding — though the split is indicative rather than exact, because each source was gzipped standalone and the shared stream compresses better: standalone the four new sources total ~4.4 kB against a measured 2.18 kB delta, so gzip is recovering about half. Of that standalone total, the panel.css block is 831 B and copy.ts is 1,297 B, of which 1,384 B raw-gzipped is English prose. So the majority of this raise is words. They are not trimmable words. Two of them are the change: that persisting the token puts it where the host page can read it, and that d0bar cannot verify the restrictions it asks the token to carry. Both are admissions, both are the reason this surface exists rather than a text field and a save button, and a shorter version of either is a screen that tells a developer something false about their own credential. The custody options carry their cost in the option itself for the same reason. Stage 2 is fetched at background priority after settle and is never on the critical path, which is why its budget can move where stage 1's cannot."
+        },
+        {
+          "by": "add-trace-view",
+          "rationale": "Raised after the trace view measured 3.54 kB over. Measured on this tree rather than taken from the agent's report, and split before raising: rebuilding with only the `add-trace-view` CSS section removed gives 14.31 kB, so the surface costs 0.73 kB of stylesheet and 3.19 kB of code. The code is a hand-rolled state machine and the span waterfall; XState was measured and rejected at 13.10 kB gzipped for the six imports the machine needs, which is larger than the entire panel. Stage 1 is byte-identical across this merge (6.66 kB ESM, 6.76 kB IIFE both before and after), so the trace view put nothing on the critical path. What this budget does NOT yet buy: the surface cannot reach its `found` state in a shipped build, because issuing the query needs a credential `add-credential-broker` supplies and that change is unbuilt. Roughly half the 3.19 kB is therefore paying for a screen no user can currently reach, and the honest options if this is unacceptable are to defer the trace view behind its own dynamic import or to hold it out of the bundle until the broker lands — not to trim the absence copy, which is the only part of it that runs today."
+        },
+        {
+          "by": "add-vitals-view",
+          "rationale": "Raised by explicit decision after the vitals view measured 621 B over. Measured before deciding, and split before raising: of the vitals overrun, 190 B is CSS and 1.10 kB is code, and gzip had already collapsed the repetition — a pass compacting `format.ts` into a table-driven builder moved the total by 10 B, so the cost is unique English copy plus the DOM module, not duplication. The copy is not padding: it is the three distinct 'nothing reported' sentences, the `unsupported` branch that separates 'this browser cannot report it' from 'it has not happened', and the per-card accessible name that gives a screen-reader user the absences a sighted user reads off the card. Cutting them buys roughly 250 B and costs the honest-degradation ladder that is the tab's entire claim. Stage 2 is fetched at background priority after settle and is never on the critical path, which is why its budget can move where stage 1's cannot."
+        },
+        {
+          "by": "add-requests-view",
+          "rationale": "The panel gained the view it exists for. Measured before raising, and split before deciding: of the 10.79 kB gzip vite reports for the artifact, 4.40 kB is the inlined stylesheet and 6.39 kB is code (size-limit's 9.83 kB is the same bundle re-minified by esbuild, which is the number gated). add-requests-view accounts for roughly 1.2 kB of the stylesheet — the shared column template, the trace chip, the four status tones and the waterfall's segment rules, including the hatched treatment that makes an unmeasured bar look unmeasured — and roughly 0.6 kB of code across the virtualizer, the row builder, the geometry and the formatters. None of it is deferrable: a requests tab that loads its own view on tab entry would put a fetch in front of the first thing a user clicks. Verified in the same measurement that no stage-1 code followed it across: `deliveryType` and `renderBlockingStatus` appear zero times in the panel bundle. Stage 2 is fetched at background priority after settle and is never on the critical path, which is why its budget can move where stage 1's cannot."
+        },
+        {
+          "by": null,
+          "rationale": "Raised because the panel gained a data path it did not have: the tier 1 <-> tier 2 join, the IndexedDB read of the worker's log, and tier resolution with its copy. Measured before raising rather than assumed - the four tiers' explanatory strings alone are 1,395 B gzipped against a 335 B overage, so the limit moved for content the panel exists to show, not for code that could be trimmed. The same measurement confirmed the worker-only log paths tree-shake out: `openCursor` and `readwrite` appear zero times in the panel bundle. Stage 2 is fetched at background priority after settle and is never on the critical path, which is why its budget can move where stage 1's cannot."
+        }
+      ]
+    },
+    {
+      "artifact": "dist/d0bar-sw.js",
+      "limit": "3 kB gzip",
+      "previousLimit": null,
+      "lastMeasured": "2.43 kB",
+      "addedBy": "add-pasted-token",
+      "rationale": "Newly budgeted, not newly grown — the worker had no threshold at all until now, which made it the one bundle that could grow unobserved, and it had just gone 1.39 -> 2.53 kB gzip (3.99 -> 8.22 kB raw, as vite reports it) when the token broker landed. Two numbers because there are two minifiers: size-limit re-minifies with esbuild and gates 2.07 kB, vite's own terser pass reports 2.53 kB. The gate is the esbuild number, same as for the panel. Registered after settle, so this is not the stage-1 kind of constraint; it is here so that the next increment is a decision rather than a surprise."
+    },
+    {
+      "artifact": "dist/d0bar-layout-worker.js",
+      "limit": "3 kB",
+      "lastMeasured": "2.52 kB (esbuild, gated) / 3.03 kB (vite terser, reported)",
+      "rationale": "Newly budgeted with the artifact. Fetched only when a trace is first opened and never on any load path — a developer who never opens a trace never downloads it, which is why the flattening lives here rather than in stage 2. Two numbers because there are two minifiers, same as the service worker: size-limit re-minifies with esbuild and that is what is gated. size-limit emits a warning measuring this one — \"You need to set the output format to esm for import.meta to work correctly\" — because it wraps the module in an IIFE to measure it. That is a property of the measurement harness, not of the shipped artifact, which is ESM and is loaded with `new Worker(url, { type: \"module\" })`. 0.48 kB of headroom; a streaming decoder or a WASM protobuf path would not fit inside it, which is the correct outcome — both are deliberately deferred in design.md."
+    }
+  ],
+  "traceLayout": [
+    {
+      "metric": "workerMs",
+      "threshold": null,
+      "unit": "ms",
+      "lastMeasured": 12.2,
+      "fixture": "bench/fixtures/trace-4000.json — 4001 rows (4000 spans + the browser web event), 41 services, max depth 25, 951 kB",
+      "rationale": "Reported, not gated. This is time on a thread nobody is waiting on: the panel is already showing its waiting state, and a slower flatten delays a waterfall rather than a frame. Gating it would turn machine-to-machine variance into a red suite for a number that cannot hurt a host page. It is recorded because it is the ceiling the deferred optimisations in design.md would move — a streaming decoder or a WASM protobuf decode — and neither is justified while this is 12 ms off-thread."
+    },
+    {
+      "metric": "layoutMainThreadMs",
+      "threshold": 16,
+      "unit": "ms",
+      "lastMeasured": 0.1,
+      "rationale": "Gated, and the one that matters. This is what the *main thread* spends on a 4000-span trace: receiving the reply and building eight typed-array views over a transferred buffer. Nothing here parses, sorts, traverses or computes a position — the worker's output is not a shape those operations apply to. 16 ms is one frame, which is two orders of magnitude above the 0.10 ms measured; the gap is deliberate, because the failure this catches is categorical (somebody put a JSON.parse or a 4000-object materialisation back on this thread) rather than incremental, and a categorical regression blows through a frame budget immediately. The trace header prints this number, so it must never be a number nobody measured."
+    },
+    {
+      "metric": "layoutLongTasks",
+      "threshold": 0,
+      "unit": "tasks during the layout",
+      "lastMeasured": 0,
+      "rationale": "Zero, exactly. The spec requires that no long task be attributable to the toolbar while a trace is laid out, and the measurement uses the browser's own `longtask` observer with `buffered: false` so only tasks raised *during* the layout count — the fixture page has plenty of its own before it. A threshold above zero here would be a threshold on the claim itself."
+    }
   ]
 }

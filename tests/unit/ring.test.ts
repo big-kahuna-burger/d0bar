@@ -1,7 +1,21 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { CAPACITY, pushResource, read, resetRing, scratch, size, stats } from "../../src/collector/ring";
+import {
+  CAPACITY,
+  pushResource,
+  read,
+  resetRing,
+  scratch,
+  size,
+  stats,
+} from "../../src/collector/ring";
 import { resetIntern } from "../../src/shared/intern";
-import { F_CACHED, F_CACHE_INFERRED, F_NO_PHASES, F_STATUS_UNKNOWN, F_XHR } from "../../src/shared/flags";
+import {
+  F_CACHED,
+  F_CACHE_INFERRED,
+  F_NO_PHASES,
+  F_STATUS_UNKNOWN,
+  F_XHR,
+} from "../../src/shared/flags";
 
 /** A resource entry shaped like the browser's, without needing a browser. */
 function entry(over: Partial<PerformanceResourceTiming> = {}): PerformanceResourceTiming {
@@ -75,7 +89,11 @@ describe("ring", () => {
     /* The shape the old heuristic read as a hit — but the browser says otherwise, and the
        browser is the authority. A 304 produces exactly this. */
     pushResource(
-      entry({ transferSize: 0, encodedBodySize: 3800, deliveryType: "" } as Partial<PerformanceResourceTiming>),
+      entry({
+        transferSize: 0,
+        encodedBodySize: 3800,
+        deliveryType: "",
+      } as Partial<PerformanceResourceTiming>),
     );
     expect((read(0, scratch())?.flags ?? 0) & F_CACHED).toBeFalsy();
   });

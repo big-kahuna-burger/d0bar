@@ -216,6 +216,12 @@ softening the whole sentence.
   `off`. Quote URLs in shell commands, or the shell eats the query string.
 - **Corrections are direct and short.** Take them at face value and act; do not re-litigate,
   over-apologise, or narrate the correction at length.
+- **Everything finishes today, in this session.** There is no later. Do not defer work to a
+  follow-up, do not propose a phased schedule, and do not ask *when* something should happen
+  — the answer is always now. Agents reason poorly about calendar time and reach for a
+  scheduling question when they are actually just uncertain about scope; if that is where you
+  are, state the scope assumption and build. Work that genuinely cannot be finished is
+  reported as unfinished with the reason, never as postponed.
 
 ---
 

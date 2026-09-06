@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { ABSENT, OVERFLOW, intern, internStats, resetIntern, str } from "../../src/shared/intern";
+import {
+  ABSENT,
+  OVERFLOW,
+  intern,
+  internStats,
+  resetIntern,
+  str,
+} from "../../src/shared/intern";
 
 describe("intern", () => {
   beforeEach(resetIntern);

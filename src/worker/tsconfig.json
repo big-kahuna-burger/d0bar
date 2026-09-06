@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    /* Same split, and the same reasoning, as `src/sw/tsconfig.json`: `WebWorker` and `DOM`
+       redeclare the same globals and cannot both be loaded, so worker sources typecheck under
+       the lib that describes where they actually run. `src/worker/**` executes in a
+       DedicatedWorkerGlobalScope — no `document`, no `window` — and this is what turns a stray
+       DOM reference in here into a compile error rather than a blank panel.
+
+       `layout.ts` is checked twice, on purpose. It is pure, so it is also pulled into the root
+       program by its unit test and checked under `DOM` there. Anything that compiles in only
+       one of the two is something this module must not contain.
+
+       Beside the sources rather than at the repo root for the reason recorded in `src/sw`: an
+       editor resolves against the *nearest* tsconfig, and a root-level `tsconfig.worker.json`
+       is correct in CI and wrong in the editor. */
+    "lib": ["ES2022", "WebWorker", "WebWorker.Iterable"],
+    "types": ["vite/client"]
+  },
+  "include": [".", "../env.d.ts"]
+}

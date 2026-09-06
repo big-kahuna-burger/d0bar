@@ -84,7 +84,7 @@ load would end the moratorium while the very metric it protects is still being r
    ✗ no fetch patch │   window.fetch    ← strictly ===     │
    ✗ no XHR patch   │   XMLHttpRequest  ← strictly ===     │
    ✗ no listeners   │   window          ← 0 added          │
-   ✗ no listeners   │   document        ← 0 added          │
+   ⚠ one listener   │   document        ← 1: keydown       │
    ✗ no stylesheet  │   document.adoptedStyleSheets ← 0    │
    ✗ no storage     │   localStorage / cookies ← untouched │
                     └───────────────┬──────────────────────┘
@@ -334,7 +334,7 @@ passes an explicit `toplevel` for `iife` which drops the global.
 | Claim | Enforced by |
 | --- | --- |
 | No perturbation of host metrics | `tests/perf/ab.spec.ts` — n≥20 alternating runs, **p95** deltas vs `bench/budget.json` |
-| Globals unpatched, no listeners, no styles, no storage | `tests/perf/non-perturbation.spec.ts` |
+| Globals unpatched, one listener (the shortcut, opt-out), no styles, no storage | `tests/perf/non-perturbation.spec.ts` |
 | Nothing touched before settle | `tests/perf/moratorium.spec.ts` |
 | Critical-path size | `.size-limit.json`, both artifacts |
 | No dev assertions shipped | `__DEV__` from Vite's `mode`, stripped at build |

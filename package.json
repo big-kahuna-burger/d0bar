@@ -1,7 +1,7 @@
 {
   "name": "d0bar",
   "version": "0.1.0",
-  "description": "A Dash0-branded observability toolbar for your own web app \u2014 that does not distort what it measures.",
+  "description": "A Dash0-branded observability toolbar for your own web app — that does not distort what it measures.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -18,39 +18,46 @@
     },
     "./iife": "./dist/d0bar.iife.js",
     "./panel": "./dist/d0bar.panel.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./sw": "./dist/d0bar-sw-module.mjs"
   },
   "scripts": {
     "tokens": "node scripts/vendor-tokens.mjs",
-    "build": "pnpm tokens && pnpm -F spark-signals build && tsc --noEmit && vite build && D0BAR_STAGE=2 vite build && tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
+    "build": "pnpm tokens && pnpm -F spark-signals build && pnpm typecheck && vite build && D0BAR_STAGE=2 vite build && D0BAR_STAGE=sw vite build && D0BAR_STAGE=sw D0BAR_SW=module vite build && D0BAR_STAGE=worker vite build && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/sw && tsc --noEmit -p src/worker",
     "test": "vitest run && pnpm -F spark-signals test",
     "test:watch": "vitest",
-    "test:perf": "playwright test",
+    "test:perf": "pnpm fixture:otel && pnpm fixture:trace && playwright test",
     "bench:serve": "node bench/fixtures/server.mjs",
     "size": "pnpm build && size-limit",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "dev": "concurrently -n build,serve -c cyan,magenta \"vite build --watch\" \"node --watch bench/fixtures/server.mjs\"",
-    "prepublishOnly": "pnpm build && pnpm test && pnpm size"
+    "dev": "pnpm build && concurrently -n s1,panel,sw,serve -c cyan,blue,green,magenta \"vite build --watch\" \"D0BAR_STAGE=2 vite build --watch\" \"D0BAR_STAGE=sw vite build --watch\" \"node --watch bench/fixtures/server.mjs\"",
+    "prepublishOnly": "pnpm build && pnpm test && pnpm size",
+    "fixture:otel": "node scripts/build-otel-fixture.mjs",
+    "fixture:trace": "node scripts/build-trace-fixture.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/sdk-trace-web": "^2.11.0",
     "@playwright/test": "^1.49.1",
     "@size-limit/preset-small-lib": "^11.1.6",
     "@types/node": "^26.4.1",
     "concurrently": "^10.0.5",
+    "esbuild": "^0.28.2",
     "eslint": "^9.17.0",
+    "fake-indexeddb": "^6.2.5",
     "globals": "^15.14.0",
     "jsdom": "^30.0.1",
     "prettier": "^3.4.2",
     "size-limit": "^11.1.6",
+    "spark-signals": "workspace:*",
     "terser": "^5.37.0",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.2",
     "vite": "^6.0.7",
-    "vitest": "^2.1.8",
-    "spark-signals": "workspace:*"
+    "vitest": "^2.1.8"
   },
   "packageManager": "pnpm@11.18.0",
   "keywords": [

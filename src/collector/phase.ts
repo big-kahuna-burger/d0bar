@@ -23,7 +23,8 @@ import { background, delayed } from "../shared/schedule";
  * load burst.
  *
  * Every signal this module needs arrives as a performance entry, so it registers no listener
- * on the host page at all. Load comes from the `navigation` entry once its `loadEventEnd` is
+ * on the host page at all. (The toolbar has exactly one, for the keyboard shortcut, and it is
+ * not here — see `shortcut.ts`.) Load comes from the `navigation` entry once its `loadEventEnd` is
  * non-zero, visibility from the `visibility-state` entry type, and first input from
  * `first-input`. See {@link beginPhaseTracking} for what happens where those are missing.
  */
@@ -115,6 +116,7 @@ export function noteLoaded(): void {
 }
 
 const visibilityCallbacks: Array<(visible: boolean) => void> = [];
+let documentVisible = true;
 
 /**
  * Subscribes to visibility changes, which arrive as `visibility-state` entries rather than
@@ -132,9 +134,22 @@ export function onVisibility(fn: (visible: boolean) => void): () => void {
   };
 }
 
+/**
+ * The last visibility reported, for a caller that needs the current state rather than the
+ * next change — the panel's list, which must decide whether to paint at all before it has
+ * seen a transition.
+ *
+ * Defaults to visible, and the same caveat as {@link onVisibility} applies: where the entry
+ * type is unsupported this stays true forever, so it may only gate work, never correctness.
+ */
+export function isVisible(): boolean {
+  return documentVisible;
+}
+
 /** Called by the observer layer for every `visibility-state` entry. */
 export function noteVisibilityState(name: string): void {
   const visible = name === "visible";
+  documentVisible = visible;
   if (!visible) finalizeLcp();
   for (let i = 0; i < visibilityCallbacks.length; i++) visibilityCallbacks[i]!(visible);
 }
@@ -169,6 +184,10 @@ function pollReadyState(): void {
  * backgrounds, and is bounded by the ceiling in {@link checkQuiet}.
  */
 export function beginPhaseTracking(): () => void {
+  /* Read once, not observed: without the entry type there is no way to see a later change
+     that does not cost the host a listener, so the toolbar takes the state it can have and
+     `isVisible()` documents that it may go stale. */
+  documentVisible = document.visibilityState !== "hidden";
   if (!supports("visibility-state") && document.visibilityState === "hidden") {
     finalizeLcp();
   }
@@ -198,6 +217,7 @@ export function resetPhase(): void {
   cancelQuietCheck = undefined;
   settleCallbacks.length = 0;
   visibilityCallbacks.length = 0;
+  documentVisible = true;
 }
 
 /** Test seam: settle synchronously, bypassing the scheduler. */

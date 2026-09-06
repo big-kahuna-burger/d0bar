@@ -18,3 +18,13 @@ export const F_NO_PHASES = 1 << 5;
  * present an inferred value with the confidence of a reported one.
  */
 export const F_CACHE_INFERRED = 1 << 6;
+/**
+ * Tier 2 and tier 4 both supplied a trace id for this request, and they disagree.
+ *
+ * Not resolved by preferring one: they read different things — tier 2 reads the
+ * `traceparent` header the browser actually sent, tier 4 reads the span the host's SDK
+ * created — and a disagreement means the join matched the wrong pair on at least one side.
+ * Silently picking a winner would present a trace id that is wrong with full confidence,
+ * which is the one failure this toolbar cannot have. Flagged so the UI reports it.
+ */
+export const F_TRACE_CONFLICT = 1 << 7;

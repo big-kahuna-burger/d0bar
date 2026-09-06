@@ -1,6 +1,16 @@
 /* Token aliases (--d0-*) are declared on :host by PRELUDE, which stage 1 already adopted
    into this shadow root. The panel adds its own sheet rather than replacing that one. */
 
+/* The artboard's boxes are border-box throughout — its host page inherits that from the
+   design system's reset, which does not reach into this shadow root. Without it every
+   bordered row measured one pixel taller than the handoff and the panel two pixels wide,
+   because a 1px border was added to the declared size rather than taken out of it. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 .panel {
   /* Native popover, so the browser's top layer settles the z-index question outright — no
      stacking context on the host page can cover it and none needs to be fought. */
@@ -17,8 +27,13 @@
   border-radius: 12px;
   background: var(--d0-bg);
   box-shadow: var(--d0-shadow2xl);
-  /* Clips the tab underline and the list's own scroll edge to the rounded corner. */
-  overflow: hidden;
+  /* Deliberately NOT clipped. `overflow: hidden` here would round the corners in one line,
+     but it also clips every tooltip to the panel — and a tab-row bubble on a short panel
+     hangs below the body, so the element whose whole job is to explain provenance would be
+     the one cut in half. `clip-path` is no escape either: it clips descendants the same way.
+     The first and last rows round their own outer corners instead (see `.head` / `.foot`),
+     which is the only version that leaves a descendant free to overhang. */
+  overflow: visible;
   width: 620px;
   max-height: min(560px, calc(100vh - 120px));
   display: flex;
@@ -28,8 +43,13 @@
   color: var(--d0-text);
   font-family: var(--d0-font-sans);
   font-size: 12px;
-  /* Same guarantee the pill makes: no layout or paint work escapes into the host page. */
-  contain: layout paint style;
+  /* `paint` is deliberately absent, where the pill has it. Paint containment clips
+     descendants to the padding box — it is a second clip, independent of `overflow`, and it
+     would cut the tooltips off exactly the same way. It is also the one part of containment
+     the panel does not need: as a popover it renders in the top layer, so its paint is
+     already isolated from the host page by the stacking model rather than by a property.
+     Layout and style containment carry the guarantee that actually matters here. */
+  contain: layout style;
   /* Sizes respond to the panel, not the viewport — the panel is detachable into a
      Picture-in-Picture window, where viewport units describe the wrong box entirely. */
   container-type: inline-size;
@@ -55,12 +75,40 @@
   display: none;
 }
 
-/* Below roughly a phone's width the fixed 620px would overflow. The waterfall column is the
-   first and only column dropped — every other column carries a number the user asked for. */
+/* Below roughly a phone's width the fixed 620px would overflow.
+
+   `min()` rather than the bare `calc()` the handoff's prose implies. The breakpoint is 700px
+   but the panel only stops fitting at 652px (620 + the 32px of margin), so between those two
+   widths a bare `calc(100vw - 32px)` resolves *wider* than the design width — at a 700px
+   viewport it gives 668px, and the panel would grow as the viewport shrank into the query.
+   `min()` clamps it back to 620px, so the rule takes effect exactly where space runs out. */
 @media (max-width: 700px) {
   .panel {
-    width: calc(100vw - 32px);
+    width: min(620px, calc(100vw - 32px));
     left: 16px;
+  }
+}
+
+/* The waterfall is the only droppable column: every other one carries a number the user
+   asked for, where the waterfall re-states timings the duration column already gives.
+
+   Keyed to the panel's own inline size, not the viewport. The panel is detachable into a
+   Picture-in-Picture window, where the viewport describes the browser's window rather than
+   the panel's box — a viewport query would keep a 210px track in a 400px panel and drop it
+   from a full-width one.
+
+   560px, not the design width. A container query measures the *content* box, so the 620px
+   panel presents as 618px once its 1px borders are taken out — a threshold set just under
+   the design width would sit a hairline away from it and fire at full size, which is
+   exactly what it did on the first run. 560px is the real constraint instead: the waterfall
+   track is 210px (handoff §5), the remaining columns need about 350, and below their sum
+   the track has nowhere to go.
+
+   The contract for the views that land later: a row's waterfall cell carries
+   `data-col="waterfall"`, and its header cell carries the same. Nothing else may use it. */
+@container d0panel (max-width: 560px) {
+  [data-col="waterfall"] {
+    display: none;
   }
 }
 
@@ -74,6 +122,9 @@
   gap: 10px;
   padding: 0 10px 0 12px;
   border-bottom: 1px solid var(--d0-stroke);
+  /* The panel no longer clips, so the rows at its edges round their own outer corners.
+     1px inside the panel's 12px, so the border's curve sits flush with the panel's. */
+  border-radius: 11px 11px 0 0;
 }
 
 .title {
@@ -90,8 +141,15 @@
   font-size: 10px;
   color: var(--d0-text-subtle);
   /* One line, clipped from the left: the end of a URL carries the route, which is the part
-     that identifies what is being measured. */
+     that identifies what is being measured.
+
+     `direction: rtl` is what moves the ellipsis to the left edge, but on its own it also
+     reorders the string — bidi treats a leading `/` as neutral and flushes it to the far
+     side, so `/orders?id=8821` renders as `orders?id=8821/`. `unicode-bidi: plaintext`
+     resolves the text's own direction from its first strong character, which for any URL is
+     latin, so the characters stay in order while the box keeps clipping from the left. */
   direction: rtl;
+  unicode-bidi: plaintext;
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
@@ -218,6 +276,260 @@
   font-size: 11px;
 }
 
+/* ── requests view ──────────────────────────────────────────────────────────── */
+
+/* One template, two consumers. The header and every row read the same custom property, so
+   the column widths cannot drift apart — and the container query that drops the waterfall
+   removes a cell from both at once, leaving the remaining four to share the width. */
+.requests {
+  --cols: 44px 1fr 40px 54px 210px;
+}
+
+@container d0panel (max-width: 560px) {
+  .requests {
+    --cols: 44px 1fr 40px 54px;
+  }
+}
+
+.rows-head,
+.row {
+  display: grid;
+  grid-template-columns: var(--cols);
+  gap: 10px;
+  align-items: center;
+  white-space: nowrap;
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  border-bottom: 1px solid var(--d0-stroke);
+}
+
+.rows-head {
+  padding: 5px 14px;
+  color: var(--d0-text-subtle);
+}
+
+.rows-scroll {
+  /* The handoff's height, and a hard cap: the list is the only unbounded thing in the
+     panel, so without this a busy page decides how tall the toolbar is. */
+  max-height: 288px;
+  overflow: hidden auto;
+  /* Keeps a wheel at the list's edge from scrolling the host page behind the panel. */
+  overscroll-behavior: contain;
+  /* `content-visibility: auto` belongs on a scroller's *rows*, never on the scroller.
+     Measured here rather than reasoned about: with it on this element, restoring a scroll
+     offset on the way back into the tab silently clamped to zero, because a skipped subtree
+     reports `contain-intrinsic-size` as its content extent — a 288px scrollHeight for a
+     10,752px list, so every offset was out of range. The probe read `scrollTop` 0 immediately
+     after a successful write of 840.
+
+     It also buys nothing here. Skipping off-screen rendering work is precisely what the
+     virtualizer already does, by not creating the rows at all, and a hidden tab is
+     `display: none`, which is free already. */
+}
+
+.rows-spacer {
+  position: relative;
+}
+
+.rows {
+  position: absolute;
+  inset: 0 0 auto 0;
+  /* The virtualizer writes one `translateY` here per frame, for the whole window. */
+  will-change: transform;
+}
+
+.row {
+  padding: 3px 14px;
+  /* 21px: 15px of line box plus 3px of padding either side. The virtualizer's arithmetic
+     depends on this being exact, so it is stated rather than left to the content. */
+  height: 21px;
+  cursor: pointer;
+  /* The containment that makes requirement 2 true: a bar that moves recalculates style
+     inside this row and invalidates nothing above it. */
+  contain: layout style;
+}
+
+.row:hover {
+  background: var(--d0-hover-bg);
+}
+
+.row[aria-selected="true"] {
+  background: var(--d0-hover-bg);
+}
+
+.row:focus-visible {
+  outline: 1px solid var(--d0-cta);
+  outline-offset: -1px;
+}
+
+.col-status,
+.col-dur,
+.col-trace,
+.col-bar {
+  min-width: 0;
+}
+
+.col-dur {
+  text-align: right;
+  color: var(--d0-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.col-req {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.method {
+  width: 26px;
+  flex: none;
+  font-size: 9px;
+  color: var(--d0-text-subtle);
+}
+
+.path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--d0-text-intense);
+}
+
+.kind {
+  flex: none;
+  color: var(--d0-text-subtle);
+}
+
+.chip {
+  width: 44px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  border-radius: 3px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.chip[data-traced="true"] {
+  background: color-mix(in oklab, var(--d0-cta) 22%, transparent);
+  color: var(--d0-text-intense);
+}
+
+.chip[data-traced="false"] {
+  background: color-mix(in oklab, var(--d0-warning) 18%, transparent);
+  color: var(--d0-warning-inline);
+}
+
+.col-status[data-tone="healthy"] {
+  color: var(--d0-healthy);
+}
+
+.col-status[data-tone="subtle"],
+/* An unknown status renders as nothing at all rather than a placeholder — see `format.ts`.
+   The rule exists so the cell still occupies its column. */
+.col-status[data-tone="unknown"] {
+  color: var(--d0-text-subtle);
+}
+
+.col-status[data-tone="warn"] {
+  color: var(--d0-warning-inline);
+}
+
+.col-status[data-tone="error"] {
+  color: var(--d0-error);
+}
+
+/* ── the waterfall ── */
+
+.col-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--d0-lvl2-bg);
+}
+
+/* The two custom properties are written on the row; this is the only place they are read.
+   `calc` on a unitless fraction, so the row writes numbers and the browser does the layout
+   — no geometry is computed in JavaScript. */
+.bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--l, 0) * 100%);
+  width: calc(var(--w, 0) * 100%);
+  display: flex;
+  border-radius: 2px;
+  /* So the radius clips the segments rather than being drawn over by them. */
+  overflow: hidden;
+}
+
+.bar[data-clipped="true"] {
+  /* Started past the window. Rendered as a hairline at the right edge rather than dropped,
+     so the row is not silently missing from the waterfall its neighbours appear in. */
+  width: 2px;
+  margin-left: -2px;
+  background: var(--d0-text-subtle);
+}
+
+.seg {
+  display: block;
+  height: 100%;
+}
+
+.seg[data-kind="lead"] {
+  /* Not a phase and not given a phase's colour: the span before the connection began, which
+     the entry reports no breakdown of. See `geometry.ts`. */
+  background: var(--d0-lvl3-bg);
+}
+
+.seg[data-kind="connect"] {
+  background: color-mix(in oklab, var(--d0-text-subtle) 70%, transparent);
+}
+
+.seg[data-kind="wait"] {
+  background: var(--d0-cta);
+}
+
+.seg[data-kind="transfer"] {
+  background: var(--d0-healthy);
+}
+
+/* No phase timings — a cross-origin response without `Timing-Allow-Origin`, or a cache hit.
+   Hatched, so it cannot be mistaken for a measured breakdown at a glance: the bar states
+   only what it knows, which is when the request ran and for how long. */
+.bar[data-phases="none"] {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--d0-lvl3-bg) 0 3px,
+    var(--d0-lvl2-stroke) 3px 6px
+  );
+}
+
+/* An error colours the whole bar: the request's outcome outranks its phase breakdown. */
+.bar[data-tone="error"] {
+  background: var(--d0-error);
+}
+
+.bar[data-tone="error"] .seg {
+  visibility: hidden;
+}
+
+.rows-empty,
+.rows-dropped {
+  padding: 14px;
+  color: var(--d0-text-subtle);
+  font-size: 11px;
+}
+
+.rows-dropped {
+  padding: 6px 14px;
+  border-top: 1px solid var(--d0-stroke);
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-warning-inline);
+}
+
 /* ── footer observer strip ──────────────────────────────────────────────────── */
 
 .foot {
@@ -228,6 +540,7 @@
   gap: 12px;
   padding: 0 12px;
   border-top: 1px solid var(--d0-stroke);
+  border-radius: 0 0 11px 11px;
   background: var(--d0-bg);
   /* Must not wrap at 620px: a wrapped strip changes the panel's height, and the panel is
      bottom-anchored, so it would move under the cursor. */
@@ -282,6 +595,18 @@
   white-space: nowrap;
 }
 
+/* A missing capability is stated in the colour that means "attention", not the one that
+   means "fine" — the degraded reading is the more important of the two. */
+.perturb[data-state="degraded"] {
+  color: var(--d0-warning-inline);
+}
+
+/* Not yet measured. Dimmed rather than coloured: an unmeasured cost is not a warning, it is
+   an absence, and the one thing it must not look like is a measurement. */
+.perturb[data-state="unknown"] {
+  opacity: 0.62;
+}
+
 /* ── motion ─────────────────────────────────────────────────────────────────── */
 
 @keyframes d0-rise {
@@ -301,6 +626,39 @@
   animation: d0-rise 0.18s ease-out;
 }
 
+/* The ingest-lag dots: a span exists but is not queryable yet, and the retry is on a backoff.
+
+   `opacity` only, like everything else here — a scale or translate pulse would be compositor
+   work repeating once every 1.1 seconds for as long as the state lasts, on a page whose
+   frame budget is being measured. Deliberately not a spinner: a spinner reads as "looking
+   for something that may not be there", and the whole point of this state is that the span
+   *does* exist. The stagger is what makes three dots read as progress rather than a blink. */
+@keyframes d0-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.lag-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--d0-cta);
+  animation: d0-pulse 1.1s ease-in-out infinite;
+}
+
+.lag-dot:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.lag-dot:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .panel:popover-open {
     animation-duration: 0.12s;
@@ -315,8 +673,986 @@
       opacity: 1;
     }
   }
+
+  /* The dots stop entirely rather than pulsing slower. An infinite animation is the one kind
+     a reduced-motion reader cannot escape by waiting, and it carries no information the
+     surrounding copy — "retry 2 of 5 · next in 1.6s" — does not already state in words.
+     Held at full opacity, so what remains is three dots rather than three faint ones. */
+  .lag-dot {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* ── tooltips ──
+   The `title` attribute is not an option here. A native tooltip is an unstyled OS box that
+   the page cannot position, cannot theme, and cannot keep inside the panel — it lands over
+   whatever is beneath the cursor, including the host page's own UI, and it renders a
+   sentence of explanation as a wall of grey text. The artboard specifies a real bubble, so
+   this is it.
+
+   The anchor is the trigger's own `position: relative`, not anchor positioning: the bubble
+   is always adjacent to its trigger and inside a panel that already has `contain`, so there
+   is nothing for a tether to solve. */
+.tip-anchor {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Wrapping a trigger in an anchor makes the anchor the flex child, so any sizing a trigger
+   declared against its parent has to move out to the anchor — the URL's fill, the tab row's
+   and footer's right-hand push — or it stops applying at all. */
+.head > .tip-anchor {
+  flex: 1 1 auto;
+}
+
+.tabs > .tip-anchor:last-child,
+.foot > .tip-anchor:last-child {
+  margin-left: auto;
+}
+
+.tip {
+  position: absolute;
+  z-index: 20;
+  padding: 9px 11px;
+  border: 1px solid var(--d0-lvl3-stroke);
+  border-radius: 7px;
+  background: var(--d0-lvl3-bg);
+  box-shadow: var(--d0-shadow-xl);
+  font-family: var(--d0-font-sans);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--d0-text);
+  text-align: left;
+  /* Every row that carries a tooltip sets `white-space: nowrap` on itself — the footer strip
+     must not wrap, and neither must `buffered: true`. That inherits, and a nowrap bubble
+     ignores its own width: the text becomes one long line that leaves the panel entirely and
+     lands on the host page. The bubble is a paragraph, so it says so itself. */
+  white-space: normal;
+  /* Long unbroken tokens — a URL in the header bubble — must break rather than widen it. */
+  overflow-wrap: anywhere;
+  /* Sans, not the mono the footer strip and `buffered` set. */
+  font-weight: 400;
+  letter-spacing: normal;
+  /* The bubble is a hover affordance, never a hit target: letting it take the pointer would
+     make it flicker against the very hover that opened it. */
+  pointer-events: none;
+  animation: d0-rise 0.12s ease-out;
+}
+
+.tip b {
+  color: var(--d0-text-intense);
+  font-weight: 400;
+}
+
+/* The arrow is one rotated square with two borders, so its edge continues the bubble's. */
+.tip::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  background: var(--d0-lvl3-bg);
+  transform: rotate(45deg);
+}
+
+/* Below the trigger — the tab row, whose bubbles hang into the body. */
+.tip[data-side="below"] {
+  top: calc(100% + 7px);
+  left: 4px;
+  width: 216px;
+}
+
+.tip[data-side="below"]::after {
+  top: -4px;
+  left: 22px;
+  border-left: 1px solid var(--d0-lvl3-stroke);
+  border-top: 1px solid var(--d0-lvl3-stroke);
+}
+
+/* Above the trigger — the footer strip, which has nothing below it to hang into. */
+.tip[data-side="above"] {
+  bottom: calc(100% + 8px);
+  left: -8px;
+  width: 258px;
+}
+
+.tip[data-side="above"]::after {
+  bottom: -4px;
+  left: 14px;
+  border-right: 1px solid var(--d0-lvl3-stroke);
+  border-bottom: 1px solid var(--d0-lvl3-stroke);
+}
+
+/* Right-aligned triggers would push a left-anchored bubble off the panel's edge. */
+.tip[data-align="end"] {
+  left: auto;
+  right: -2px;
+}
+
+/* The INP bubble is the handoff's one wider box, at 268px against the tiers' 258. */
+.tip[data-side="above"][data-align="end"] {
+  width: 268px;
+}
+
+.tip[data-align="end"]::after {
+  left: auto;
+  right: 22px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tip {
+    animation-name: d0-fade;
+  }
 }
 
 [hidden] {
   display: none !important;
+}
+
+/* ── vitals view ────────────────────────────────────────────────────────────────
+   add-vitals-view. Four cards on one row, and the provenance note beneath them.
+
+   The tone attribute is the whole colour contract, and `unknown` is the reason it is an
+   attribute at all: a value the browser never reported must not be able to pick up the
+   healthy green by omission, so every tone is stated — including the two that are
+   deliberately not threshold colours. */
+
+.vitals {
+  padding: 14px;
+}
+
+.vitals-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+/* Four 1fr cards stop being readable below about 560px — the same width at which the
+   waterfall column is dropped, so the panel has one narrow layout rather than two. */
+@container d0panel (max-width: 560px) {
+  .vitals-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.vcard {
+  background: var(--d0-lvl2-bg);
+  border: 1px solid var(--d0-lvl2-stroke);
+  border-radius: 8px;
+  padding: 10px 12px;
+  /* Cards never affect each other's geometry, so a value changing recalculates style inside
+     its own card and invalidates nothing above it. */
+  contain: layout style;
+}
+
+.vname {
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-text-subtle);
+}
+
+.vvalue {
+  font-family: var(--d0-font-mono);
+  font-size: 20px;
+  margin-top: 4px;
+  /* Tabular figures, so a value ticking upward does not shuffle the digits beside it. */
+  font-variant-numeric: tabular-nums;
+  color: var(--d0-text-intense);
+}
+
+.vvalue[data-tone="healthy"] {
+  color: var(--d0-healthy);
+}
+
+.vvalue[data-tone="warning"] {
+  color: var(--d0-warning-inline);
+}
+
+.vvalue[data-tone="error"] {
+  color: var(--d0-error);
+}
+
+/* A frame count has no good/poor threshold, so it takes the neutral intense text rather
+   than being coloured as though it did. */
+.vvalue[data-tone="neutral"] {
+  color: var(--d0-text-intense);
+}
+
+/* Not a number at all — `unsupported`, or `not reported`. Sized down so it does not read as
+   a measurement, and coloured as absent rather than as anything. */
+.vvalue[data-tone="unknown"] {
+  color: var(--d0-text-subtle);
+  font-size: 13px;
+}
+
+.vattr {
+  font-size: 11px;
+  color: var(--d0-text-subtle);
+  margin-top: 3px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.vnote {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--d0-stroke);
+  border-radius: 8px;
+  background: var(--d0-hover-bg);
+  font-size: 11px;
+  color: var(--d0-text);
+  line-height: 1.5;
+}
+
+.vnote-api {
+  font-family: var(--d0-font-mono);
+  color: var(--d0-text-intense);
+}
+
+/* ══ add-trace-view ══════════════════════════════════════════════════════════
+   The trace surface, pushed over the request list. Everything below is stage 2
+   only; nothing here reaches the pill's stylesheet or the host document.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* The categorical series palette.
+
+   Declared here rather than in `tokens.gen.ts`'s PRELUDE, deliberately: the prelude ships
+   inside the pill's stylesheet, which is stage 1 — the one thing on a host page's critical
+   path — and nine colours that only a span waterfall ever reads have no business being
+   downloaded by a page that never opens the panel. Same shape as every other d0bar alias
+   though: the host's own token first, the vendored literal only as the fallback, so a page
+   carrying Dash0's design tokens gets its own palette and one that does not still renders. */
+.trace {
+  --d0-series-0: var(--palette-auto-0-fill, #828aff);
+  --d0-series-1: var(--palette-auto-1-fill, #225584);
+  --d0-series-2: var(--palette-auto-2-fill, #829ed6);
+  --d0-series-3: var(--palette-auto-3-fill, #6d459b);
+  --d0-series-4: var(--palette-auto-4-fill, #b79958);
+  --d0-series-5: var(--palette-auto-5-fill, #a39999);
+  --d0-series-6: var(--palette-auto-6-fill, #906d3e);
+  --d0-series-7: var(--palette-auto-7-fill, #d8b4fe);
+  --d0-series-8: var(--palette-auto-8-fill, #74d1f0);
+}
+
+/* ── sub-header ── */
+
+.trace-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--d0-stroke);
+}
+
+.trace-back {
+  height: 22px;
+  padding: 0 8px 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--d0-lvl2-stroke);
+  border-radius: 5px;
+  background: var(--d0-lvl2-bg);
+  color: var(--d0-text);
+  font-family: var(--d0-font-sans);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.trace-back:hover {
+  border-color: var(--d0-hover-stroke);
+  color: var(--d0-text-intense);
+}
+
+.trace-req {
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+  color: var(--d0-text-intense);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-id {
+  margin-left: auto;
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-text-subtle);
+  flex: none;
+}
+
+/* A join that had a same-URL sibling in flight may have popped the wrong record's id.
+   `join.ts` flags that, and the id is marked here rather than shown with the confidence of
+   one that was unambiguous — an id the panel is not sure of is worse than none, because it
+   is exactly the kind of string a reader copies and goes searching for. */
+.trace-id[data-uncertain] {
+  color: var(--d0-warning-inline);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+/* ── 7a · trace found ── */
+
+.trace-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--d0-stroke);
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-text-subtle);
+}
+
+.trace-cost {
+  margin-left: auto;
+  color: var(--d0-healthy);
+}
+
+.trace-trunc {
+  padding: 8px 14px;
+  font-size: 11px;
+  color: var(--d0-warning-inline);
+}
+
+.trace-log {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-top: 1px solid var(--d0-stroke);
+  background: var(--d0-lvl2-bg);
+}
+
+.trace-log-level {
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-warning-inline);
+  flex: none;
+}
+
+.trace-log-msg {
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+  color: var(--d0-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trace-log-link {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--d0-cta);
+  flex: none;
+}
+
+/* ── span rows ── */
+
+/* The handoff's 300px, against the request list's 288px: a waterfall is read down a tree,
+   and a shorter viewport costs a level of depth per scroll. */
+.spans {
+  max-height: 300px;
+}
+
+.span-row {
+  display: grid;
+  grid-template-columns: 300px 1fr 56px;
+  gap: 10px;
+  align-items: center;
+  /* 22px, and the virtualizer's arithmetic depends on it being exact — stated here rather
+     than left to the content, exactly as `.row`'s 21px is. */
+  height: 22px;
+  padding: 0 14px;
+  white-space: nowrap;
+  contain: layout style;
+}
+
+.span-row:hover {
+  background: var(--d0-hover-bg);
+}
+
+.span-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  /* Depth as a number the row writes and CSS multiplies, so an indent change is one custom
+     property write rather than a pixel value computed in JavaScript. */
+  padding-left: calc(var(--depth, 0) * 14px);
+}
+
+.span-swatch {
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.span-label {
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+  color: var(--d0-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.span-row[data-root="true"] .span-label {
+  color: var(--d0-text-intense);
+}
+
+.span-service {
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-text-subtle);
+  flex: none;
+}
+
+.span-bar {
+  position: relative;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--d0-lvl2-bg);
+}
+
+/* Unitless fractions the row writes, turned into geometry by `calc` — the same contract the
+   request list's bars use, and for the same reason: no layout arithmetic in JavaScript. */
+.span-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--l, 0) * 100%);
+  width: calc(var(--w, 0) * 100%);
+  border-radius: 2px;
+}
+
+.span-dur {
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A span whose parent is not in this trace. Marked rather than reparented under the root,
+   which would draw a tree the backend never returned. */
+.span-row[data-orphan="true"] .span-label::after {
+  content: " ⟂ orphan";
+  color: var(--d0-warning-inline);
+}
+
+/* An error is a state of the span, not of its service, so it overrides the service colour
+   the row wrote inline. */
+.span-row[data-error="true"] .span-fill {
+  background: var(--d0-error) !important;
+}
+
+/* ── 7b · no span exists ── */
+
+.trace-none {
+  padding: 24px 14px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  text-align: center;
+}
+
+/* Dashed, not solid, and emphatically not a spinner: the ring says "there is nothing here"
+   where a spinner would say "something is on its way". These two states must never be
+   mistakable for one another — that confusion is the whole reason this change exists. */
+.trace-ring {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px dashed var(--d0-warning);
+}
+
+.trace-none-title {
+  font-size: 12px;
+  color: var(--d0-text-intense);
+}
+
+.trace-none-why {
+  font-size: 11px;
+  color: var(--d0-text-subtle);
+  max-width: 44ch;
+  line-height: 1.5;
+}
+
+.trace-none-sw {
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-text-subtle);
+}
+
+/* ── 7c · waiting for ingest ── */
+
+.trace-wait {
+  padding: 26px 14px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.lag-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.trace-wait-title {
+  font-size: 12px;
+  color: var(--d0-text-intense);
+}
+
+/* Tabular figures: the countdown redraws ten times a second, and proportional digits would
+   make the whole line jitter as `1.6s` became `1.5s`. */
+.trace-wait-retry {
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+  color: var(--d0-text-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.trace-wait-why {
+  font-size: 11px;
+  color: var(--d0-text-subtle);
+  max-width: 40ch;
+  line-height: 1.5;
+}
+
+.trace-retry {
+  height: 22px;
+  padding: 0 10px;
+  border: 1px solid var(--d0-lvl2-stroke);
+  border-radius: 5px;
+  background: var(--d0-lvl2-bg);
+  color: var(--d0-text);
+  font-family: var(--d0-font-sans);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.trace-retry:hover {
+  border-color: var(--d0-hover-stroke);
+  color: var(--d0-text-intense);
+}
+
+/* ══ add-untraced-view ═══════════════════════════════════════════════════════
+   The coverage tab: a headline, one card per gap, and the note explaining why
+   only the worker can see any of it.
+
+   Prefixed `coverage-`, not `untraced-`, and that is not a naming preference.
+   The pill's stylesheet already defines `.untraced` for its badge, and both
+   sheets are adopted on the *same* shadow root — so a view root called
+   `untraced` inherits `height: 22px; display: flex` from the pill and renders
+   as a 22px strip with its cards laid out in a row, overflowing the panel.
+   Seen in Chromium before it was renamed. Two stylesheets, one root, one flat
+   namespace: any new panel class has to be checked against pill.css.
+
+   The `kind` attribute on the headline is the colour contract, and it is an
+   attribute for the same reason the vitals tone is: `undeterminable` must not
+   be able to pick up the clean green by omission. Three states, three colours,
+   every one of them stated.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.coverage {
+  padding: 14px;
+}
+
+.coverage-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.coverage-count {
+  font-family: var(--d0-font-mono);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  color: var(--d0-text-intense);
+}
+
+.coverage-count[data-kind="gaps"] {
+  color: var(--d0-warning-inline);
+}
+
+.coverage-count[data-kind="clean"] {
+  color: var(--d0-healthy);
+}
+
+/* Not a measurement at all. Sized down and coloured as absent, so it cannot be
+   mistaken for a count of zero. */
+.coverage-count[data-kind="undeterminable"] {
+  color: var(--d0-text-subtle);
+  font-size: 13px;
+}
+
+.coverage-detail {
+  font-size: 11px;
+  color: var(--d0-text);
+  line-height: 1.4;
+  flex: 1 1 200px;
+}
+
+.coverage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ucard {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  align-items: start;
+  padding: 8px 10px;
+  border: 1px solid var(--d0-lvl2-stroke);
+  border-radius: 8px;
+  background: var(--d0-lvl2-bg);
+  cursor: pointer;
+  /* Cards never affect each other's geometry, so a card changing recalculates style inside
+     itself and invalidates nothing above it. */
+  contain: layout style;
+}
+
+.ucard:hover,
+.ucard:focus-visible {
+  background: var(--d0-hover-bg);
+}
+
+.udot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: 5px;
+  background: var(--d0-warning-inline);
+}
+
+/* A third-party gap is not the host's to fix, so it is not coloured as a warning
+   against them. */
+.ucard[data-cause="third-party"] .udot,
+.ucard[data-cause="unknown"] .udot {
+  background: var(--d0-text-subtle);
+}
+
+.uurl {
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+  color: var(--d0-text-intense);
+  overflow-wrap: anywhere;
+}
+
+.ucause {
+  font-size: 11px;
+  color: var(--d0-text-subtle);
+  line-height: 1.4;
+  margin-top: 3px;
+}
+
+.ucause-label {
+  font-family: var(--d0-font-mono);
+  color: var(--d0-text);
+}
+
+.coverage-trunc {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--d0-text-subtle);
+}
+
+.coverage-note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--d0-stroke);
+  border-radius: 8px;
+  background: var(--d0-hover-bg);
+  font-size: 11px;
+  color: var(--d0-text);
+  line-height: 1.5;
+}
+
+/* ── add-pasted-token ──────────────────────────────────────────────────────────────────────
+   Prefixed `conn-`, like the coverage tab's `coverage-`. The pill's stylesheet and this one
+   are adopted on the same shadow root and share one flat class namespace, so a bare `.field`
+   or `.warn` here is a rule applied to whatever the pill happens to call that too. */
+
+.conn-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid var(--d0-stroke);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--d0-text-subtle);
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.conn-chip:hover {
+  border-color: var(--d0-hover-stroke);
+  color: var(--d0-text);
+}
+
+.conn-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex: none;
+  /* Unconnected is grey, not red. Not having a token is the normal state of the panel — the
+     requests, vitals and coverage tabs all work without one — and a red dot would report a
+     fault where there is a choice not yet made. */
+  background: var(--d0-text-subtle);
+}
+
+.conn-chip[data-on="true"] .conn-dot {
+  background: var(--d0-healthy);
+}
+
+.conn-chip[data-on="true"] {
+  color: var(--d0-text);
+}
+
+.conn {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* No `overflow` of its own, deliberately. `.body` is already a scroll container, and a
+     second one nested inside it gave the surface two independent offsets: opening Connect
+     inherited whatever the requests list had been scrolled to, which put the reader below
+     the title and the two disclosures. One scroller, and `focus()` scrolls it to the top. */
+}
+
+.conn-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--d0-text-intense);
+}
+
+.conn-intro,
+.conn-warn,
+.conn-state {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--d0-text);
+}
+
+.conn-sub {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--d0-text-subtle);
+}
+
+/* The requirements. A three-column grid rather than a default `dl`, so the setting, the value
+   it must have, and the reason line up and can be read down one column at a time. */
+.conn-req {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content max-content 1fr;
+  gap: 4px 10px;
+  align-items: baseline;
+  font-size: 11px;
+}
+
+.conn-req dt {
+  color: var(--d0-text-subtle);
+}
+
+.conn-req dd {
+  margin: 0;
+}
+
+.conn-req-value {
+  font-family: var(--d0-font-mono);
+  color: var(--d0-text-intense);
+}
+
+.conn-req-why {
+  color: var(--d0-text-subtle);
+}
+
+/* The admission that the list above is not a check. Bordered rather than italicised: it reads
+   as a form that validates, and this is the sentence saying it does not. */
+.conn-warn {
+  padding: 8px 10px;
+  border-left: 2px solid var(--d0-warning);
+  background: var(--d0-lvl2-bg);
+  color: var(--d0-text);
+}
+
+.conn-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.conn-field-label {
+  font-size: 10px;
+  color: var(--d0-text-subtle);
+}
+
+.conn-input {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--d0-lvl3-stroke);
+  border-radius: 6px;
+  background: var(--d0-lvl2-bg);
+  color: var(--d0-text-intense);
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+}
+
+.conn-input:focus-visible {
+  outline: 2px solid var(--d0-cta);
+  outline-offset: 1px;
+}
+
+/* Two buttons in one track, not a `<select>`: there are exactly two environments, the choice is
+   consequential, and both options being permanently visible is the point. */
+.conn-toggle {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--d0-lvl3-stroke);
+  border-radius: 7px;
+  background: var(--d0-lvl2-bg);
+  align-self: flex-start;
+}
+
+.conn-toggle-btn {
+  padding: 3px 12px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--d0-text-subtle);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.conn-toggle-btn[data-on="true"] {
+  background: var(--d0-lvl3-bg);
+  color: var(--d0-text-intense);
+}
+
+.conn-toggle-btn:focus-visible {
+  outline: 2px solid var(--d0-cta);
+  outline-offset: 1px;
+}
+
+.conn-envnote {
+  margin: 0;
+  color: var(--d0-text-subtle);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+/* The non-production environment is a warning, not a description. */
+.conn-envnote[data-warn="true"] {
+  color: var(--d0-warning);
+}
+
+.conn-select {
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--d0-lvl3-stroke);
+  border-radius: 6px;
+  background: var(--d0-lvl2-bg);
+  color: var(--d0-text-intense);
+  font-size: 11px;
+}
+
+.conn-select:focus-visible {
+  outline: 2px solid var(--d0-cta);
+  outline-offset: 1px;
+}
+
+.conn-origin {
+  margin: 0;
+  color: var(--d0-text-subtle);
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+}
+
+.conn-custody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conn-choice {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 8px;
+  align-items: start;
+  cursor: pointer;
+}
+
+.conn-choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.conn-choice-label {
+  font-size: 11px;
+  color: var(--d0-text-intense);
+}
+
+.conn-choice-detail {
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--d0-text-subtle);
+}
+
+.conn-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.conn-submit,
+.conn-drop,
+.conn-back {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--d0-lvl3-stroke);
+  background: var(--d0-lvl2-bg);
+  color: var(--d0-text);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.conn-submit {
+  border-color: transparent;
+  background: var(--d0-cta);
+  color: #fff;
+}
+
+.conn-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.conn-back {
+  margin-left: auto;
+}
+
+.conn-state {
+  color: var(--d0-text-subtle);
 }

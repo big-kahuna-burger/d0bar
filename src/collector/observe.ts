@@ -1,4 +1,10 @@
-import { noteFirstInput, noteLcpEntry, noteLoaded, noteVisibilityState } from "./phase";
+import {
+  currentPhase,
+  noteFirstInput,
+  noteLcpEntry,
+  noteLoaded,
+  noteVisibilityState,
+} from "./phase";
 import { pushResource } from "./ring";
 import { noteInteraction, noteLayoutShift, noteLcp, noteLoaf, noteNavigation } from "./vitals";
 
@@ -11,8 +17,10 @@ import { noteInteraction, noteLayoutShift, noteLcp, noteLoaf, noteNavigation } f
  *
  * This is also the toolbar's only point of contact with the host page. Lifecycle signals that
  * would conventionally be listeners — load, visibility, first input — are taken from entry
- * types instead and routed to `phase.ts`, so the toolbar registers no event listener on
- * `window` or `document` at all. `non-perturbation.spec.ts` asserts that.
+ * types instead and routed to `phase.ts`, so nothing in the observation path registers an
+ * event listener on `window` or `document`. The toolbar's one listener on the host is the
+ * keyboard shortcut in `shortcut.ts`, which is opt-out; `non-perturbation.spec.ts` asserts
+ * that it is the only one.
  *
  * Every observer is registered with `buffered: true`, so mounting late still yields every
  * entry from page start. Each entry type is registered in its own try/catch: browsers throw
@@ -25,6 +33,44 @@ let reportingObserver: { disconnect(): void } | undefined;
 
 /** Entry types this browser accepted, for the diagnostics surface. */
 const active: string[] = [];
+
+/**
+ * Notified once after each post-settle batch of resource entries.
+ *
+ * One optional slot rather than a subscriber list: there is exactly one consumer — the open
+ * panel — and an array here would put an iteration in a `PerformanceObserver` callback for a
+ * generality nothing asked for.
+ */
+let batchListener: (() => void) | undefined;
+
+/**
+ * Registers the resource-batch listener. Returns a teardown that clears it.
+ *
+ * The listener must be cheap: it runs at the end of an observer callback, on the main
+ * thread. The panel's does one boolean write and, at most, one `requestAnimationFrame`.
+ */
+export function onResourceBatch(fn: () => void): () => void {
+  batchListener = fn;
+  return () => {
+    if (batchListener === fn) batchListener = undefined;
+  };
+}
+
+/**
+ * The same one-slot pattern, for the vitals entry types.
+ *
+ * Deliberately not the resource slot. Sharing it would repaint the requests list on every
+ * layout shift — a repaint per shift on the page being measured, to update a list that did
+ * not change. The two batches are different events and get different slots.
+ */
+let vitalsListener: (() => void) | undefined;
+
+export function onVitalsBatch(fn: () => void): () => void {
+  vitalsListener = fn;
+  return () => {
+    if (vitalsListener === fn) vitalsListener = undefined;
+  };
+}
 
 /** Deprecations, interventions and CSP violations, bounded so a noisy page cannot grow us. */
 const REPORT_CAP = 50;
@@ -70,6 +116,12 @@ export function startObserving(): () => void {
     for (let i = 0; i < entries.length; i++) {
       pushResource(entries[i] as PerformanceResourceTiming);
     }
+    /* Once per batch, never per entry, and never before settle. The listener exists so an
+       open panel learns about new requests without polling every frame; during the load
+       phase there is nothing to tell, because stage 2 has not been fetched yet and the
+       panel re-reads the whole ring when it opens. Gating on the phase keeps the claim
+       about this callback exact rather than nearly true. */
+    if (batchListener && currentPhase() === "settled") batchListener();
   });
 
   observe("navigation", (entries) => {
@@ -96,12 +148,14 @@ export function startObserving(): () => void {
     for (let i = 0; i < entries.length; i++) noteLcp(entries[i] as PerformanceEntry);
     /* Each entry resets the quiet timer the moratorium waits on. */
     noteLcpEntry();
+    vitalsListener?.();
   });
 
   observe("layout-shift", (entries) => {
     for (let i = 0; i < entries.length; i++) {
       noteLayoutShift(entries[i] as LayoutShiftEntry);
     }
+    vitalsListener?.();
   });
 
   /* 40ms matches the threshold the platform itself uses for reporting slow interactions. */
@@ -111,12 +165,14 @@ export function startObserving(): () => void {
       for (let i = 0; i < entries.length; i++) {
         noteInteraction(entries[i] as EventTimingEntry);
       }
+      vitalsListener?.();
     },
     { durationThreshold: 40 },
   );
 
   observe("long-animation-frame", (entries) => {
     for (let i = 0; i < entries.length; i++) noteLoaf(entries[i] as PerformanceEntry);
+    vitalsListener?.();
   });
 
   /* First input finalizes LCP. Observed as an entry type rather than a listener, so the
@@ -146,6 +202,8 @@ export function startObserving(): () => void {
     active.length = 0;
     reportingObserver?.disconnect();
     reportingObserver = undefined;
+    batchListener = undefined;
+    vitalsListener = undefined;
   };
 }
 

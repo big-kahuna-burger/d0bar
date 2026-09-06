@@ -32,12 +32,50 @@
     -->
     <script>
       (function () {
+        /* `?hostsw=1` gives the *host page* a service worker of its own, registered before
+           d0bar loads and knowing nothing about it. That is outcome 3 in `src/collector/sw.ts`:
+           the scope is owned by someone else, d0bar must refuse to register, and the whole
+           degraded path has to render. Registered here rather than in the module below because
+           it has to be the host's, not the toolbar's — and left un-awaited, because a host would
+           not block their page on it either. */
+        if (new URLSearchParams(location.search).get("hostsw") === "1") {
+          if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.register("/host-sw.js", { scope: "/" }).catch(function () {});
+          }
+        }
         var arm = new URLSearchParams(location.search).get("d0bar") || "off";
         if (arm === "off") return;
         var script = document.createElement("script");
         script.src = "/dist/d0bar.iife.js";
         script.defer = true;
-        if (arm === "on") script.setAttribute("data-d0bar-enabled", "");
+        if (arm === "on") {
+          script.setAttribute("data-d0bar-enabled", "");
+          /* Tier 2. Served from the root so the worker's scope covers the whole origin —
+             see the `/d0bar-sw.js` route in server.mjs for why that is a constraint and not
+             a preference. `?sw=off` runs the `on` arm with tier 2 deliberately absent, which
+             is the degraded path the footer has to render honestly. */
+          var sw = new URLSearchParams(location.search).get("sw");
+          if (sw !== "off") {
+            /* `?api=<origin>` exercises the worker's escape hatch for an origin the compiled
+               region table does not carry. Not needed to connect — the regions are compiled in
+               and picked in the connect surface — so the default arms register the plain URL and
+               stay exactly what they were before this change. */
+            var api = new URLSearchParams(location.search).get("api");
+            script.setAttribute(
+              "data-d0bar-sw",
+              api ? "/d0bar-sw.js?api=" + encodeURIComponent(api) : "/d0bar-sw.js"
+            );
+          }
+        }
+        /* `?region=<id>` preselects the connect surface's region picker, so a debugging session
+           against a non-EU tenant does not re-pick it on every reload. An id, not an origin —
+           the worker resolves it against its own table and ignores anything else. */
+        var region = new URLSearchParams(location.search).get("region");
+        if (region) window.D0BAR_REGION = region;
+        /* `?shortcut=off` exercises the opt-out that returns the host's event surface to
+           untouched — asserted in `non-perturbation.spec.ts`. */
+        var shortcut = new URLSearchParams(location.search).get("shortcut");
+        if (shortcut) script.setAttribute("data-d0bar-shortcut", shortcut);
         document.head.appendChild(script);
       })();
     </script>

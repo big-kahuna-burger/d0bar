@@ -24,7 +24,6 @@ const TAG = "d0-bar";
 /** Coalescing floor for text updates, per the handoff's ambient-not-twitchy intent. */
 const REFRESH_MS = 500;
 
-
 let sheet: CSSStyleSheet | undefined;
 
 function styleSheet(): CSSStyleSheet {
@@ -46,10 +45,19 @@ export interface PillHandle {
   root(): ShadowRoot | undefined;
   /** Returns focus to the pill when the panel closes. */
   focus(): void;
+  /**
+   * Marks the pill as waiting on stage 2.
+   *
+   * Only ever visible on a slow or cold fetch — on a warm prefetch the panel opens in the
+   * same frame and this never paints. Without it a click on a throttled connection looks
+   * like the pill is broken.
+   */
+  setPending(pending: boolean): void;
 }
 
 interface PillNodes {
   count: Text;
+  pulse: HTMLElement;
   dot: HTMLElement;
   vitalWrap: HTMLElement;
   vitalText: Text;
@@ -72,6 +80,9 @@ function build(root: ShadowRoot, onActivate: () => void): PillNodes {
   count.className = "count";
   const countText = document.createTextNode("0 req");
   count.appendChild(countText);
+
+  const pulse = document.createElement("i");
+  pulse.className = "pulse";
 
   const sep = document.createElement("span");
   sep.className = "sep";
@@ -97,10 +108,39 @@ function build(root: ShadowRoot, onActivate: () => void): PillNodes {
   const droppedText = document.createTextNode("");
   dropped.appendChild(droppedText);
 
-  button.append(mark, count, sep, vitalWrap, untraced, dropped);
+  button.append(mark, pulse, count, sep, vitalWrap, untraced, dropped);
   root.appendChild(button);
 
-  return { count: countText, dot, vitalWrap, vitalText: vitalTextNode, untraced, dropped, droppedText };
+  return {
+    count: countText,
+    pulse,
+    dot,
+    vitalWrap,
+    vitalText: vitalTextNode,
+    untraced,
+    dropped,
+    droppedText,
+  };
+}
+
+/**
+ * Blinks the activity dot.
+ *
+ * Restarting a running animation rather than toggling a class: `currentTime = 0` needs no
+ * style recalculation and cannot force a layout, and a fresh batch arriving mid-settle should
+ * restart the blink rather than be swallowed by it or stack a second animation on top.
+ *
+ * Reduced motion is handled in CSS, which makes this a loop over an empty list rather than a
+ * media query read on every tick.
+ */
+function fire(pulse: HTMLElement): void {
+  pulse.classList.add("firing");
+  const running = pulse.getAnimations();
+  for (let i = 0; i < running.length; i += 1) {
+    const animation = running[i] as Animation;
+    animation.currentTime = 0;
+    animation.play();
+  }
 }
 
 /**
@@ -126,6 +166,9 @@ export function mountPill(onActivate: () => void): PillHandle {
     const count = size();
     if (count !== shownCount) {
       nodes.count.nodeValue = `${count} req`;
+      /* Not on the first paint: `shownCount` starts at -1, and a pill that blinks the moment
+         it mounts is reporting its own arrival as page activity. */
+      if (shownCount >= 0) fire(nodes.pulse);
       shownCount = count;
     }
 
@@ -203,6 +246,14 @@ export function mountPill(onActivate: () => void): PillHandle {
     refreshNow: refresh,
     root: () => shadow,
     focus: () => button?.focus(),
+    setPending(pending: boolean) {
+      if (!button) return;
+      button.classList.toggle("pending", pending);
+      /* The pill stays operable — a second click while stage 2 is in flight is ignored by
+         the caller, not by a disabled control the user cannot focus. `aria-busy` says so
+         without removing it from the tab order. */
+      button.setAttribute("aria-busy", pending ? "true" : "false");
+    },
     destroy() {
       destroyed = true;
       stopClock();
