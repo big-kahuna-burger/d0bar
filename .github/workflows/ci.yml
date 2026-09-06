@@ -26,7 +26,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          # From `.nvmrc`, so the workflow, the local toolchain and `engines.node` cannot
+          # drift apart — three places declaring a version is three places to forget.
+          node-version-file: .nvmrc
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
