@@ -2,6 +2,9 @@ import { bindAttr, bindClass, bindHidden, bindText, on } from "spark-signals/bin
 import { effect, scope } from "spark-signals/signal";
 import panelCss from "./panel.css?inline";
 import { flushCorrelation } from "../collector/correlate";
+import { query as brokerQuery } from "./broker";
+import { layoutClient } from "./layout-client";
+import { createTraceQuery } from "../trace/query";
 import { resolveTiers } from "./tier";
 import { requestsView } from "./views/requests";
 import { traceView } from "./views/trace";
@@ -264,7 +267,6 @@ export function openPanel(options: PanelOptions): PanelHandle {
       bindings.add(bindHidden(badge, () => !showUntracedBadge()));
     }
 
-
     bindings.add(bindAttr(button, "aria-selected", () => tab() === item.id));
     bindings.add(bindClass(button, "on", () => tab() === item.id));
     bindings.add(on(button, "click", () => selectTab(item.id)));
@@ -329,16 +331,34 @@ export function openPanel(options: PanelOptions): PanelHandle {
   bindings.add(bindHidden(vitals.el, () => !showVitals()));
 
   /**
+   * The layout worker's client, and the trace query built on it.
+   *
+   * The worker is **not** started here. `layoutClient` creates one lazily on the first trace it
+   * is asked to lay out and terminates it after an idle period, so opening the panel costs a
+   * panel and a developer who never opens a trace never pays for a thread.
+   *
+   * This is what `add-trace-view` left as a declared boundary with no implementation. Both
+   * halves have now landed: `add-pasted-token` supplies the credential, and the layout worker
+   * turns a response body into positioned rows without the main thread touching it. The
+   * `unqueryable` state remains reachable and correct — it is what a selection resolves to when
+   * no token is connected, which is a thing the developer can fix rather than a claim about the
+   * trace.
+   */
+  const layout = layoutClient();
+  const trace0Query = createTraceQuery({
+    send: brokerQuery,
+    layout,
+    /* Read at call time, not captured: the developer can reconnect to a different region with
+       the panel open, and a captured origin would query the previous one and fail as an
+       authorization error. */
+    apiOrigin: () => connection().apiOrigin,
+  });
+
+  /**
    * The trace surface, mounted alongside the list rather than swapped for it.
    *
-   * No `query` is passed. The credential is no longer what is missing — `add-pasted-token`
-   * shipped it — but a `TraceQuery` has to return a laid-out summary, and turning a response
-   * body into one is `add-trace-layout-worker`'s job and is not built. Parsing it here instead
-   * would land the parse on the main thread being measured. So the boundary stays declared,
-   * injected and driven by a fake in tests, and the machine renders it as `unqueryable`: a
-   * statement about d0bar rather than a fourth way of saying "not found". With tier 2 off,
-   * which is the default, no request carries a traceparent at all and the surface never gets
-   * that far — every selection resolves to the no-span state.
+   * With tier 2 off, which is the default, no request carries a traceparent at all and the
+   * surface never reaches the query: every selection resolves to the no-span state.
    */
   /* Mounted once and hidden, like the other two. It also owns the untraced badge, which has
      to be right before anyone opens the tab — so this view exists and counts from the moment
@@ -357,6 +377,7 @@ export function openPanel(options: PanelOptions): PanelHandle {
     tier1: options.tier1,
     tier2: () => tier2(),
     seen: () => workerSaw,
+    query: trace0Query,
   });
   bindings.add(bindHidden(trace.el, () => view() !== "trace"));
 
@@ -383,7 +404,11 @@ export function openPanel(options: PanelOptions): PanelHandle {
     bindHidden(
       empty,
       () =>
-        showRequests() || showVitals() || showUntraced() || view() === "trace" || view() === "connect",
+        showRequests() ||
+        showVitals() ||
+        showUntraced() ||
+        view() === "trace" ||
+        view() === "connect",
     ),
   );
   /* Every tab is built now, so there is nothing left for this node to say. Kept rather than
@@ -622,6 +647,9 @@ export function openPanel(options: PanelOptions): PanelHandle {
       vitals.destroy();
       untraced.destroy();
       trace.destroy();
+      /* Terminates the layout worker if one is still alive. A panel that closed while a trace
+         was in flight must not leave a thread parsing something nobody will look at. */
+      layout.destroy();
       connectSurface.destroy();
       panel.remove();
       root.adoptedStyleSheets = root.adoptedStyleSheets.filter((s) => s !== sheet);

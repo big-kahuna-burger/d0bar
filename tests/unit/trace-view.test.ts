@@ -10,6 +10,8 @@ import type { Tier1Access, Tier2State } from "../../src/shared/stage2";
 import {
   TIER2_OFF_COPY,
   UNQUERYABLE_COPY,
+  type SpanRow,
+  type SpanRows,
   type TraceQuery,
   type TraceQueryOutcome,
   type TraceQueryRequest,
@@ -37,8 +39,13 @@ const SUMMARY: TraceSummary = {
   logCount: 3,
   truncated: false,
   mainThreadMs: null,
+  workerMs: null,
   log: { level: "WARN", message: "tariff cache miss for corridor NL-DE" },
-  spans: [
+  /* An accessor, not an array — the shape the layout worker actually hands over. Backed by
+     plain objects here because what is under test is the view, not the buffer; `layout.test.ts`
+     owns the buffer. The scratch discipline is still exercised: the view reads into one record
+     and must not retain what it read. */
+  rows: rowsOf([
     {
       name: "GET /api/quote",
       service: "edge",
@@ -49,6 +56,7 @@ const SUMMARY: TraceSummary = {
       colorIndex: 0,
       orphan: false,
       error: false,
+      degenerate: false,
     },
     {
       name: "pricing.lookup",
@@ -60,9 +68,23 @@ const SUMMARY: TraceSummary = {
       colorIndex: 2,
       orphan: false,
       error: true,
+      degenerate: false,
     },
-  ],
+  ]),
 };
+
+/** Wraps plain rows in the accessor the machine's `TraceSummary` now carries. */
+function rowsOf(list: SpanRow[]): SpanRows {
+  return {
+    count: list.length,
+    read(index, out) {
+      const row = list[index];
+      if (!row) return false;
+      Object.assign(out, row);
+      return true;
+    },
+  };
+}
 
 function fakeRing(records: RequestRecord[]): Tier1Access {
   return {
@@ -356,7 +378,9 @@ describe("traceView", () => {
     selected.set(0);
     await settled();
 
-    expect(textOf(surface.el, ".trace-none-title")).toBe("This panel does not query spans yet.");
+    expect(textOf(surface.el, ".trace-none-title")).toBe(
+      "This panel does not query spans yet.",
+    );
     expect(textOf(surface.el, ".trace-none-why")).toBe(UNQUERYABLE_COPY["not-wired"]);
     surface.destroy();
   });

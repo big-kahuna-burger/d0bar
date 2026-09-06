@@ -43,8 +43,7 @@ export interface TokenStatus {
 export type QueryFailure = "not-connected" | "refused-origin" | "rejected" | "unreachable";
 
 export type QueryOutcome =
-  | { ok: true; status: number; body: string }
-  | { ok: false; reason: QueryFailure };
+  { ok: true; status: number; body: string } | { ok: false; reason: QueryFailure };
 
 export type BrokerRequest =
   /* `region` is an **id** from `regions.ts`, never a URL. The worker resolves it against its
@@ -53,11 +52,23 @@ export type BrokerRequest =
   | { kind: "connect"; token: string; persist: boolean; region: string }
   | { kind: "disconnect" }
   | { kind: "status" }
-  | { kind: "query"; url: string };
+  /**
+   * One API call, made by the worker with the connected token attached.
+   *
+   * `method` and `body` exist because the trace endpoint is a POST: `/api/trace/details` takes
+   * the trace id and a time range in a JSON body. They are optional and default to a GET with
+   * no body, so every existing caller is unchanged.
+   *
+   * **Neither widens what the page can reach.** The destination is still `url`, still checked
+   * against the origin the token was connected *for*, and a body cannot move a request to a
+   * different host. What a body does add is a way for the page to send arbitrary content to
+   * the API under the developer's own credential — which is exactly what the panel is for, and
+   * is bounded by the origin check rather than by inspecting the body.
+   */
+  | { kind: "query"; url: string; method?: string; body?: string };
 
 export type BrokerReply =
-  | { kind: "status"; status: TokenStatus }
-  | { kind: "query"; outcome: QueryOutcome };
+  { kind: "status"; status: TokenStatus } | { kind: "query"; outcome: QueryOutcome };
 
 export const DISCONNECTED: TokenStatus = {
   connected: false,

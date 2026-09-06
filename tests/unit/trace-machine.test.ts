@@ -5,6 +5,7 @@ import {
   inputFor,
   BASE_DELAY_MS,
   MAX_DELAY_MS,
+  NO_SPANS,
   RANGE_MS,
   UNQUERYABLE_COPY,
   type TraceInput,
@@ -33,8 +34,9 @@ const SUMMARY: TraceSummary = {
   serviceCount: 4,
   logCount: 3,
   truncated: false,
-  spans: [],
+  rows: NO_SPANS,
   mainThreadMs: null,
+  workerMs: null,
 };
 
 /** A manual timer queue: nothing fires until the test says so. */
@@ -146,7 +148,14 @@ describe("inputFor", () => {
       "unknown",
     ] as const) {
       expect(
-        inputFor({ tier2Live: true, hasSpan: false, cause: () => cause, traceId: "", confident: true, at: AT }),
+        inputFor({
+          tier2Live: true,
+          hasSpan: false,
+          cause: () => cause,
+          traceId: "",
+          confident: true,
+          at: AT,
+        }),
       ).toEqual({ kind: "none", why: cause });
     }
   });

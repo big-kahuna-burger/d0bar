@@ -80,9 +80,17 @@ export function disconnect(): Promise<TokenStatus> {
   return askStatus({ kind: "disconnect" });
 }
 
-/** Runs one API call through the worker. The token never crosses back. */
-export async function query(url: string): Promise<QueryOutcome> {
-  const reply = await ask({ kind: "query", url });
+/**
+ * Runs one API call through the worker. The token never crosses back.
+ *
+ * `init` carries a method and a body for the endpoints that need them — the trace query is a
+ * POST. Absent, this is the GET it has always been.
+ */
+export async function query(
+  url: string,
+  init: { method?: string; body?: string } = {},
+): Promise<QueryOutcome> {
+  const reply = await ask({ kind: "query", url, ...init });
   if (reply?.kind !== "query") return { ok: false, reason: "unreachable" };
   return reply.outcome;
 }

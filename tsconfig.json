@@ -9,6 +9,7 @@
     "*.config.ts"
   ],
   "exclude": [
-    "src/sw"
+    "src/sw",
+    "src/worker"
   ]
 }

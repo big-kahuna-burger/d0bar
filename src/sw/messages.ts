@@ -62,9 +62,18 @@ export async function handle(data: unknown, reply: Replier): Promise<void> {
       reply.postMessage({ kind: "status", status: await restore() });
       return;
     case "query": {
-      const { url } = data as Extract<BrokerRequest, { kind: "query" }>;
+      const { url, method, body } = data as Extract<BrokerRequest, { kind: "query" }>;
       if (typeof url !== "string") return;
-      reply.postMessage({ kind: "query", outcome: await query(url) });
+      /* Narrowed here rather than trusted from the message. Anything that is not a string
+         becomes the default, so a malformed message produces a plain GET instead of a
+         `fetch` that throws inside the worker and never replies. */
+      reply.postMessage({
+        kind: "query",
+        outcome: await query(url, {
+          ...(typeof method === "string" ? { method } : {}),
+          ...(typeof body === "string" ? { body } : {}),
+        }),
+      });
       return;
     }
     default:

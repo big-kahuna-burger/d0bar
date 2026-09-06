@@ -23,18 +23,19 @@
   },
   "scripts": {
     "tokens": "node scripts/vendor-tokens.mjs",
-    "build": "pnpm tokens && pnpm -F spark-signals build && pnpm typecheck && vite build && D0BAR_STAGE=2 vite build && D0BAR_STAGE=sw vite build && D0BAR_STAGE=sw D0BAR_SW=module vite build && tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p src/sw",
+    "build": "pnpm tokens && pnpm -F spark-signals build && pnpm typecheck && vite build && D0BAR_STAGE=2 vite build && D0BAR_STAGE=sw vite build && D0BAR_STAGE=sw D0BAR_SW=module vite build && D0BAR_STAGE=worker vite build && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/sw && tsc --noEmit -p src/worker",
     "test": "vitest run && pnpm -F spark-signals test",
     "test:watch": "vitest",
-    "test:perf": "pnpm fixture:otel && playwright test",
+    "test:perf": "pnpm fixture:otel && pnpm fixture:trace && playwright test",
     "bench:serve": "node bench/fixtures/server.mjs",
     "size": "pnpm build && size-limit",
     "lint": "eslint .",
     "format": "prettier --write .",
     "dev": "pnpm build && concurrently -n s1,panel,sw,serve -c cyan,blue,green,magenta \"vite build --watch\" \"D0BAR_STAGE=2 vite build --watch\" \"D0BAR_STAGE=sw vite build --watch\" \"node --watch bench/fixtures/server.mjs\"",
     "prepublishOnly": "pnpm build && pnpm test && pnpm size",
-    "fixture:otel": "node scripts/build-otel-fixture.mjs"
+    "fixture:otel": "node scripts/build-otel-fixture.mjs",
+    "fixture:trace": "node scripts/build-trace-fixture.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

@@ -111,8 +111,14 @@ function minifyLibOutput(options: () => MinifyOptions, expectedGlobal: string | 
  * silently inlined back into the IIFE one, putting the panel on the critical path with no
  * error to notice. So stage 2 builds alone, as an ES module, and stage 1 loads it by URL.
  */
-const stage: 1 | 2 | "sw" =
-  process.env.D0BAR_STAGE === "2" ? 2 : process.env.D0BAR_STAGE === "sw" ? "sw" : 1;
+const stage: 1 | 2 | "sw" | "worker" =
+  process.env.D0BAR_STAGE === "2"
+    ? 2
+    : process.env.D0BAR_STAGE === "sw"
+      ? "sw"
+      : process.env.D0BAR_STAGE === "worker"
+        ? "worker"
+        : 1;
 
 /**
  * The service worker is a third artifact for the same reason stage 2 is a second one: it is
@@ -151,7 +157,15 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     minifyLibOutput(
       terserOptions,
-      stage === "sw" ? (swVariant === "module" ? "D0barSW" : null) : GLOBAL_NAME,
+      stage === "sw"
+        ? swVariant === "module"
+          ? "D0barSW"
+          : null
+        : /* The layout worker builds ESM only, so the IIFE guard never runs for it; `null`
+             states that rather than leaving a global name that would silently not apply. */
+          stage === "worker"
+          ? null
+          : GLOBAL_NAME,
     ),
   ],
   build: {
@@ -165,30 +179,47 @@ export default defineConfig(({ mode }) => ({
        404, and swallowed it — a toolbar that looked alive and did nothing when clicked. */
     emptyOutDir: stage === 1 && !watching,
     lib:
-      stage === "sw"
+      /**
+       * A fourth artifact, and a fourth realm. The layout worker is loaded by the panel with
+       * `new Worker(url, { type: "module" })` from the panel's own directory, so it must exist
+       * as a file at a stable name — a Rollup chunk of stage 2 would be inlined into stage 2
+       * and never be a worker at all.
+       *
+       * ESM only, unlike the service worker. A *dedicated* module worker is supported
+       * everywhere the panel already needs (Chrome 80, Firefox 114, Safari 15); the
+       * `{ type: "module" }` gap that forced the service worker to IIFE is a service-worker
+       * gap. And the fallback here would be no waterfall rather than no toolbar.
+       */
+      stage === "worker"
         ? {
-            entry: SW_ENTRIES[swVariant].entry,
-            /* A global for the classic-`importScripts` path, which has no export binding. */
-            name: "D0barSW",
-            formats: swVariant === "module" ? ["es", "iife"] : ["iife"],
-            fileName: (format: string) =>
-              format === "es"
-                ? SW_ENTRIES[swVariant].file.replace(/\.js$/, ".mjs")
-                : SW_ENTRIES[swVariant].file,
+            entry: "src/worker/layout.worker.ts",
+            formats: ["es"],
+            fileName: () => "d0bar-layout-worker.js",
           }
-        : stage === 2
+        : stage === "sw"
           ? {
-              entry: "src/panel/index.ts",
-              /* ES only. Stage 2 is always reached through `import()`, from either build. */
-              formats: ["es"],
-              fileName: () => "d0bar.panel.js",
+              entry: SW_ENTRIES[swVariant].entry,
+              /* A global for the classic-`importScripts` path, which has no export binding. */
+              name: "D0barSW",
+              formats: swVariant === "module" ? ["es", "iife"] : ["iife"],
+              fileName: (format: string) =>
+                format === "es"
+                  ? SW_ENTRIES[swVariant].file.replace(/\.js$/, ".mjs")
+                  : SW_ENTRIES[swVariant].file,
             }
-          : {
-              entry: "src/index.ts",
-              name: GLOBAL_NAME,
-              formats: ["es", "iife"],
-              fileName: (format) => (format === "es" ? "d0bar.js" : "d0bar.iife.js"),
-            },
+          : stage === 2
+            ? {
+                entry: "src/panel/index.ts",
+                /* ES only. Stage 2 is always reached through `import()`, from either build. */
+                formats: ["es"],
+                fileName: () => "d0bar.panel.js",
+              }
+            : {
+                entry: "src/index.ts",
+                name: GLOBAL_NAME,
+                formats: ["es", "iife"],
+                fileName: (format) => (format === "es" ? "d0bar.js" : "d0bar.iife.js"),
+              },
     rollupOptions: {
       output: { compact: true },
     },

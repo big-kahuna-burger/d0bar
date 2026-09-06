@@ -22,7 +22,10 @@ import { apiOrigin, bearer } from "./token";
  * The allowed origin is the one the connected token was connected *for*, resolved from a
  * compiled table by id — see `regions.ts`. Nothing the page sends can widen it.
  */
-export async function query(url: string): Promise<QueryOutcome> {
+export async function query(
+  url: string,
+  init: { method?: string; body?: string } = {},
+): Promise<QueryOutcome> {
   /* The origin comes from the connected credential, not from the caller. An `apiOrigin`
      parameter was the first shape and it put the allowlist in the hands of whoever called —
      which, one hop back, is the page. */
@@ -36,8 +39,20 @@ export async function query(url: string): Promise<QueryOutcome> {
 
   let response: Response;
   try {
+    const method = init.method ?? "GET";
     response = await fetch(url, {
-      headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+      method,
+      /* Only sent where there is one. A GET or HEAD with a body throws synchronously in the
+         `Request` constructor, which would surface as `unreachable` — a network answer to a
+         programming mistake. */
+      ...(init.body !== undefined && method !== "GET" && method !== "HEAD"
+        ? { body: init.body }
+        : {}),
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: "application/json",
+        ...(init.body === undefined ? {} : { "content-type": "application/json" }),
+      },
       /* Never `include`. The API answers `access-control-allow-origin: *`, and a wildcard and
          credentialed request are mutually exclusive — the browser rejects the response
          outright. The bearer is the only credential here by construction. */

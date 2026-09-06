@@ -200,13 +200,26 @@ export type LayoutResponse =
       message: string;
     };
 
+/**
+ * The one failure sentence the *panel* produces on its own.
+ *
+ * Split out of {@link LAYOUT_FAILURE_COPY} rather than read from it, because that record is
+ * otherwise entirely the worker's: every other reason is decided inside the worker and arrives
+ * as a message. Importing the whole record to reach one entry shipped all five sentences in the
+ * stage-2 bundle for the one the panel can reach without asking — 0.4 kB of prose on the path a
+ * developer waits for. This is the only one the panel can raise, because it is the one about the
+ * two realms disagreeing.
+ */
+export const VERSION_MISMATCH_COPY =
+  "d0bar's panel and its layout worker are different versions. Reload the page.";
+
 /** Human copy per failure. Here rather than in the view so the worker's tests can assert it. */
 export const LAYOUT_FAILURE_COPY: Record<LayoutFailure, string> = {
   "malformed-json": "The trace response was not valid JSON, so there is nothing to lay out.",
   "not-otlp":
     "The trace response parsed, but carried no resourceSpans. d0bar does not know how to read it.",
   empty: "The query succeeded and the trace held no spans.",
-  internal: "d0bar failed to lay this trace out. This is a bug in the toolbar, not in the trace.",
-  "version-mismatch":
-    "d0bar's panel and its layout worker are different versions. Reload the page.",
+  internal:
+    "d0bar failed to lay this trace out. This is a bug in the toolbar, not in the trace.",
+  "version-mismatch": VERSION_MISMATCH_COPY,
 };

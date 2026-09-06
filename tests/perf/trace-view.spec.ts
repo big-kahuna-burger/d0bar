@@ -196,7 +196,9 @@ test("gives four rows on one page four different causes", async ({ page }) => {
 
 /** Pops back to the list, so the next row can be opened. */
 async function back(page: import("@playwright/test").Page) {
-  await page.evaluate(() => window.__d0root!.querySelector<HTMLElement>(".trace-back")?.click());
+  await page.evaluate(() =>
+    window.__d0root!.querySelector<HTMLElement>(".trace-back")?.click(),
+  );
   await page.waitForFunction(
     () => !(window.__d0root!.querySelector(".requests") as HTMLElement).hidden,
   );

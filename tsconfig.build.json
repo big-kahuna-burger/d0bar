@@ -13,6 +13,7 @@
     "src/env.d.ts"
   ],
   "exclude": [
-    "src/sw"
+    "src/sw",
+    "src/worker"
   ]
 }

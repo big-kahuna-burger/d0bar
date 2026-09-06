@@ -110,7 +110,48 @@ export interface SpanRow {
   /** The span's parent is not in this trace. Rendered visibly rather than silently reparented. */
   orphan: boolean;
   error: boolean;
+  /**
+   * The span had no measurable duration and its bar was widened to stay clickable.
+   *
+   * The width is then a rendering decision rather than a measurement, and the row has to say so
+   * — otherwise a zero-duration span is indistinguishable from a 2 ms one.
+   */
+  degenerate: boolean;
 }
+
+/**
+ * The laid-out spans, read one at a time into a caller-owned record.
+ *
+ * **Not an array**, and that is the point of the whole layout worker. The rows arrive as typed
+ * arrays over a transferred buffer; materialising them into four thousand objects on arrival
+ * would put back most of the allocation cost the worker exists to move off this thread, on the
+ * thread whose INP the toolbar is reporting. The virtualizer holds a viewport's worth of rows,
+ * so only a viewport's worth is ever built — the same `read(index, out)` shape the request ring
+ * uses, for the same reason.
+ */
+export interface SpanRows {
+  readonly count: number;
+  read(index: number, out: SpanRow): boolean;
+}
+
+/** A blank row, for callers that need a scratch record to read into. */
+export function spanScratch(): SpanRow {
+  return {
+    name: "",
+    service: "",
+    depth: 0,
+    left: 0,
+    width: 0,
+    durationMs: 0,
+    colorIndex: 0,
+    orphan: false,
+    error: false,
+    degenerate: false,
+  };
+}
+
+/** An empty row set, for the states that have none. */
+export const NO_SPANS: SpanRows = { count: 0, read: () => false };
 
 export interface TraceSummary {
   spanCount: number;
@@ -118,7 +159,7 @@ export interface TraceSummary {
   logCount: number;
   /** The backend returned more spans than it sent. The UI must say so. */
   truncated: boolean;
-  spans: SpanRow[];
+  rows: SpanRows;
   /** The single most severe correlated log, for the footer. Absent when there are none. */
   log?: { level: string; message: string };
   /**
@@ -130,6 +171,14 @@ export interface TraceSummary {
    * shown at all.
    */
   mainThreadMs: number | null;
+  /**
+   * Milliseconds the worker spent parsing and laying this trace out, as the worker measured it,
+   * or `null` when nothing measured it.
+   *
+   * The other half of the same claim. "Flattened in worker" is only worth printing beside a
+   * main-thread number if the work it names actually happened somewhere, and this is where.
+   */
+  workerMs: number | null;
 }
 
 export type TraceQueryOutcome =

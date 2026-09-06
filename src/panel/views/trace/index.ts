@@ -13,10 +13,13 @@ import {
   CEILING,
   createTraceMachine,
   inputFor,
+  NO_SPANS,
   RANGE_MS,
+  spanScratch,
   TIER2_OFF_COPY,
   UNQUERYABLE_COPY,
   type SpanRow,
+  type SpanRows,
   type TraceMachine,
   type TraceMachineOptions,
   type TraceQuery,
@@ -268,7 +271,7 @@ export function traceView(options: TraceViewOptions): TraceView {
   bindings.add(
     bindHidden(
       truncated,
-      () => !(state().name === "found" && spans().length > 0 && isTruncated()),
+      () => !(state().name === "found" && spans().count > 0 && isTruncated()),
     ),
   );
 
@@ -276,12 +279,22 @@ export function traceView(options: TraceViewOptions): TraceView {
     const at = state();
     return at.name === "found" ? at.summary : null;
   }
-  function spans(): SpanRow[] {
-    return currentSummary()?.spans ?? [];
+  function spans(): SpanRows {
+    return currentSummary()?.rows ?? NO_SPANS;
   }
   function isTruncated(): boolean {
     return currentSummary()?.truncated ?? false;
   }
+
+  /**
+   * One record, reused for every row painted.
+   *
+   * The rows live in a transferred buffer and are read into this on demand — so a scroll
+   * through a four-thousand-span trace allocates a viewport's worth of strings and nothing
+   * else. Same scratch pattern as the request list, and the reason the layout worker's output
+   * is an accessor rather than an array.
+   */
+  const spanRecord: SpanRow = spanScratch();
 
   /* ── span rows ──
      The same virtualizer as the request list, for the same reason: a four-thousand-span
@@ -333,11 +346,11 @@ export function traceView(options: TraceViewOptions): TraceView {
 
   function updateSpanRow(row: HTMLElement, index: number): void {
     const found = parts.get(row);
-    const span = spans()[index];
-    if (!found || !span) {
+    if (!found || !spans().read(index, spanRecord)) {
       row.hidden = true;
       return;
     }
+    const span = spanRecord;
     setText(found.label, span.name);
     setText(found.service, span.service);
     setText(found.duration, formatDuration(span.durationMs));
@@ -356,6 +369,9 @@ export function traceView(options: TraceViewOptions): TraceView {
     row.dataset["root"] = String(span.depth === 0);
     row.dataset["orphan"] = String(span.orphan);
     row.dataset["error"] = String(span.error);
+    /* A widened bar is a rendering decision, not a measurement — marked so a zero-duration
+       span is not read as a short one. */
+    row.dataset["degenerate"] = String(span.degenerate);
   }
 
   /* ── correlated-log footer ── */
@@ -582,7 +598,7 @@ export function traceView(options: TraceViewOptions): TraceView {
   bindings.add(
     effect(() => {
       const summary = currentSummary();
-      list.setCount(summary ? summary.spans.length : 0);
+      list.setCount(summary ? summary.rows.count : 0);
       list.invalidate();
     }),
   );
