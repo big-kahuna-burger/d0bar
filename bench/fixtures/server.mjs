@@ -241,9 +241,20 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  /* The built bundle, served as a host application would serve it. */
+  /* The built bundle, served as a host application would serve it.
+   *
+   * Cross-origin allowed, for `/try` — dropping d0bar onto a real site is the only way to see
+   * it against traffic the fixture cannot imitate. A script tag needs no CORS, but stage 2 is
+   * reached through `import()` and does, so without this the pill mounts on a real page and the
+   * panel never opens. Inert for every measured arm: those load same-origin, where a permissive
+   * `access-control-allow-origin` changes no byte of the response body and no timing.
+   *
+   * `*`, not a reflected `Origin`: this serves a public build from a loopback dev server, there
+   * is nothing here to protect, and reflecting would need `vary: origin` to be correct. */
   if (path.startsWith("/dist/")) {
-    await serveFile(res, join(repoRoot, normalize(path).replace(/^(\.\.[/\\])+/, "")));
+    await serveFile(res, join(repoRoot, normalize(path).replace(/^(\.\.[/\\])+/, "")), {
+      "access-control-allow-origin": "*",
+    });
     return;
   }
 

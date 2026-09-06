@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>d0bar — try it on a real page</title>
+    <!--
+      Not part of the fixture that gets measured.
+
+      `bench/fixtures/host/` is the instrument, and nothing added to it may be live during a
+      benchmark — the same rule that keeps the live-reload client behind `?live`. This file is
+      reached only by typing `/try`, is never loaded by index.html, and ships no script that
+      runs anywhere but here.
+
+      It exists because the fixture cannot imitate a real site's traffic: no third-party tags,
+      no ad auction, no framework hydration, no CDN with a cold edge. The browser-skew note in
+      the perf docs is the same problem from the other side. Dropping the shipped bundle onto a
+      page you actually use is the cheapest way to find out what the toolbar looks like there.
+    -->
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #fbfbfd;
+        --fg: #1c1c22;
+        --dim: #64646e;
+        --line: #dcdce4;
+        --code: #f2f2f7;
+        --accent: #5b3df5;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #131318;
+          --fg: #ececf2;
+          --dim: #9a9aa6;
+          --line: #2c2c36;
+          --code: #1c1c24;
+          --accent: #a894ff;
+        }
+      }
+      body {
+        margin: 0;
+        padding: 48px 24px 96px;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          15px/1.65 ui-sans-serif,
+          system-ui,
+          sans-serif;
+      }
+      main {
+        max-width: 46rem;
+        margin: 0 auto;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 26px;
+        letter-spacing: -0.02em;
+      }
+      h2 {
+        margin: 40px 0 10px;
+        font-size: 15px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--dim);
+      }
+      p {
+        margin: 0 0 14px;
+      }
+      .lede {
+        color: var(--dim);
+        margin-bottom: 32px;
+      }
+      code,
+      pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 13px;
+      }
+      pre {
+        margin: 0;
+        padding: 14px 16px;
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--code);
+      }
+      .drag {
+        display: inline-block;
+        padding: 11px 20px;
+        border: 1px solid var(--accent);
+        border-radius: 999px;
+        background: var(--accent);
+        color: #fff;
+        font-weight: 600;
+        text-decoration: none;
+        cursor: grab;
+      }
+      .row {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      ul {
+        margin: 0 0 14px;
+        padding-left: 20px;
+      }
+      li {
+        margin-bottom: 6px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-bottom: 14px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 7px 10px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      th {
+        color: var(--dim);
+        font-weight: 600;
+        font-size: 13px;
+      }
+      .note {
+        border-left: 3px solid var(--line);
+        padding-left: 14px;
+        color: var(--dim);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Try d0bar on a real page</h1>
+      <p class="lede">
+        The shipped bundle, served from this dev server, loaded onto any site you have open.
+      </p>
+
+      <h2>Bookmarklet</h2>
+      <p>Drag this to your bookmarks bar, then click it on any page.</p>
+      <p class="row">
+        <a class="drag" id="mark" href="#">d0bar</a>
+        <span class="note" style="border: 0; padding: 0">or paste the snippet below</span>
+      </p>
+
+      <h2>Console snippet</h2>
+      <pre id="snippet"></pre>
+
+      <h2>What you will see, and what you will not</h2>
+      <table>
+        <tr>
+          <th>Tier</th>
+          <th>On a real page</th>
+        </tr>
+        <tr>
+          <td>1 — requests, vitals</td>
+          <td>
+            Full. Read from the browser's own entries, so third-party traffic shows up too.
+          </td>
+        </tr>
+        <tr>
+          <td>2 — service worker</td>
+          <td>
+            <strong>Off, and the panel says so.</strong> A worker cannot be registered from
+            another origin. Requests will show as untraced. This is the degraded path working
+            correctly, not a failure.
+          </td>
+        </tr>
+        <tr>
+          <td>4 — OpenTelemetry</td>
+          <td>Live only if the page already runs an OTel web SDK. Most do not.</td>
+        </tr>
+      </table>
+
+      <h2>When it will not load at all</h2>
+      <ul>
+        <li>
+          <strong>Content-Security-Policy.</strong> Most large sites block a script from an
+          origin they did not list. Nothing appears and the console says why. Try a smaller
+          site, or your own app in development.
+        </li>
+        <li>
+          <strong>HTTPS pages.</strong> A page on <code>https:</code> will not load a script
+          over <code>http:</code>. Use this against a local or <code>http:</code> page.
+        </li>
+        <li>
+          <strong>Server not running.</strong> This page is served by it, so if you are reading
+          this it is up.
+        </li>
+      </ul>
+
+      <h2>The measured arms are elsewhere</h2>
+      <p class="note">
+        This page is a convenience, not an instrument. Numbers that get written down come from
+        <code>/?d0bar=on</code> against <code>gated</code>, on CI. A figure read off a real site
+        with a dev server underneath it is worth looking at and worth nothing as evidence.
+      </p>
+    </main>
+
+    <script>
+      (function () {
+        /* Built from this page's own origin rather than hardcoded, so a port change here needs
+           no edit there — and so the bookmarklet keeps working if the server moves. */
+        var src = location.origin + "/dist/d0bar.iife.js";
+        var body =
+          "(function(){" +
+          "if(document.querySelector('d0-bar')){console.log('d0bar: already here');return;}" +
+          "var s=document.createElement('script');" +
+          "s.src=" +
+          JSON.stringify(src) +
+          ";" +
+          "s.setAttribute('data-d0bar-enabled','');" +
+          "s.onerror=function(){console.error('d0bar: blocked. Content-Security-Policy, or the fixture server is not running.');};" +
+          "document.head.appendChild(s);" +
+          "})();";
+        document.getElementById("mark").href = "javascript:" + encodeURIComponent(body);
+        document.getElementById("snippet").textContent = body;
+      })();
+    </script>
+  </body>
+</html>
