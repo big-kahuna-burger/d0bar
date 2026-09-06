@@ -300,7 +300,9 @@ describe("keyboard and accessibility", () => {
     const stops = scroller.querySelectorAll('.row[tabindex="0"]');
     expect(stops.length).toBeLessThanOrEqual(1);
 
-    rows(scroller)[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    rows(scroller)[0]!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+    );
     flush();
     expect(scroller.querySelectorAll('.row[tabindex="0"]').length).toBe(1);
     view.destroy();

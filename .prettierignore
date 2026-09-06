@@ -2,3 +2,14 @@ dist
 design_handoff_d0bar
 src/collector/tokens.gen.ts
 pnpm-lock.yaml
+
+# Generated, and one line by design. `scripts/build-trace-fixture.mjs` writes it; pretty-printing
+# a 4000-span trace turns a one-line artifact into 36,760 lines of diff that nobody reads.
+bench/fixtures/trace-4000.json
+tests/fixtures/vitals-entries.json
+
+# Parsed by tooling rather than read as prose. `openspec validate` walks these structurally, and
+# `.claude/` is installed by plugins — reformatting either churns against upstream for no gain.
+openspec
+.claude
+

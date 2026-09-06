@@ -6,7 +6,7 @@
 #
 # Three jobs, deliberately parallel and deliberately not sharing a runner:
 #
-#   check            lint, size gate, unit tests
+#   check            lint (eslint + prettier), size gate, unit tests
 #   perf-timing      the seven @timing tests, one worker, alone on the machine
 #   perf-behaviour   the other sixty-two, across every core the runner has
 #
@@ -21,13 +21,14 @@ on:
     branches: [main]
   pull_request:
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
+  # Only `check` cancels a superseded run. Its answer is about the tree at a commit and a newer
+  # commit makes the older answer worthless, so cancelling costs nothing.
   check:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: check-${{ github.ref }}
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
 
@@ -63,6 +64,13 @@ jobs:
   # and checks, local never does.
   perf-timing:
     runs-on: ubuntu-24.04
+    # Keyed on the commit, and never cancelled. A perf run is a *measurement*, and pushing
+    # again does not make the previous commit's measurement wrong — it makes it the only record
+    # of that commit. Three runs were lost to `cancel-in-progress` in one session, including the
+    # one that would have shown what the timing/behaviour split did to wall clock.
+    concurrency:
+      group: perf-timing-${{ github.sha }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -116,6 +124,9 @@ jobs:
   # compares two durations, so it takes every core the runner has.
   perf-behaviour:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: perf-behaviour-${{ github.sha }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

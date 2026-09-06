@@ -190,7 +190,10 @@ describe("the tier 1 <-> tier 4 join", () => {
        when requests overlap, so the pairing is a guess and says so. */
     const result = joinSpans(
       [tier1("https://app.example.com/a", 0, 100), tier1("https://app.example.com/a", 1, 110)],
-      [span("https://app.example.com/a", 0, TRACE_A), span("https://app.example.com/a", 1, TRACE_B)],
+      [
+        span("https://app.example.com/a", 0, TRACE_A),
+        span("https://app.example.com/a", 1, TRACE_B),
+      ],
     );
     expect(result.matched.get(0)?.confident).toBe(false);
     expect(result.matched.get(1)?.confident).toBe(false);
@@ -202,7 +205,10 @@ describe("the tier 1 <-> tier 4 join", () => {
        than it did. */
     const result = joinSpans(
       [tier1("https://app.example.com/a", 0, 100)],
-      [span("https://app.example.com/a", 0, TRACE_A), span("https://app.example.com/gone", 1, TRACE_B)],
+      [
+        span("https://app.example.com/a", 0, TRACE_A),
+        span("https://app.example.com/gone", 1, TRACE_B),
+      ],
     );
     expect(result.matched.size).toBe(1);
     expect(result.unjoined.map((s) => s.url)).toEqual(["https://app.example.com/gone"]);
@@ -213,7 +219,10 @@ describe("the tier 1 <-> tier 4 join", () => {
        what keeps the two lined up as closely as the sources allow. */
     const result = joinSpans(
       [tier1("https://app.example.com/a", 0, 200), tier1("https://app.example.com/a", 1, 100)],
-      [span("https://app.example.com/a", 0, TRACE_A), span("https://app.example.com/a", 1, TRACE_B)],
+      [
+        span("https://app.example.com/a", 0, TRACE_A),
+        span("https://app.example.com/a", 1, TRACE_B),
+      ],
     );
     /* Index 1 started first, so it takes the first span. */
     expect(result.matched.get(1)?.traceId).toBe(TRACE_A);

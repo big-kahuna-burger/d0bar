@@ -140,7 +140,9 @@ export function untracedView(options: UntracedViewOptions): UntracedView {
   }
 
   function enabled(): boolean {
-    return open.peek() && tab.peek() === "untraced" && view.peek() === "list" && tier1.visible();
+    return (
+      open.peek() && tab.peek() === "untraced" && view.peek() === "list" && tier1.visible()
+    );
   }
 
   function read(): Coverage {

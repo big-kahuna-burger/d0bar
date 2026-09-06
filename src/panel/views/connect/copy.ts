@@ -95,9 +95,7 @@ export const CUSTODY: readonly CustodyOption[] = [
 export function connectedLine(status: TokenStatus): string {
   if (!status.connected) return "Not connected";
   const where = status.source === "stored" ? "remembered on this device" : "this session only";
-  return status.hint === ""
-    ? `Connected, ${where}`
-    : `Connected · …${status.hint} · ${where}`;
+  return status.hint === "" ? `Connected, ${where}` : `Connected · …${status.hint} · ${where}`;
 }
 
 /** One sentence per way a query can fail, each naming a different next step. */

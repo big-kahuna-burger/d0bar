@@ -43,11 +43,7 @@ export function bindVar(el: HTMLElement, name: string, fn: () => string): Dispos
 }
 
 /** Binds one inline style property. */
-export function bindStyle(
-  el: HTMLElement,
-  property: string,
-  fn: () => string,
-): Dispose {
+export function bindStyle(el: HTMLElement, property: string, fn: () => string): Dispose {
   let shown: string | undefined;
   return effect(() => {
     const next = fn();

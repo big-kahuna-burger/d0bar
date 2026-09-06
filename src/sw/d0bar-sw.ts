@@ -29,7 +29,4 @@ observeFetches(globalThis as unknown as WorkerScope);
  * the path this file is served from: the query string is set when the site is built, which is a
  * different trust level from the page naming an origin at runtime. See `regions.ts`. */
 const extra = new URL(location.href).searchParams.get("api");
-serveBroker(
-  globalThis as unknown as BrokerScope,
-  extra ? { apiOrigin: extra } : {},
-);
+serveBroker(globalThis as unknown as BrokerScope, extra ? { apiOrigin: extra } : {});

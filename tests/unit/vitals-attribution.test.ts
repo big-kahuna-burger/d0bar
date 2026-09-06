@@ -84,8 +84,10 @@ describe("attribution capture", () => {
   beforeEach(resetVitals);
 
   it("quotes the LCP entry's element", () => {
-    noteLcp({ startTime: 4530, element: element({ tagName: "IMG", className: "hero-map" }) } as
-      unknown as PerformanceEntry);
+    noteLcp({
+      startTime: 4530,
+      element: element({ tagName: "IMG", className: "hero-map" }),
+    } as unknown as PerformanceEntry);
     expect(snapshot().lcpElement).toBe("img.hero-map");
   });
 
@@ -107,8 +109,11 @@ describe("attribution capture", () => {
   });
 
   it("quotes the target of the longest interaction", () => {
-    noteInteraction({ interactionId: 1, duration: 48, target: element({ tagName: "A" }) } as
-      unknown as PerformanceEntry & { interactionId: number; processingStart: number });
+    noteInteraction({
+      interactionId: 1,
+      duration: 48,
+      target: element({ tagName: "A" }),
+    } as unknown as PerformanceEntry & { interactionId: number; processingStart: number });
     noteInteraction({
       interactionId: 2,
       duration: 112,
@@ -129,8 +134,10 @@ describe("attribution capture", () => {
         { duration: 61, sourceFunctionName: "renderQuote" },
       ],
     } as unknown as PerformanceEntry);
-    noteLoaf({ duration: 51, scripts: [{ duration: 40, sourceFunctionName: "other" }] } as
-      unknown as PerformanceEntry);
+    noteLoaf({
+      duration: 51,
+      scripts: [{ duration: 40, sourceFunctionName: "other" }],
+    } as unknown as PerformanceEntry);
     const reading = snapshot();
     expect(reading.loafLongest).toBe(84);
     expect(reading.loafScript).toBe("renderQuote");
@@ -146,13 +153,20 @@ describe("accumulation is bounded and retains nothing", () => {
   beforeEach(resetVitals);
 
   it("retains no object of any kind, so no DOM node can survive the callback", () => {
-    noteLcp({ startTime: 4530, element: element({ tagName: "IMG", id: "hero" }) } as
-      unknown as PerformanceEntry);
+    noteLcp({
+      startTime: 4530,
+      element: element({ tagName: "IMG", id: "hero" }),
+    } as unknown as PerformanceEntry);
     noteLayoutShift(shift(1000, 0.4, element({ tagName: "DIV", id: "table" })));
-    noteInteraction({ interactionId: 1, duration: 112, target: element({ tagName: "BUTTON" }) } as
-      unknown as PerformanceEntry & { interactionId: number; processingStart: number });
-    noteLoaf({ duration: 84, scripts: [{ duration: 61, sourceFunctionName: "render" }] } as
-      unknown as PerformanceEntry);
+    noteInteraction({
+      interactionId: 1,
+      duration: 112,
+      target: element({ tagName: "BUTTON" }),
+    } as unknown as PerformanceEntry & { interactionId: number; processingStart: number });
+    noteLoaf({
+      duration: 84,
+      scripts: [{ duration: 61, sourceFunctionName: "render" }],
+    } as unknown as PerformanceEntry);
 
     const reading = snapshot();
     for (const [key, value] of Object.entries(reading)) {

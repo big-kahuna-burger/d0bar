@@ -147,9 +147,9 @@ describe("the headline", () => {
     flush();
 
     expect(textOf(handle.el, ".coverage-count")).toBe("0 of 1");
-    expect(
-      (handle.el.querySelector(".coverage-count") as HTMLElement).dataset["kind"],
-    ).toBe("clean");
+    expect((handle.el.querySelector(".coverage-count") as HTMLElement).dataset["kind"]).toBe(
+      "clean",
+    );
     expect(textOf(handle.el, ".coverage-detail")).toBe(
       "Every request on this page produced a span.",
     );

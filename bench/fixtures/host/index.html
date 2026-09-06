@@ -40,7 +40,9 @@
            not block their page on it either. */
         if (new URLSearchParams(location.search).get("hostsw") === "1") {
           if ("serviceWorker" in navigator) {
-            navigator.serviceWorker.register("/host-sw.js", { scope: "/" }).catch(function () {});
+            navigator.serviceWorker
+              .register("/host-sw.js", { scope: "/" })
+              .catch(function () {});
           }
         }
         /* `?slowload=<ms>` holds the fixture's own load event open, so a test can land a click
@@ -75,7 +77,7 @@
             var api = new URLSearchParams(location.search).get("api");
             script.setAttribute(
               "data-d0bar-sw",
-              api ? "/d0bar-sw.js?api=" + encodeURIComponent(api) : "/d0bar-sw.js"
+              api ? "/d0bar-sw.js?api=" + encodeURIComponent(api) : "/d0bar-sw.js",
             );
           }
         }
@@ -152,10 +154,22 @@
       <div id="shift-anchor"></div>
       <table class="rates">
         <tbody>
-          <tr><td>Line haul · Rotterdam–Duisburg</td><td>€ 2 880</td></tr>
-          <tr><td>Terminal handling</td><td>€ 540</td></tr>
-          <tr><td>Customs clearance</td><td>€ 280</td></tr>
-          <tr><td>Fuel surcharge</td><td>€ 420</td></tr>
+          <tr>
+            <td>Line haul · Rotterdam–Duisburg</td>
+            <td>€ 2 880</td>
+          </tr>
+          <tr>
+            <td>Terminal handling</td>
+            <td>€ 540</td>
+          </tr>
+          <tr>
+            <td>Customs clearance</td>
+            <td>€ 280</td>
+          </tr>
+          <tr>
+            <td>Fuel surcharge</td>
+            <td>€ 420</td>
+          </tr>
         </tbody>
       </table>
 

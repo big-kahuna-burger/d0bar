@@ -32,8 +32,7 @@ import { createSpanSink, type ReadOnlySpanProcessor } from "./otel-sink";
 const API_SYMBOL = "opentelemetry.js.api.1";
 
 export type OtelState =
-  | { kind: "live"; owner: "d0bar" | "host" }
-  | { kind: "off"; reason: OtelBlocked };
+  { kind: "live"; owner: "d0bar" | "host" } | { kind: "off"; reason: OtelBlocked };
 
 /** Why tier 4 is unavailable. Each maps to copy the panel shows verbatim. */
 export type OtelBlocked =

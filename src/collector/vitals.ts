@@ -243,7 +243,6 @@ export function snapshot(): VitalsReading {
   };
 }
 
-
 function bucket(value: number, good: number, poor: number): Bucket {
   if (value <= good) return HEALTHY;
   if (value <= poor) return WARNING;

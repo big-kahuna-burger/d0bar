@@ -30,12 +30,7 @@ import type { RequestRecord } from "../shared/record";
  */
 
 export type Cause =
-  | "subresource"
-  | "transport-xhr"
-  | "third-party"
-  | "not-propagated"
-  | "unseen"
-  | "unknown";
+  "subresource" | "transport-xhr" | "third-party" | "not-propagated" | "unseen" | "unknown";
 
 /** One untraced request, with the cause and the ring index it came from. */
 export interface Gap {

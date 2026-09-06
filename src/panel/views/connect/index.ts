@@ -161,7 +161,8 @@ export function connectView(): ConnectView {
     }
     /* A region carried over from the other environment does not exist here, so the first of the
        new list wins rather than leaving the control showing a value it cannot resolve. */
-    const wanted = keep && available.some((entry) => entry.id === keep) ? keep : available[0]?.id;
+    const wanted =
+      keep && available.some((entry) => entry.id === keep) ? keep : available[0]?.id;
     region.value = wanted ?? "";
 
     for (const { entry, button } of envButtons) {

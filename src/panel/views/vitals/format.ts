@@ -96,7 +96,13 @@ function cardAt(reading: VitalsReading, i: number): Card {
     i === 0 ? reading.lcp : i === 1 ? reading.cls : i === 2 ? reading.inp : reading.loafCount;
   /* Only LCP and INP can be absent as a number; the other two are honestly zero. */
   if (raw < 0) {
-    return { name, entryType, value: "not reported", tone: "unknown", attribution: nth(NONE, i) };
+    return {
+      name,
+      entryType,
+      value: "not reported",
+      tone: "unknown",
+      attribution: nth(NONE, i),
+    };
   }
 
   return {

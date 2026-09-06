@@ -67,7 +67,9 @@ export function barFor(record: RequestRecord, windowMs: number = WINDOW_MS): Bar
   const start = Math.max(0, record.startTime);
   const clipped = start >= windowMs;
   const left = clipped ? 1 : start / windowMs;
-  const width = clipped ? 0 : Math.min(1 - left, Math.max(MIN_WIDTH, record.duration / windowMs));
+  const width = clipped
+    ? 0
+    : Math.min(1 - left, Math.max(MIN_WIDTH, record.duration / windowMs));
 
   return { left, width, segments: segmentsFor(record), clipped };
 }

@@ -79,7 +79,11 @@ export function bearer(): string {
  * must *delete* the earlier copy, which means opening the store to do it. Leaving it would make
  * the safer choice the one that leaves a credential on disk.
  */
-export async function set(token: string, persist: boolean, regionId: string): Promise<TokenStatus> {
+export async function set(
+  token: string,
+  persist: boolean,
+  regionId: string,
+): Promise<TokenStatus> {
   /* Refused rather than defaulted. Falling back to a region the user did not pick would send
      their token somewhere they did not choose, which is the one mistake this argument exists to
      prevent.

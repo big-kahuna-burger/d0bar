@@ -26,11 +26,11 @@ run, or the output was not read — say exactly that.
 
 **Distinguish three states explicitly, every time:**
 
-| | |
-| --- | --- |
-| **Verified** | Observed. Command run, output read, result quoted. |
-| **Implemented** | Written, but not exercised. Say so. |
-| **Assumed** | Believed for a reason. Name the reason and the uncertainty. |
+|                 |                                                             |
+| --------------- | ----------------------------------------------------------- |
+| **Verified**    | Observed. Command run, output read, result quoted.          |
+| **Implemented** | Written, but not exercised. Say so.                         |
+| **Assumed**     | Believed for a reason. Name the reason and the uncertainty. |
 
 **Report failures at full strength.** Paste the failing output. Do not summarise a red run as
 "mostly passing", do not bury a skipped test in a list of green ones, and do not let a partial
@@ -47,7 +47,7 @@ been written into a comment and believed later.
 **Correct plainly and move on.** No apology spiral, no re-litigating, no tallying past
 mistakes. State the correction in a sentence and continue.
 
-**Credit where it belongs.** If a user's push found the bug — *"chase it"* — say so. If a
+**Credit where it belongs.** If a user's push found the bug — _"chase it"_ — say so. If a
 suggestion was wrong, say that too.
 
 ---
@@ -65,7 +65,7 @@ pnpm 11 — it belongs in `pnpm-workspace.yaml`, followed by `pnpm approve-build
 
 ### Fix the cause, not the symptom
 
-> *"no, find minification issue where it is and work it out"*
+> _"no, find minification issue where it is and work it out"_
 
 When a number is bad or a test fails, find the mechanism. Do not restructure code to dodge a
 metric, do not lower a threshold to make a gate pass, and do not split a bundle to get under a
@@ -74,11 +74,11 @@ symptom was refused:
 
 - The ESM build shipped unminified because Vite skips terser for `es` in library mode.
 - The IIFE build had **no public API at all**, because terser normalises its options object
-  *in place* and the ES pass's `module: true` leaked `toplevel` into the IIFE pass.
+  _in place_ and the ES pass's `module: true` leaked `toplevel` into the IIFE pass.
 
 ### Chase it
 
-> *"chase it"*
+> _"chase it"_
 
 Do not write a failure off as an environment or browser limitation until that has been
 demonstrated. A cache-hit test was about to be marked `fixme` with three plausible
@@ -92,24 +92,24 @@ are permanent.
 ### Verify before claiming
 
 Never report something as working that has not been observed working. Distinguish explicitly
-between *implemented*, *verified*, and *assumed*. If a run was interrupted or a test was not
+between _implemented_, _verified_, and _assumed_. If a run was interrupted or a test was not
 executed, say so in the summary rather than letting it read as green. When tests fail, paste
 the output.
 
 ### Modern platform first
 
-> *"go for modern stuff"*
+> _"go for modern stuff"_
 
 Target what browsers actually ship now — `soft-navigation`, `navigationId`, `deliveryType`,
 `visibility-state`, `scheduler.postTask`, native `popover`, `adoptedStyleSheets`. Prefer
 reading a value the browser already computed over deriving it.
 
 This does **not** license ignoring absence. Every capability is feature-detected and every
-fallback tier is real, specified, and exercised in CI — see *Honest degradation*.
+fallback tier is real, specified, and exercised in CI — see _Honest degradation_.
 
 ### Guarantee structurally, not by discipline
 
-> *"they must not drop it"*
+> _"they must not drop it"_
 
 A property that matters gets enforced by something that fails loudly:
 
@@ -157,7 +157,7 @@ A comment claiming a property is not a property. If it can regress silently, ass
 
 ## Code
 
-### Comments explain *why*, and cite evidence
+### Comments explain _why_, and cite evidence
 
 Comments carry the reasoning that is not recoverable from the code, and where a decision came
 from a measurement, the measurement goes in the comment:
@@ -231,7 +231,7 @@ softening the whole sentence.
 - **Corrections are direct and short.** Take them at face value and act; do not re-litigate,
   over-apologise, or narrate the correction at length.
 - **Everything finishes today, in this session.** There is no later. Do not defer work to a
-  follow-up, do not propose a phased schedule, and do not ask *when* something should happen
+  follow-up, do not propose a phased schedule, and do not ask _when_ something should happen
   — the answer is always now. Agents reason poorly about calendar time and reach for a
   scheduling question when they are actually just uncertain about scope; if that is where you
   are, state the scope assumption and build. Work that genuinely cannot be finished is
@@ -241,10 +241,10 @@ softening the whole sentence.
 
 ## Repo facts worth knowing
 
-| | |
-| --- | --- |
-| Fixture server | `bench/fixtures/server.mjs`, port 8732. `reuseExistingServer: false` — a stale process silently serves old routes. |
-| Custom element | `d0-bar` (not `d0bar-pill`), closed shadow root. |
-| IIFE global | `D0bar`, guarded at build time. |
-| Panel | `add-panel-shell` — the pill's click handler is a deliberate no-op until it lands. |
-| Budgets | `bench/budget.json` — raising a threshold is a decision needing a written rationale; lowering one after an improvement needs nothing. |
+|                |                                                                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Fixture server | `bench/fixtures/server.mjs`, port 8732. `reuseExistingServer: false` — a stale process silently serves old routes.                    |
+| Custom element | `d0-bar` (not `d0bar-pill`), closed shadow root.                                                                                      |
+| IIFE global    | `D0bar`, guarded at build time.                                                                                                       |
+| Panel          | `add-panel-shell` — the pill's click handler is a deliberate no-op until it lands.                                                    |
+| Budgets        | `bench/budget.json` — raising a threshold is a decision needing a written rationale; lowering one after an improvement needs nothing. |

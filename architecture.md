@@ -6,8 +6,8 @@ governs every decision below:
 > **The toolbar must not distort what it measures.**
 
 A profiler that costs 40 ms of main-thread time reports a page that is 40 ms slower than the
-one the customer ships. So the design is organised around a single question — *what is this
-costing the host page right now?* — and most of it is subtraction.
+one the customer ships. So the design is organised around a single question — _what is this
+costing the host page right now?_ — and most of it is subtraction.
 
 ---
 
@@ -68,9 +68,9 @@ FORBIDDEN", which was simply false about the code beneath it.
 
 **Why it is free:** every observer registers with `buffered: true`, so deferring loses no
 data — an observer attached at any moment still receives every entry from page start. The
-toolbar contributes nothing to LCP or TBT as a *structural* property, not as a hope.
+toolbar contributes nothing to LCP or TBT as a _structural_ property, not as a hope.
 
-**When LCP is final.** Per the standard, at the first of *first input* or *document hidden* —
+**When LCP is final.** Per the standard, at the first of _first input_ or _document hidden_ —
 and at neither, on a page nobody touches. The load event is **not** an LCP finalizer: an app
 that renders its largest element from JavaScript reports LCP long after load, and settling at
 load would end the moratorium while the very metric it protects is still being recorded.
@@ -112,11 +112,11 @@ patching `addEventListener` to count calls would be the one thing this file exis
 
 **Lifecycle signals come from entry types, never listeners:**
 
-| Signal | Conventional | Here |
-| --- | --- | --- |
-| load | `addEventListener("load")` | `navigation` entry, 2nd delivery, `loadEventEnd > 0` |
-| visibility | `visibilitychange` | `visibility-state` entry type |
-| first input | `addEventListener` | `first-input` entry type |
+| Signal      | Conventional               | Here                                                 |
+| ----------- | -------------------------- | ---------------------------------------------------- |
+| load        | `addEventListener("load")` | `navigation` entry, 2nd delivery, `loadEventEnd > 0` |
+| visibility  | `visibilitychange`         | `visibility-state` entry type                        |
+| first input | `addEventListener`         | `first-input` entry type                             |
 
 The `navigation` entry is delivered **twice** — first with every field zero, then again once
 the load event has run. Measured: 22 ms with `loadEventEnd: 0`, then 47 ms with
@@ -237,7 +237,7 @@ a truncated list is never presented as complete.
 
 ## 5. Epochs — the browser computes them for us
 
-On a single-page app the interesting time window is a *route*, not the document. The obvious
+On a single-page app the interesting time window is a _route_, not the document. The obvious
 implementation records route boundaries and buckets entries by comparing timestamps. That
 design is wrong, and measurement showed why.
 
@@ -341,13 +341,13 @@ passes an explicit `toplevel` for `iife` which drops the global.
 
 ## 8. Where the guarantees are enforced
 
-| Claim | Enforced by |
-| --- | --- |
-| No perturbation of host metrics | `tests/perf/ab.spec.ts` — n≥20 alternating runs, **p95** deltas vs `bench/budget.json` |
-| Globals unpatched, one listener (the shortcut, opt-out), no styles, no storage | `tests/perf/non-perturbation.spec.ts` |
-| Nothing touched before settle | `tests/perf/moratorium.spec.ts` |
-| Critical-path size | `.size-limit.json`, both artifacts |
-| No dev assertions shipped | `__DEV__` from Vite's `mode`, stripped at build |
+| Claim                                                                          | Enforced by                                                                            |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| No perturbation of host metrics                                                | `tests/perf/ab.spec.ts` — n≥20 alternating runs, **p95** deltas vs `bench/budget.json` |
+| Globals unpatched, one listener (the shortcut, opt-out), no styles, no storage | `tests/perf/non-perturbation.spec.ts`                                                  |
+| Nothing touched before settle                                                  | `tests/perf/moratorium.spec.ts`                                                        |
+| Critical-path size                                                             | `.size-limit.json`, both artifacts                                                     |
+| No dev assertions shipped                                                      | `__DEV__` from Vite's `mode`, stripped at build                                        |
 
 Deltas are compared at **p95, never the mean**. A toolbar that is usually free and
 occasionally costs 40 ms is not free, and a mean hides exactly that.

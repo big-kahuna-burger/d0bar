@@ -86,7 +86,10 @@ describe("accessible name", () => {
   it("states an unknown method and an unknown status rather than omitting them", () => {
     /* With tier 2 off the browser reports no method, so a screen reader must hear that it
        is unknown — an omitted field reads as a field that was not important. */
-    const name = accessibleName(record({ method: "", flags: F_STATUS_UNKNOWN, status: 0 }), ORIGIN);
+    const name = accessibleName(
+      record({ method: "", flags: F_STATUS_UNKNOWN, status: 0 }),
+      ORIGIN,
+    );
     expect(name).toContain("method unknown");
     expect(name).toContain("status unknown");
     expect(name).toContain("no trace context");

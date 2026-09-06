@@ -38,8 +38,18 @@ describe("classifying one request", () => {
   const cases: Array<[string, RequestRecord, boolean, Cause]> = [
     ["an XHR, whatever else is true of it", record({ flags: F_XHR }), true, "transport-xhr"],
     ["a stylesheet the parser fetched", record({ initiator: "css" }), true, "subresource"],
-    ["a script tag", record({ url: `${ORIGIN}/app.js`, initiator: "script" }), false, "subresource"],
-    ["a cross-origin fetch", record({ url: "https://cdn.other.example/lib.js" }), false, "third-party"],
+    [
+      "a script tag",
+      record({ url: `${ORIGIN}/app.js`, initiator: "script" }),
+      false,
+      "subresource",
+    ],
+    [
+      "a cross-origin fetch",
+      record({ url: "https://cdn.other.example/lib.js" }),
+      false,
+      "third-party",
+    ],
     ["a same-origin fetch the worker read and found bare", record(), true, "not-propagated"],
     ["a same-origin fetch the worker never saw", record(), false, "unseen"],
     ["a URL with no parseable origin", record({ url: "blob:whatever" }), true, "unknown"],
@@ -60,9 +70,9 @@ describe("classifying one request", () => {
     expect(classify(css, ORIGIN, true)).toBe("subresource");
     /* And a fetch to the same URL still is one. The initiator is the browser's word for who
        issued it; the extension is a guess. */
-    expect(classify(record({ url: `${ORIGIN}/app.css`, initiator: "fetch" }), ORIGIN, true)).toBe(
-      "not-propagated",
-    );
+    expect(
+      classify(record({ url: `${ORIGIN}/app.css`, initiator: "fetch" }), ORIGIN, true),
+    ).toBe("not-propagated");
   });
 
   it("keeps an XHR ahead of the subresource check", () => {

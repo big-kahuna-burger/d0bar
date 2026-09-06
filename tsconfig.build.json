@@ -8,12 +8,6 @@
     "outDir": "dist/types",
     "rootDir": "src"
   },
-  "include": [
-    "src",
-    "src/env.d.ts"
-  ],
-  "exclude": [
-    "src/sw",
-    "src/worker"
-  ]
+  "include": ["src", "src/env.d.ts"],
+  "exclude": ["src/sw", "src/worker"]
 }

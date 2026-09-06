@@ -65,12 +65,20 @@ export default tseslint.config(
         "error",
         {
           patterns: [
-            { group: ["**/panel/**", "**/trace/**", "**/auth/**", "**/worker/**"], message: "Stage 1 must not statically import a later stage. Use a dynamic import()." },
+            {
+              group: ["**/panel/**", "**/trace/**", "**/auth/**", "**/worker/**"],
+              message:
+                "Stage 1 must not statically import a later stage. Use a dynamic import().",
+            },
             /* Repeated from the `src/**` block above, deliberately — see the note there. Flat config
                rule's options rather than merging them, so the later, broader block would
                otherwise take this one's place for these files and silently switch the
                stage-boundary guard off. Both patterns have to be in whichever block wins. */
-            { group: ["@opentelemetry/*", "@opentelemetry"], message: "d0bar adopts the host's OTel SDK and never bundles one. See src/collector/otel.ts." },
+            {
+              group: ["@opentelemetry/*", "@opentelemetry"],
+              message:
+                "d0bar adopts the host's OTel SDK and never bundles one. See src/collector/otel.ts.",
+            },
           ],
         },
       ],

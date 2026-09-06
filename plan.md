@@ -1,6 +1,6 @@
 # d0bar — a Dash0 toolbar for your own app
 
-*"dobar" (Serbian: good) with Dash0's zero dropped in.*
+_"dobar" (Serbian: good) with Dash0's zero dropped in._
 
 ## Context
 
@@ -20,11 +20,11 @@ is free.
 
 ## Decisions taken
 
-| Decision | Choice |
-| --- | --- |
-| Repo layout | Everything standalone in `d0bar`, one public npm package |
-| v0 scope | Trace-jump vertical slice — this page's requests → full backend trace |
-| Auth | OAuth 2.1 PKCE from the start |
+| Decision    | Choice                                                                |
+| ----------- | --------------------------------------------------------------------- |
+| Repo layout | Everything standalone in `d0bar`, one public npm package              |
+| v0 scope    | Trace-jump vertical slice — this page's requests → full backend trace |
+| Auth        | OAuth 2.1 PKCE from the start                                         |
 
 ## The governing constraint
 
@@ -87,11 +87,11 @@ flowchart TB
 
 Each tier degrades independently. Tier 1 alone is a useful panel — no auth, no worker.
 
-| Tier | Mechanism | Supplies | Requires |
-| --- | --- | --- | --- |
-| 1 | `PerformanceObserver` | Timings, `responseStatus`, vitals | Nothing |
-| 2 | Service Worker | `traceparent`, token custody, durable log | HTTPS + a free SW scope |
-| 3 | Declared fallback | Tier 1 only, labeled degraded | — |
+| Tier | Mechanism             | Supplies                                  | Requires                |
+| ---- | --------------------- | ----------------------------------------- | ----------------------- |
+| 1    | `PerformanceObserver` | Timings, `responseStatus`, vitals         | Nothing                 |
+| 2    | Service Worker        | `traceparent`, token custody, durable log | HTTPS + a free SW scope |
+| 3    | Declared fallback     | Tier 1 only, labeled degraded             | —                       |
 
 #### Tier 1 — `PerformanceObserver` (always available, zero perturbation)
 
@@ -186,9 +186,9 @@ The SDK instruments **`fetch` only — zero `XMLHttpRequest`** (0 occurrences in
 produce no spans, and the SDK's `PropagatorConfig.match` regexes mean some fetches are deliberately
 not propagated either.
 
-A Service Worker sees all of them. So d0bar can report **instrumentation coverage**: *"3 of 11
+A Service Worker sees all of them. So d0bar can report **instrumentation coverage**: _"3 of 11
 requests on this page have no trace — 2 are XHR, which the SDK does not instrument; 1 is outside
-your propagator's match list."*
+your propagator's match list."_
 
 That is a diagnostic about your observability setup that Dash0 **cannot** produce from the backend,
 because the un-instrumented request never arrives. It falls out of this architecture for free.
@@ -335,7 +335,7 @@ None of it blocks phases 1–3.
 3. **Redirect-URI policy.** Dynamic registration means registering the customer's own origin. The API
    only proxies OAuth (`components/api/internal/routes/oauth_proxy.go:28`) — confirm in
    `components/control-plane-api` that arbitrary https origins and `http://localhost:*` are accepted.
-4. **Production CORS.** `AllowAllOrigins` is the *default*; the deployed value lives in
+4. **Production CORS.** `AllowAllOrigins` is the _default_; the deployed value lives in
    `dash0-configuration`, which is not checked out locally.
 
 ## Verification

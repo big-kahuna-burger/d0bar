@@ -15,8 +15,8 @@ import { signal, computed, effect } from "spark-signals/signal";
 const count = signal(0);
 const doubled = computed(() => count() * 2);
 
-effect(() => console.log(doubled()));  // logs 0
-count.set(21);                          // logs 42
+effect(() => console.log(doubled())); // logs 0
+count.set(21); // logs 42
 ```
 
 ---
@@ -29,7 +29,7 @@ kilobyte and every millisecond is somebody else's.
 Concretely:
 
 - **Embedded widgets, SDKs and browser extensions** injected into a third party's page, where
-  shipping a framework is not an option and *your* main-thread time is *their* main-thread
+  shipping a framework is not an option and _your_ main-thread time is _their_ main-thread
   time.
 - **Devtools, overlays and debug panels** — anything measuring a page it lives inside, where
   the tool's own cost corrupts the reading.
@@ -46,7 +46,7 @@ does not. spark exists because d0bar could not afford any of them, not because t
 
 Extracted from [d0bar](https://github.com/big-kahuna-burger/d0bar), an observability toolbar whose single
 constraint is **it must not distort what it measures.** A UI framework that costs main-thread
-time inside a page whose main-thread time *is the product* would be self-defeating.
+time inside a page whose main-thread time _is the product_ would be self-defeating.
 
 So this is what was left after removing everything that wasn't load-bearing.
 
@@ -56,7 +56,15 @@ So this is what was left after removing everything that wasn't load-bearing.
 
 ```ts
 import { signal, computed, effect, scope } from "spark-signals/signal";
-import { bindText, bindVar, bindStyle, bindAttr, bindClass, bindHidden, on } from "spark-signals/bind";
+import {
+  bindText,
+  bindVar,
+  bindStyle,
+  bindAttr,
+  bindClass,
+  bindHidden,
+  on,
+} from "spark-signals/bind";
 import { list } from "spark-signals/list";
 ```
 
@@ -113,10 +121,10 @@ If your bundler doesn't define it, spark resolves it to `false` rather than thro
 
 ## Budgets
 
-| | |
-| --- | --- |
-| everything | ≤ 1.6 kB gzip — currently **1.11 kB** |
-| `spark-signals/signal` alone | ≤ 900 B gzip |
+|                              |                                       |
+| ---------------------------- | ------------------------------------- |
+| everything                   | ≤ 1.6 kB gzip — currently **1.11 kB** |
+| `spark-signals/signal` alone | ≤ 900 B gzip                          |
 
 Enforced by `pnpm size` in CI. These are limits, not aspirations.
 

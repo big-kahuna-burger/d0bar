@@ -32,7 +32,7 @@
     "test:perf": "pnpm fixture:otel && pnpm fixture:trace && playwright test",
     "bench:serve": "node bench/fixtures/server.mjs",
     "size": "pnpm build && size-limit",
-    "lint": "eslint .",
+    "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "dev": "pnpm build && concurrently -n s1,panel,sw,serve -c cyan,blue,green,magenta \"vite build --watch\" \"D0BAR_STAGE=2 vite build --watch\" \"D0BAR_STAGE=sw vite build --watch\" \"node --watch bench/fixtures/server.mjs\"",
     "prepublishOnly": "pnpm build && pnpm test && pnpm size",

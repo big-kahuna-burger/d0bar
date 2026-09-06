@@ -56,7 +56,8 @@ try {
   await page.addInitScript(() => {
     const selectorOf = (node) => {
       if (!node || typeof node.tagName !== "string") return "";
-      const cls = typeof node.className === "string" ? node.className.trim().split(/\s+/)[0] : "";
+      const cls =
+        typeof node.className === "string" ? node.className.trim().split(/\s+/)[0] : "";
       const qualifier = node.id ? `#${node.id}` : cls ? `.${cls}` : "";
       return (node.tagName.toLowerCase() + qualifier).slice(0, 64);
     };

@@ -41,7 +41,10 @@ async function stored(): Promise<string | undefined> {
     request.onerror = () => reject(request.error);
   });
   const value = await new Promise<unknown>((resolve) => {
-    const request = db.transaction(TOKEN_STORE, "readonly").objectStore(TOKEN_STORE).get("auth");
+    const request = db
+      .transaction(TOKEN_STORE, "readonly")
+      .objectStore(TOKEN_STORE)
+      .get("auth");
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => resolve(undefined);
   });
@@ -192,7 +195,10 @@ describe("which region", () => {
   });
 
   it("sends a query to the connected region and refuses every other", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 200 })),
+    );
     await set(TOKEN, false, "prod:us-west-2");
     const reply = collector();
 
@@ -202,7 +208,10 @@ describe("which region", () => {
       outcome: { ok: false, reason: "refused-origin" },
     });
 
-    await handle({ kind: "query", url: "https://api.us-west-2.aws.dash0.com/api/spans" }, reply);
+    await handle(
+      { kind: "query", url: "https://api.us-west-2.aws.dash0.com/api/spans" },
+      reply,
+    );
     expect((reply.replies[1] as { outcome: { ok: boolean } }).outcome.ok).toBe(true);
   });
 
@@ -262,7 +271,10 @@ describe("query outcomes", () => {
     await set(TOKEN, false, REGION);
     const reply = collector();
 
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 401 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("", { status: 401 })),
+    );
     await handle({ kind: "query", url: `${API}/api/spans` }, reply);
 
     vi.stubGlobal(
@@ -275,9 +287,9 @@ describe("query outcomes", () => {
 
     /* Two different problems with two different fixes. Folding them together would leave a
        user with a revoked token looking at their network. */
-    expect(reply.replies.map((m) => (m as { outcome: { reason?: string } }).outcome.reason)).toEqual(
-      ["rejected", "unreachable"],
-    );
+    expect(
+      reply.replies.map((m) => (m as { outcome: { reason?: string } }).outcome.reason),
+    ).toEqual(["rejected", "unreachable"]);
   });
 
   it("says not-connected rather than making an unauthenticated call", async () => {

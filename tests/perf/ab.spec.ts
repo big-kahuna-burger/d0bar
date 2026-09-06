@@ -336,19 +336,19 @@ test(
          is the bundle's own evaluation and `off` is zero; both are asserted as controls. */
         attributedFrameMsP95: { ...row("attributedFrameMs"), budget: BUDGET.attributedFrameMs },
         attributedTotalMsP95: row("attributedTotalMs"),
-      /**
-       * Summed across runs, not aggregated at a percentile — the per-run value is 0 to 5 and
-       * a percentile of it has the same resolution problem as the long-task row did. The sum
-       * over twenty runs is 0 to 100 per arm and its resolution is one tap.
-       */
-      cheapTapsOverFloor: {
-        off: sum(pick("off", "cheapTapsOverFloor")),
-        gated: sum(pick("gated", "cheapTapsOverFloor")),
-        on: sum(pick("on", "cheapTapsOverFloor")),
-        budget: BUDGET.cheapTapsOverFloor,
-      },
-      /* For reading: what a cheap tap actually cost when it did cross the floor. */
-      cheapTapMaxP95: row("cheapTapMax"),
+        /**
+         * Summed across runs, not aggregated at a percentile — the per-run value is 0 to 5 and
+         * a percentile of it has the same resolution problem as the long-task row did. The sum
+         * over twenty runs is 0 to 100 per arm and its resolution is one tap.
+         */
+        cheapTapsOverFloor: {
+          off: sum(pick("off", "cheapTapsOverFloor")),
+          gated: sum(pick("gated", "cheapTapsOverFloor")),
+          on: sum(pick("on", "cheapTapsOverFloor")),
+          budget: BUDGET.cheapTapsOverFloor,
+        },
+        /* For reading: what a cheap tap actually cost when it did cross the floor. */
+        cheapTapMaxP95: row("cheapTapMax"),
         /* Reported for visibility, not gated: LCP on this fixture is dominated by a fixed
          server delay, so its run-to-run spread is wider than any toolbar effect. */
         lcpP95: row("lcp"),
@@ -364,7 +364,7 @@ test(
       tbtP95: against("tbtP95"),
       cls: against("clsMax"),
       longTasksMean: against("longTasksMean"),
-    cheapTapsOverFloor: against("cheapTapsOverFloor"),
+      cheapTapsOverFloor: against("cheapTapsOverFloor"),
       lcpP95: against("lcpP95"),
       /* Deliberately absent: `attributedFrameMsP95` is not a difference, and INP is not
        compared as one — see `inpSign`. */
@@ -381,8 +381,8 @@ test(
     console.log("observer-effect deltas (on − gated):", deltas);
     console.log("attributed d0bar main-thread time:", result.metrics.attributedFrameMsP95);
     console.log("cheap taps over the 16 ms floor:", result.metrics.cheapTapsOverFloor);
-  console.log("worst cheap tap p95 (ms):", result.metrics.cheapTapMaxP95);
-  console.log("INP per arm (median / p95):", {
+    console.log("worst cheap tap p95 (ms):", result.metrics.cheapTapMaxP95);
+    console.log("INP per arm (median / p95):", {
       off: result.metrics.inp.off,
       gated: result.metrics.inp.gated,
       on: result.metrics.inp.on,

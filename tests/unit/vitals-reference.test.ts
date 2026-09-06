@@ -107,7 +107,8 @@ function referenceCls(): number {
   let last = 0;
   for (const shift of shifts) {
     if (shift.hadRecentInput) continue;
-    const joins = value !== 0 && shift.startTime - last < 1000 && shift.startTime - first < 5000;
+    const joins =
+      value !== 0 && shift.startTime - last < 1000 && shift.startTime - first < 5000;
     if (joins) {
       value += shift.value;
       last = shift.startTime;
