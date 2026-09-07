@@ -144,6 +144,52 @@ a surface said nothing when it should have spoken; here, it spoke when it did no
       a measured arm.
 - [x] 9.8 `tests/unit/tier2-pending.test.ts`: 9 tests, **verified to fail on the old model** —
       the lazy resolution was removed, 4 of 9 failed, and the fix was restored.
-- [x] 9.9 `tests/perf/tier2-control.spec.ts`: the premise the unit tests cannot reach — control
-      really is absent on the first navigation and present on the second. Fresh context, polled
-      not slept. Run as one named spec, passing in 1.3 s.
+- [x] 9.9 `tests/perf/tier2-control.spec.ts`: the invariant in a real browser — the reading and
+      `navigator.serviceWorker.controller` never disagree.
+
+      **Corrected after it was pushed.** The first version asserted "pending on a first visit, live
+      after a reload" and the claim behind it — that a worker never controls the page that
+      registered it — is false for d0bar's own worker: `src/sw/observe.ts` calls `skipWaiting()` on
+      install and `clients.claim()` on activate, so it usually claims the registering page a moment
+      later. The spec passed once, then failed on re-run reading `live` where it expected `pending`.
+      It was asserting a race. The wrong explanation had also been written into `collector/sw.ts`,
+      `panel/tier.ts`'s pending copy, the `/try/` banner and two spec comments, and is corrected in
+      all of them: pending is the window before the claim lands, and it persists only when the claim
+      does not happen — a rebuilt worker file waiting behind an open client, or a claim that threw.
+
+## 10. The panel read the worker's log exactly once
+
+Reported as "it only works after a soft reload on first request, next are never instrumented".
+Independent of §9 and worse: tier 2 was observing correctly the whole time.
+
+Measured by counting `getAll` on the `requests` store from page script — 0 reads before the panel
+opens, 1 at open, and still 1 after two more scenarios by which point the worker had written 28
+records. 22 of 28 were never read, so every request issued after the panel opened rendered
+untraced for the life of the panel.
+
+- [x] 10.1 `src/panel/index.ts`: flush on every tier-1 resource batch, not once at open. `onBatch`
+      is the right edge — it is the same signal the list repaints on, so a ring slot exists for the
+      join to land in; a worker message would arrive before the resource entry and find nothing.
+- [x] 10.2 `src/panel/index.ts`: coalesced. One flush at a time with a trailing pass, so a burst of
+      batches cannot start N concurrent full log reads, and the batch that arrived mid-flush is not
+      the one dropped. `flushStopped` guards a flush that outlives `destroy()`.
+- [x] 10.3 `src/collector/correlate.ts`: idempotence made structural, since repeated flushing is
+      now the normal case. `tier2ByIndex` and `adoptedByIndex` record what each ring index was
+      already given; without them every batch would push a duplicate `TraceContext` for the life of
+      the panel, and tier 4 would adopt a span over a header tier 2 had already resolved.
+- [x] 10.4 `src/collector/correlate.ts`: both ledgers key on `(index, startTime)`, not index alone.
+      The ring wraps, and a reused slot keyed on the index would look already-correlated and never
+      get a trace id — the same bug in a rarer form. Cleared by `resetCorrelation`.
+- [x] 10.5 `src/sw/db.ts` + `src/sw/protocol.ts`: the log moves off `keyPath: "order"` onto a
+      generated key, `DB_VERSION` 2 → 3. `order` is a module counter in the worker and a service
+      worker is terminated when idle, so it restarted at 0 and the next generation's records
+      overwrote the previous one's at keys 0, 1, 2… A second defect, found by reading the key path
+      while chasing the first, and invisible until §10.1 made the log actually get read.
+- [x] 10.6 `src/collector/join.ts`: unjoined records sort by `(at, order)`. `order` alone was wrong
+      across worker generations for the same reason.
+- [x] 10.7 `tests/perf/otel-context.spec.ts`: opened the log at a hardcoded version 2, which throws
+      `VersionError` once `DB_VERSION` is 3. Unversioned now, in both specs that read it.
+- [x] 10.8 `tests/perf/correlation-reflush.spec.ts`: counts the reads rather than inspecting rows —
+      upstream of every rendering question, so a failure names the cause. **Verified to fail on the
+      old arrangement**: with the `onBatch` subscription removed it stops at 1 read and reports "no
+      flush followed a scenario run with the panel already open".

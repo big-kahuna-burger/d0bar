@@ -565,32 +565,84 @@ export function openPanel(options: PanelOptions): PanelHandle {
    * tier 1 and fills tier 2 in on arrival, rather than waiting on IndexedDB for a field most rows
    * do not have.
    */
-  void flushCorrelation({
-    tier2: options.tier2,
-    since: performance.timeOrigin,
-    tier1: options.tier1,
-  })
-    .then((result) => {
-      tier2.set(result.tier2);
-      /* Which ring records the worker produced a record for. The untraced view needs it to
-         tell a request the worker watched go out bare from one it never saw at all — two
-         different findings that would otherwise both read as "no trace id". */
-      workerSaw = result.seen;
-      /* Repaint: the flush wrote into the ring behind the list's back. Rows were painted from
-         records with no trace id yet, and nothing else will repaint them — the list refreshes on a
-         resource batch, and a quiet page may never produce another. Tier 2's chips had the same
-         latent bug, invisible only because a busy fixture kept producing batches. */
-      requests.refresh();
-      /* The same repaint, for the same reason: the flush wrote trace ids into the ring, and
-         a coverage count taken before it would report every request as a gap. This also
-         updates the badge while the tab is not showing. */
-      untraced.refresh();
+  /**
+   * Coalesced, and re-entrant by design.
+   *
+   * One flush at a time: a batch arriving mid-flush sets `flushQueued` instead of starting a
+   * second `readAll()` over the same store, and one more pass runs when the first settles. Without
+   * the guard a burst of resource batches would put N concurrent full log reads on the page the
+   * toolbar is supposed to be free on.
+   *
+   * The trailing pass is not optional. Dropping the batch that arrived during a flush would lose
+   * exactly the records that batch was reporting, and on a page that then goes quiet nothing would
+   * ever ask again — which is the bug this whole function is fixing, one flush later.
+   */
+  let flushing = false;
+  let flushQueued = false;
+  /* A flush in flight outlives `destroy()`: `stopFlush()` unsubscribes but cannot cancel the
+     IndexedDB read already issued, and its `then` would repaint views that have been torn down. */
+  let flushStopped = false;
+
+  function runFlush(): void {
+    if (flushStopped) return;
+    if (flushing) {
+      flushQueued = true;
+      return;
+    }
+    flushing = true;
+    /* Not awaited — the panel paints from tier 1 and fills tier 2 in on arrival, rather than
+       waiting on IndexedDB for a field most rows do not have. */
+    void flushCorrelation({
+      tier2: options.tier2,
+      since: performance.timeOrigin,
+      tier1: options.tier1,
     })
-    .catch(() => {
-      /* `flushCorrelation` is written not to reject; this is the belt to that braces. A
-         failed join leaves the panel showing tier 1 only, which is exactly the degraded
-         state it already knows how to render. */
-    });
+      .then((result) => {
+        if (flushStopped) return;
+        tier2.set(result.tier2);
+        /* Which ring records the worker produced a record for. The untraced view needs it to
+           tell a request the worker watched go out bare from one it never saw at all — two
+           different findings that would otherwise both read as "no trace id". */
+        workerSaw = result.seen;
+        /* Repaint: the flush wrote into the ring behind the list's back. Rows were painted from
+           records with no trace id yet, and nothing else will repaint them — the list refreshes on
+           a resource batch, and a quiet page may never produce another. Tier 2's chips had the
+           same latent bug, invisible only because a busy fixture kept producing batches. */
+        requests.refresh();
+        /* The same repaint, for the same reason: the flush wrote trace ids into the ring, and
+           a coverage count taken before it would report every request as a gap. This also
+           updates the badge while the tab is not showing. */
+        untraced.refresh();
+      })
+      .catch(() => {
+        /* `flushCorrelation` is written not to reject; this is the belt to that braces. A
+           failed join leaves the panel showing tier 1 only, which is exactly the degraded
+           state it already knows how to render. */
+      })
+      .finally(() => {
+        flushing = false;
+        if (flushQueued) {
+          flushQueued = false;
+          runFlush();
+        }
+      });
+  }
+
+  runFlush();
+
+  /**
+   * And again on every resource batch, which is the actual fix.
+   *
+   * The worker logs every request whether or not anyone reads the log; the panel used to read it
+   * exactly once, at open. So a request issued after that — every button click, every navigation
+   * on an SPA — was recorded by the worker and never joined, and its row read untraced for the
+   * life of the panel. Counted from page script: 28 records written, 1 read, 6 of them seen.
+   *
+   * `onBatch` is the right edge because it is the same signal the list already repaints on: a
+   * resource entry for the request exists by then, so there is a ring slot for the join to land
+   * in. Flushing off a worker message instead would arrive before the entry and find nothing.
+   */
+  const stopFlush = options.tier1.onBatch(runFlush);
 
   open.set(true);
 
@@ -602,6 +654,10 @@ export function openPanel(options: PanelOptions): PanelHandle {
       open.set(false);
     },
     destroy() {
+      /* Before the views, so neither a new batch nor a flush already in flight can reach a
+         destroyed list. */
+      flushStopped = true;
+      stopFlush();
       bindings.dispose();
       requests.destroy();
       vitals.destroy();

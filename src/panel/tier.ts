@@ -56,7 +56,7 @@ const TIER_2_LIVE_D0BAR =
  */
 const PENDING_COPY: Record<Tier2Pending, string> = {
   "awaiting-control":
-    "d0bar's service worker is registered but is not controlling this page yet, so it cannot see any requests and every row will read as untraced. A service worker never controls the page that registered it — reload to hand it control. This is also what you see briefly after the worker file changes, because the new version installs and waits.",
+    "d0bar's service worker is registered but is not controlling this page yet, so it cannot see any requests and every row will read as untraced. Registering a worker and having it control this page are two separate events; d0bar's worker claims the page as soon as it activates, so this usually clears on its own within a moment. If it does not, reload — that always hands control over, and a worker file that changed installs a new version which waits until you do.",
 };
 
 const TIER_2_LIVE_HOST =

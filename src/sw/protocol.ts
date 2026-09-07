@@ -14,8 +14,14 @@
 
 /** Bumped only when a store's shape changes; `onupgradeneeded` in `db.ts` applies it. */
 export const DB_NAME = "d0bar";
-/** 2 added `TOKEN_STORE`. The request log is recreated on a bump; the token store never is. */
-export const DB_VERSION = 2;
+/**
+ * 2 added `TOKEN_STORE`. 3 moved the log off `keyPath: "order"` onto a generated key, because
+ * `order` resets with every worker generation and was overwriting earlier records — see the
+ * store's own note in `db.ts`.
+ *
+ * The request log is recreated on a bump; the token store never is.
+ */
+export const DB_VERSION = 3;
 export const STORE = "requests";
 
 /**

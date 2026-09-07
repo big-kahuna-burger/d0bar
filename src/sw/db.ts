@@ -52,9 +52,22 @@ export function openDb(): Promise<IDBDatabase | undefined> {
       /* The request log is a cache — recreating it on a version bump costs nothing but the
          records already pruned by age anyway. */
       if (database.objectStoreNames.contains(STORE)) database.deleteObjectStore(STORE);
-      const store = database.createObjectStore(STORE, { keyPath: "order" });
-      /* Pruning walks by age, and the join reads in insertion order — both are served by
-         one index rather than a full scan. */
+      /**
+       * An out-of-line generated key, **not** `keyPath: "order"`.
+       *
+       * `order` is a module-level counter in the worker, and a service worker is terminated when
+       * it goes idle and restarted on the next fetch event — so `order` resets to 0 for every
+       * worker generation. As a key path that made the second generation's records overwrite the
+       * first's at keys 0, 1, 2…: a page whose requests arrive in bursts more than ~30 s apart
+       * silently lost its earlier ones, and the log stopped being the complete record the panel
+       * presents it as.
+       *
+       * The key generator is persisted with the store, so it survives worker restarts, which is
+       * exactly the property the counter cannot have without a read per request in the hot path.
+       */
+      const store = database.createObjectStore(STORE, { autoIncrement: true });
+      /* Pruning walks by age; the generated key already gives insertion order, so this index
+         serves the age pass rather than a full scan. */
       store.createIndex("at", "at");
 
       /* The token store is **created and never deleted**, which is the opposite of the rule

@@ -184,8 +184,12 @@ export function join(
 
   const unjoined: FetchRecord[] = [...overflowed];
   for (const queue of queues.values()) for (const left of queue) unjoined.push(left);
-  /* Stable, and meaningful: issue order is the only ordering both sides agree on. */
-  unjoined.sort((a, b) => a.order - b.order);
+  /* Wall clock first, then issue order within it. `order` alone was wrong across worker
+     generations: it is a module counter in the worker, which is terminated when idle and restarted
+     on the next fetch, so it restarts at 0 and a later burst would sort ahead of an earlier one.
+     `at` is `Date.now()`, coarse enough that a burst shares a millisecond — which is precisely
+     where `order` is both meaningful and correct, being within one generation. */
+  unjoined.sort((a, b) => a.at - b.at || a.order - b.order);
 
   return { matched, unjoined };
 }

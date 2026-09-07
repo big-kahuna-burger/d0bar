@@ -521,10 +521,14 @@ node bench/fixtures/server.mjs</pre>
              registered, no controller      → pending  → worker sees nothing; reload
              no registration / unsupported  → off      → tier 2 is not available here
 
-           A worker never controls the page that registered it: `controller` stays null until
-           the worker activates *and* claims, which on a first visit means the next navigation.
-           Nothing is wrong on a first load — but everything reads untraced, so the page has to
-           say which of the three it is instead of letting the reader infer it from empty rows.
+           Registration and control are separate events: `controller` stays null until the worker
+           activates *and* claims. d0bar's worker calls `skipWaiting()` then `clients.claim()`, so
+           it usually claims this page a moment after registering and pending clears on its own —
+           an earlier version of this comment claimed a worker *never* controls the page that
+           registered it, which is wrong and produced a spec that asserted a race. Pending sticks
+           when the claim does not land: a rebuilt worker file waiting behind an open client. Either
+           way everything reads untraced meanwhile, so the page says which of the three it is
+           rather than leaving the reader to infer it from empty rows.
 
            `controllerchange` fires when control arrives, so the banner corrects itself without
            a poll. This is the fixture, not d0bar: one listener here is free, and d0bar's own
@@ -594,7 +598,7 @@ node bench/fixtures/server.mjs</pre>
                 "pending",
                 "Registered, but NOT controlling this page — every request will read as untraced.",
                 waiting +
-                  ". A worker never controls the page that registered it; reload and it takes over.",
+                  ". Registering and controlling are separate events; this usually clears itself a moment after the worker activates, and a reload always hands control over.",
               );
             })
             .catch(function () {

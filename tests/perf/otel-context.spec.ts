@@ -55,8 +55,10 @@ const SCENARIOS = [
 
 test("every /try/ scenario puts all of its requests on one trace", async ({ page }) => {
   await page.goto("/try/", { waitUntil: "load" });
-  /* One reload, because a worker does not control the page that registered it on a first visit.
-     Without this every record below is absent and the failure reads as a context bug. */
+  /* One reload, to take control out of the race rather than to work around a rule: d0bar's worker
+     claims the registering page as soon as it activates, but whether that beats the first fetch is
+     timing. A reload always controls. Without it, records can be absent and the failure would read
+     as a context bug. */
   await page.reload({ waitUntil: "load" });
   await page.waitForTimeout(1500);
 
@@ -72,7 +74,11 @@ test("every /try/ scenario puts all of its requests on one trace", async ({ page
   const recorded = () =>
     page.evaluate(async () => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
-        const request = indexedDB.open("d0bar", 2);
+        /* No version. Naming one pins this spec to `DB_VERSION` in `src/sw/protocol.ts`, and
+           naming a *lower* one throws `VersionError` outright — which is what the hardcoded 2
+           did the moment the log moved off `keyPath: "order"`. Opening without a version takes
+           whatever exists. */
+        const request = indexedDB.open("d0bar");
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
       });

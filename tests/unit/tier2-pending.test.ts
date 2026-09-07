@@ -8,10 +8,14 @@ import { resetPhase, settleNow } from "../../src/collector/phase";
  * Tier 2's third state: **registered, and not observing yet.**
  *
  * The bug these lock down shipped and was invisible. `startTier2` reported `live` the moment
- * `register()` resolved — but a service worker never controls the page that registered it, so
- * `controller` is null until the next navigation and no `fetch` event reaches the worker. The
- * panel said "2 SW live" while every row in the requests list read untraced, on every first
- * visit, and there was no state in the model that could say otherwise.
+ * `register()` resolved — but registration and control are separate events, so
+ * `controller` is null until the worker activates and claims and no `fetch` event reaches it. The
+ * panel said "2 SW live" while every row in the requests list read untraced, and there was no
+ * state in the model that could say otherwise.
+ *
+ * How long that window lasts is timing, not behaviour — d0bar's worker claims the registering page
+ * a moment later, so it is often brief. `tests/perf/tier2-control.spec.ts` records what happened to
+ * a spec that asserted the duration instead of the invariant.
  *
  * What makes this testable at all is that the reading is now derived from
  * `navigator.serviceWorker.controller` at read time rather than cached at registration time —

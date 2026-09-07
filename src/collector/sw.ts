@@ -27,19 +27,26 @@ export type Tier2Blocked =
 /**
  * Registered, and not observing yet.
  *
- * A third state, because the two that existed could not express the most common reading of all:
- * **a worker that has been registered does not control the page that registered it.**
- * `navigator.serviceWorker.controller` is null until the worker activates *and* claims, which on
- * a first visit means the next navigation. Until then no `fetch` event reaches it and tier 2
- * records nothing.
+ * A third state, because the two that existed could not express the gap between two facts:
+ * **registration succeeding and the worker controlling this page are not the same event.**
+ * `navigator.serviceWorker.controller` is null until the worker activates *and* claims, and until
+ * then no `fetch` event reaches it and tier 2 records nothing.
  *
  * `startTier2` used to report `live` the moment `register()` resolved, so the panel said tier 2
  * was observing while every row read untraced — a wrong reading delivered with full confidence,
- * on every first visit, and the one that cost a debugging session here. It also covers the
- * developer case: a rebuild that rewrites the worker file installs a new worker, which waits.
+ * and the one that cost a debugging session here.
  *
- * One reason rather than two: "not controlled yet" and "a new version is waiting" have the same
- * remedy — reload — and cannot always be told apart from the page.
+ * How long the gap lasts is not fixed, and an earlier version of this comment got it wrong by
+ * asserting a worker never controls the page that registered it. d0bar's worker calls
+ * `skipWaiting()` on install and `clients.claim()` on activate (`src/sw/observe.ts`), so it
+ * usually claims *this* page a moment after registration and no reload is needed — a spec that
+ * asserted "pending on a first visit" passed once and then failed, because it was asserting a
+ * race. Pending is the window before the claim lands, and it persists when claiming does not
+ * happen at all: a rebuilt worker file whose new version installs behind an open client, a
+ * `clients.claim()` that threw, or a browser that never activates it.
+ *
+ * One reason rather than two: "not claimed yet" and "a new version is waiting" have the same
+ * remedy — reload — and cannot be told apart from the page.
  */
 export type Tier2Pending = "awaiting-control";
 
