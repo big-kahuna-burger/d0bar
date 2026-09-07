@@ -146,11 +146,11 @@
 
       <h2>This page, with everything on</h2>
       <p>
-        Same origin as the dev server, so tier 2 registers and requests come back traced. The
-        worker is scoped to <code>/try/</code>, never to <code>/</code> — a demo page that
-        installed a root-scoped worker would go on controlling the benchmark arms at
-        <code>/?d0bar=off</code> and <code>/?d0bar=gated</code> in this browser profile
-        afterwards, and an arm with a worker under it is not the arm it claims to be.
+        Same origin as the dev server, so tier 2 registers. The worker is scoped to
+        <code>/try/</code>, never to <code>/</code> — a demo page that installed a root-scoped
+        worker would go on controlling the benchmark arms at <code>/?d0bar=off</code> and
+        <code>/?d0bar=gated</code> in this browser profile afterwards, and an arm with a worker
+        under it is not the arm it claims to be.
       </p>
       <p class="row">
         <button class="drag" id="traffic" type="button">Make some requests</button>
@@ -167,6 +167,21 @@
         current. The requests are genuine, so tier 1 records resource entries for them and tier
         4 has something to join against; a generator that emitted spans without traffic would
         look right in Dash0 and prove nothing about d0bar.
+      </p>
+      <h2>Why some rows say NONE, and why that is right</h2>
+      <p>
+        <strong>d0bar reads trace context; it never adds any.</strong> The worker parses
+        <code>traceparent</code> off each request and nothing more — injecting a header would be
+        the toolbar modifying the traffic it reports on. So a row shows a trace id only if the
+        application put one there.
+      </p>
+      <p>
+        &ldquo;Run a fake checkout&rdquo; therefore sets <code>traceparent</code> itself, by
+        hand, from the active span. No <code>instrumentation-fetch</code> is installed: that
+        patches <code>fetch</code>, and a page that patched <code>fetch</code> could not be used
+        to show that d0bar does not. &ldquo;Make some requests&rdquo; sends none, so those rows
+        stay untraced — a panel where every row was traced would be hiding the case you most
+        need to see.
       </p>
       <p>
         The token is <strong>never in page script</strong>. The page exports to

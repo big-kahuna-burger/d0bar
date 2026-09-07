@@ -128,6 +128,27 @@ export async function tracedFetch(url) {
   }
 }
 
+/**
+ * The `traceparent` header for a span, written by hand.
+ *
+ * **Without this every row in the panel reads `NONE`, and correctly so.** Tier 2 *reads*
+ * `traceparent` off the request (`src/sw/observe.ts`) — it never injects one, because injecting
+ * would mean d0bar modifying the traffic it reports on. Trace context reaches the wire only if
+ * the application's propagator puts it there, and this fixture installs no
+ * `@opentelemetry/instrumentation-fetch`: that patches `fetch`, and a fixture that patched
+ * `fetch` could not be used to demonstrate that d0bar does not.
+ *
+ * So the propagation is written out, which is also what makes it *visible* — a reader can see
+ * exactly what a real SDK's propagator would have added, and that d0bar only reads it.
+ *
+ * `01` as the flags byte: sampled. `00` would be a legal traceparent that says "do not record",
+ * which is a different demo.
+ */
+function traceparentFor(span) {
+  const ctx = span.spanContext();
+  return `00-${ctx.traceId}-${ctx.spanId}-01`;
+}
+
 /** A log record at the given severity, correlated to whatever span is current. */
 export function log(severity, body, attributes = {}) {
   /* `logs.getLogger` on the global provider. If `install({ export: true })` was not called the
@@ -173,7 +194,9 @@ export async function fakeSession(options = {}) {
       const span = tracer.startSpan(step.name, { attributes: { "url.full": step.url } });
       await context.with(trace.setSpan(context.active(), span), async () => {
         try {
-          const response = await fetch(step.url);
+          const response = await fetch(step.url, {
+            headers: { traceparent: traceparentFor(span) },
+          });
           await response.text();
           span.setAttribute("http.response.status_code", response.status);
           log("DEBUG", `${step.name} ok`, { "http.response.status_code": response.status });
@@ -190,7 +213,9 @@ export async function fakeSession(options = {}) {
     });
     await context.with(trace.setSpan(context.active(), failing), async () => {
       try {
-        const response = await fetch("/api/charge?delay=200&status=503");
+        const response = await fetch("/api/charge?delay=200&status=503", {
+          headers: { traceparent: traceparentFor(failing) },
+        });
         await response.text();
         failing.setAttribute("http.response.status_code", response.status);
         if (!response.ok) {
