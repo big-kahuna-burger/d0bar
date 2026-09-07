@@ -4,10 +4,21 @@ import { classify } from "../../../collector/coverage";
 import { traceContext, type TraceContext } from "../../../collector/correlate";
 import { scratch, type RequestRecord } from "../../../shared/record";
 import type { Tier1Access, Tier2State } from "../../../shared/stage2";
-import { connection, open, popToList, selected, view } from "../../shell";
+import type { LogRecord } from "../../../shared/protocol";
+import {
+  connection,
+  open,
+  openLog,
+  popToList,
+  selected,
+  selectedSpan,
+  view,
+} from "../../shell";
 import { traceJumpAvailable } from "../../tier";
 import { virtualList, type VirtualList } from "../../virtual";
 import { displayPath, formatDuration } from "../requests/format";
+import { formatLogOffset, severityBand, UNATTACHED_LABEL } from "./logcopy";
+import { valueText as logValueText } from "../log";
 import { CAUSE_COPY } from "../untraced/copy";
 import {
   CEILING,
@@ -347,29 +358,157 @@ export function traceView(options: TraceViewOptions): TraceView {
     /* A widened bar is a rendering decision, not a measurement — marked so a zero-duration
        span is not read as a short one. */
     row.dataset["degenerate"] = String(span.degenerate);
+    /* Set from the shared flag the worker wrote: only it could resolve a log's `spanId` to a row,
+       so this is the one place the relationship is visible from the span's side. */
+    row.dataset["haslog"] = String(span.hasLog);
+    row.dataset["picked"] = String(index === selectedSpan());
   }
 
-  /* ── correlated-log footer ── */
-  const logFoot = el("div", "trace-log");
+  /* ── correlated logs ──
+     Native `<details>`, not a bound `open` signal over a hidden div: focusability, Enter and Space,
+     and the expanded state announced to a screen reader all come from the platform. Each of those
+     is otherwise a line of stage-2 bytes and a thing to get wrong. */
+  const logFoot = document.createElement("details");
+  logFoot.className = "trace-log";
+  const logSummary = document.createElement("summary");
+  logSummary.className = "trace-log-sum";
   const logLevel = el("span", "trace-log-level");
   const logLevelText = text(logLevel);
   const logMessage = el("span", "trace-log-msg");
   const logMessageText = text(logMessage);
   const logLink = el("span", "trace-log-link");
   const logLinkText = text(logLink);
-  logFoot.append(logLevel, logMessage, logLink);
+  logSummary.append(logLevel, logMessage, logLink);
 
-  bindings.add(bindText(logLevelText, () => currentSummary()?.log?.level ?? ""));
-  bindings.add(bindText(logMessageText, () => currentSummary()?.log?.message ?? ""));
+  /** The severest record, derived — not a second field that can disagree with the list. */
+  const worstLog = (): LogRecord | undefined => {
+    const logs = currentSummary()?.logs;
+    if (!logs || logs.length === 0) return undefined;
+    let worst = logs[0]!;
+    /* Strictly greater, so the *earliest* record at the worst severity wins — it is the one that
+       explains the others. `readLogs` caps by severity, so the severest is never the record the
+       cap dropped and this can never name a log absent from the list below. */
+    for (const log of logs) if (log.severity > worst.severity) worst = log;
+    return worst;
+  };
+
+  bindings.add(bindText(logLevelText, () => worstLog()?.level ?? ""));
+  bindings.add(
+    bindText(logMessageText, () => {
+      const log = worstLog();
+      if (!log) return "";
+      return logValueText(log.body, log.bodyKind);
+    }),
+  );
   bindings.add(
     bindText(logLinkText, () => {
-      const count = currentSummary()?.logCount ?? 0;
+      const summary = currentSummary();
+      const count = summary?.logCount ?? 0;
+      const shown = summary?.logs.length ?? 0;
+      /* Both numbers when the cap bit: "200 correlated logs" on a trace holding 4000 is a count of
+         what this panel chose to keep, presented as a count of what the trace has. */
+      if (shown < count) return `${shown} of ${count} correlated logs`;
       return count === 1 ? "1 correlated log" : `${count} correlated logs`;
     }),
   );
-  /* Hidden when the trace has no correlated logs. An empty footer reading "0 correlated
+
+  const logList = el("div", "trace-log-list");
+
+  /**
+   * The log rows, rebuilt when the summary changes.
+   *
+   * Not virtualized, unlike the spans: bounded by `LOG_CAP`, built only once a reader has opened
+   * the disclosure on an already-open panel, and two orders of magnitude smaller than the row
+   * count the virtualizer exists for.
+   *
+   * Each row carries **two labelled targets, not one gesture resolved by position**: the row opens
+   * the record, and a span badge — present only when the worker resolved a row — selects that span.
+   * Sibling buttons in a grid, because nesting buttons is invalid HTML. The row action is the one
+   * that works for every record, including the ones with no span; making the primary click select
+   * the span would mean the same gesture doing different things depending on the row.
+   *
+   * Both actions arrive through **one delegated listener** on the list, registered once into
+   * `bindings`. Per-button listeners here would either be added outside the binding scope — the
+   * thing the rest of this file registers through `on()` precisely to avoid — or added to it on
+   * every repaint, growing the scope's disposer list for nodes that no longer exist. The index
+   * lives on the row's `data-log`, so the record a click resolves to is read at click time from
+   * the list the effect last painted.
+   */
+  function paintLogs(): void {
+    const logs = currentSummary()?.logs ?? [];
+    logList.replaceChildren();
+    for (const [index, log] of logs.entries()) {
+      const row = el("div", "log-row");
+      row.dataset["unattached"] = String(log.unattached !== 0);
+      row.dataset["log"] = String(index);
+
+      const openBtn = el("button", "log-open");
+      openBtn.type = "button";
+      const lvl = el("span", "log-lvl");
+      lvl.textContent = log.level;
+      lvl.dataset["sev"] = severityBand(log.severity);
+      const off = el("span", "log-off");
+      off.textContent = `+${formatLogOffset(log.offsetNs)}`;
+      const msg = el("span", "log-msg");
+      msg.textContent =
+        log.bodyKind === "absent"
+          ? "⟨no body⟩"
+          : logValueText(log.body, log.bodyKind) || "⟨empty⟩";
+      openBtn.append(lvl, off, msg);
+      openBtn.title = "Open this log record";
+      row.appendChild(openBtn);
+
+      if (log.row >= 0) {
+        const jump = el("button", "log-span");
+        jump.type = "button";
+        jump.textContent = "span";
+        jump.title = "Select the span this log names";
+        row.appendChild(jump);
+      } else {
+        /* Labelled, not omitted and not disabled-with-no-reason. Three distinct readings, and the
+           `span-capped` one exists so the panel never says a span is absent from a trace that
+           contains it. */
+        const why = el("span", "log-nospan");
+        why.textContent = UNATTACHED_LABEL[log.unattached as Exclude<typeof log.unattached, 0>];
+        row.appendChild(why);
+      }
+      logList.appendChild(row);
+    }
+  }
+
+  bindings.add(effect(paintLogs));
+
+  bindings.add(
+    on(logList, "click", (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      const button = target?.closest<HTMLElement>(".log-open, .log-span");
+      if (!button) return;
+      const index = Number(button.closest<HTMLElement>(".log-row")?.dataset["log"] ?? -1);
+      const log = currentSummary()?.logs[index];
+      if (!log) return;
+      if (button.classList.contains("log-span")) selectSpanRow(log.row);
+      else openLog(index);
+    }),
+  );
+
+  /**
+   * Scrolls a span row into view and marks it selected.
+   *
+   * Centred rather than scrolled to the top: a span's meaning is its position relative to its
+   * neighbours, and a row pinned to the first line of the viewport hides the parent above it.
+   */
+  function selectSpanRow(row: number): void {
+    selectedSpan.set(row);
+    const viewport = list.el.clientHeight;
+    const target = row * SPAN_ROW_HEIGHT - Math.max(viewport / 2 - SPAN_ROW_HEIGHT, 0);
+    list.setScrollTop(Math.max(target, 0));
+    list.invalidate();
+  }
+
+  logFoot.append(logSummary, logList);
+  /* Hidden when the trace has no correlated logs. An empty disclosure reading "0 correlated
      logs" would occupy the row the reader scans for a warning. */
-  bindings.add(bindHidden(logFoot, () => (currentSummary()?.logCount ?? 0) === 0));
+  bindings.add(bindHidden(logFoot, () => (currentSummary()?.logs.length ?? 0) === 0));
 
   foundEl.append(meta, truncated, list.el, logFoot);
   bindings.add(bindHidden(foundEl, () => state().name !== "found"));
@@ -551,7 +690,10 @@ export function traceView(options: TraceViewOptions): TraceView {
      null, which exits whatever state was live and aborts anything in flight. */
   bindings.add(
     effect(() => {
-      const live = open() && view() === "trace";
+      /* `"log"` counts as live: the detail view is pushed *over* the trace and renders a record
+         out of its summary, so deselecting on the view change would abort the query and discard
+         the very record the reader just opened. */
+      const live = open() && (view() === "trace" || view() === "log");
       const index = selected();
       const tier2 = options.tier2();
       if (!live || index < 0) {

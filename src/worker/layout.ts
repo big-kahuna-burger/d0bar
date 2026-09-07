@@ -1,11 +1,14 @@
 import {
+  ATTR_CAP,
   F_CYCLE,
   F_DEGENERATE,
   F_ERROR,
+  F_HAS_LOG,
   F_ORPHAN,
   F_ROOT,
   LAYOUT_FAILURE_COPY,
   LAYOUT_PROTOCOL_VERSION,
+  LOG_CAP,
   SPAN_CAP,
   layoutBuffer,
   layoutViews,
@@ -13,6 +16,10 @@ import {
   type LayoutRequest,
   type LayoutResponse,
   type LayoutSummary,
+  type LogAttr,
+  type LogRecord,
+  type LogUnattached,
+  type LogValueKind,
 } from "../shared/protocol";
 
 /**
@@ -60,6 +67,8 @@ export interface LayoutOk {
   buffer: ArrayBuffer;
   count: number;
   strings: string[];
+  logs: LogRecord[];
+  logsSeen: number;
   summary: LayoutSummary;
 }
 
@@ -74,6 +83,10 @@ export type LayoutResult = LayoutOk | LayoutErr;
 export interface LayoutOptions {
   /** Overridden only by tests, which cannot afford to build 8192 spans to reach the cap. */
   cap?: number;
+  /** Same, for {@link LOG_CAP} — 200 records is not a fixture anyone reads. */
+  logCap?: number;
+  /** Same, for {@link ATTR_CAP}. */
+  attrCap?: number;
 }
 
 function fail(reason: LayoutFailure): LayoutErr {
@@ -208,13 +221,60 @@ function readWebEvents(payload: Record<string, unknown>, out: Span[]): void {
   }
 }
 
-/** The correlated logs, and the most severe one for the footer. */
-function readLogs(payload: Record<string, unknown>): { count: number; worst?: LogLine } {
-  const resourceLogs = payload["resourceLogs"];
-  if (!Array.isArray(resourceLogs)) return { count: 0 };
+/**
+ * One OTLP `AnyValue`, as text plus the kind it actually was.
+ *
+ * **One reader for bodies and attribute values both.** Two would drift, and the drift would be
+ * silent — a `kvlistValue` rendering as text in one place and as its kind in the other, with
+ * nothing failing. That is the same reasoning `layoutViews` exists for.
+ *
+ * Structured values are named, never serialised. Rejected: `JSON.stringify` in the worker — it is
+ * unbounded in size, would need truncation rules of its own, and a half-printed object is worse
+ * than a named kind.
+ */
+function anyValue(value: unknown): { text: string; kind: LogValueKind } {
+  if (!value || typeof value !== "object") return { text: "", kind: "absent" };
+  const v = value as Record<string, unknown>;
+  if (typeof v["stringValue"] === "string") return { text: v["stringValue"], kind: "string" };
+  /* protojson writes int64 as a string and the others as JSON numbers, so both are accepted per
+     kind rather than by `typeof` alone. Rendered as text because a number *is* readable — only
+     the container kinds are not. */
+  if (v["intValue"] !== undefined) return { text: String(v["intValue"]), kind: "int" };
+  if (v["doubleValue"] !== undefined) return { text: String(v["doubleValue"]), kind: "double" };
+  if (v["boolValue"] !== undefined) return { text: String(v["boolValue"]), kind: "bool" };
+  if (v["arrayValue"] !== undefined) return { text: "", kind: "array" };
+  if (v["kvlistValue"] !== undefined) return { text: "", kind: "kvlist" };
+  if (v["bytesValue"] !== undefined) return { text: "", kind: "bytes" };
+  return { text: "", kind: "absent" };
+}
 
-  let count = 0;
-  let worst: LogLine | undefined;
+/** A record as read, before the cap and before its row is resolved. */
+interface RawLog {
+  severity: number;
+  level: string;
+  body: string;
+  bodyKind: LogValueKind;
+  timeNs: number;
+  spanId: string;
+  attrs: LogAttr[];
+  attrsSeen: number;
+  /** Arrival order, so the cap's severity sort stays stable and the tie-break survives it. */
+  seq: number;
+}
+
+/**
+ * Every correlated log record in the payload. `scopeLogs[]` plus the pre-0.16
+ * `instrumentationLibraryLogs`, matching `readSpans`.
+ *
+ * Reads rather than summarises. The previous version kept a count and the single most severe record
+ * and dropped everything else — including every `spanId`, which is the only evidence that can
+ * attach a log to a span.
+ */
+function readLogs(payload: Record<string, unknown>, attrCap: number): RawLog[] {
+  const resourceLogs = payload["resourceLogs"];
+  if (!Array.isArray(resourceLogs)) return [];
+
+  const out: RawLog[] = [];
 
   for (const resourceEntry of resourceLogs) {
     if (!resourceEntry || typeof resourceEntry !== "object") continue;
@@ -233,32 +293,100 @@ function readLogs(payload: Record<string, unknown>): { count: number; worst?: Lo
       for (const recordEntry of records) {
         if (!recordEntry || typeof recordEntry !== "object") continue;
         const record = recordEntry as Record<string, unknown>;
-        count += 1;
-        const level =
-          typeof record["severityText"] === "string" && record["severityText"] !== ""
-            ? record["severityText"]
-            : "LOG";
-        const number =
-          typeof record["severityNumber"] === "number" ? record["severityNumber"] : 0;
-        const body = record["body"] as { stringValue?: unknown } | undefined;
-        const message = typeof body?.stringValue === "string" ? body.stringValue : "";
-        /* Strictly greater, so the *first* log at the worst severity wins a tie. The footer
-           shows one line, and the earliest one at that severity is the one that explains the
-           others. */
-        if (worst === undefined || number > worst.severity) {
-          worst = { severity: number, level, message };
+        const body = anyValue(record["body"]);
+
+        const rawAttrs = record["attributes"];
+        const attrs: LogAttr[] = [];
+        let attrsSeen = 0;
+        if (Array.isArray(rawAttrs)) {
+          attrsSeen = rawAttrs.length;
+          for (const attrEntry of rawAttrs) {
+            if (attrs.length >= attrCap) break;
+            if (!attrEntry || typeof attrEntry !== "object") continue;
+            const attr = attrEntry as { key?: unknown; value?: unknown };
+            /* A key is the whole identity of an attribute; one without it cannot be rendered as
+               anything a reader could act on. A *value*-less key is kept, as `"absent"`. */
+            if (typeof attr.key !== "string" || attr.key === "") continue;
+            const read = anyValue(attr.value);
+            attrs.push({ key: attr.key, value: read.text, kind: read.kind });
+          }
         }
+
+        out.push({
+          severity: typeof record["severityNumber"] === "number" ? record["severityNumber"] : 0,
+          level:
+            typeof record["severityText"] === "string" && record["severityText"] !== ""
+              ? record["severityText"]
+              : "LOG",
+          body: body.text,
+          bodyKind: body.kind,
+          /* `observedTimeUnixNano` is the collector's receipt time and is the documented fallback
+             when the emitter set no timestamp. */
+          timeNs: nanos(record["timeUnixNano"] ?? record["observedTimeUnixNano"]),
+          spanId: typeof record["spanId"] === "string" ? record["spanId"] : "",
+          attrs,
+          attrsSeen,
+          seq: out.length,
+        });
       }
     }
   }
 
-  return worst === undefined ? { count } : { count, worst };
+  return out;
 }
 
-interface LogLine {
-  severity: number;
-  level: string;
-  message: string;
+/**
+ * The capped records, with each one's row resolved.
+ *
+ * **Selected by severity, not by arrival.** The footer derives its worst-of from this list, so a
+ * cap that dropped by arrival could drop the severest record and leave the footer naming a log
+ * absent from the list beneath it. Arrival order is preserved within a severity, which keeps the
+ * old tie-break — the earliest at the worst severity, because it explains the others.
+ *
+ * Attachment runs here, **after** the cap, because that is the only point where "the span is not in
+ * this trace" and "the span exists and the row cap dropped it" can be told apart.
+ */
+function attachLogs(
+  raw: RawLog[],
+  options: {
+    from: number;
+    rowById: Map<string, number>;
+    present: Map<string, Span>;
+    cap: number;
+  },
+): LogRecord[] {
+  const ordered = [...raw].sort((a, b) => b.severity - a.severity || a.seq - b.seq);
+  const kept = ordered.slice(0, options.cap);
+  /* Back into arrival order for display: severity decided *which* records survive, not how they
+     read. A list jumping between severities is harder to scan than one that runs in time. */
+  kept.sort((a, b) => a.seq - b.seq);
+
+  return kept.map((log) => {
+    const row = log.spanId === "" ? -1 : (options.rowById.get(log.spanId) ?? -1);
+    let unattached: LogUnattached | 0 = 0;
+    if (row < 0) {
+      unattached =
+        log.spanId === ""
+          ? "no-span-id"
+          : options.present.has(log.spanId)
+            ? "span-capped"
+            : "span-not-in-trace";
+    }
+    return {
+      severity: log.severity,
+      level: log.level,
+      body: log.body,
+      bodyKind: log.bodyKind,
+      /* Clamped at 0. A log stamped before the trace's earliest emitted span is real — clocks on
+         two services disagree — and is clamped rather than dropped or rendered negative. */
+      offsetNs: Math.max(log.timeNs - options.from, 0),
+      timeNs: log.timeNs,
+      row,
+      unattached,
+      attrs: log.attrs,
+      attrsSeen: log.attrsSeen,
+    };
+  });
 }
 
 /**
@@ -430,6 +558,26 @@ export function layout(request: LayoutRequest, options: LayoutOptions = {}): Lay
   }
   const total = to > from ? to - from : 1;
 
+  /* Emitted rows only, and first-writer-wins for a duplicated span id — matching `byId`, so a log
+     naming a duplicated id attaches to the same copy every child resolved to. `byId` holds every
+     span *read*, which is what separates `span-capped` from `span-not-in-trace` below. */
+  const rowById = new Map<string, number>();
+  for (let i = 0; i < count; i += 1) {
+    const id = ordered[i]!.id;
+    if (!rowById.has(id)) rowById.set(id, i);
+  }
+
+  const rawLogs = readLogs(payload, options.attrCap ?? ATTR_CAP);
+  const logs = attachLogs(rawLogs, {
+    from,
+    rowById,
+    present: byId,
+    cap: options.logCap ?? LOG_CAP,
+  });
+  /* Which rows to mark, resolved before the row loop because `flags` is written once per row. */
+  const rowsWithLog = new Set<number>();
+  for (const log of logs) if (log.row >= 0) rowsWithLog.add(log.row);
+
   const buffer = layoutBuffer(count);
   const views = layoutViews(buffer, count);
   const strings: string[] = [];
@@ -478,21 +626,20 @@ export function layout(request: LayoutRequest, options: LayoutOptions = {}): Lay
       span.flags |
       (span.error ? F_ERROR : 0) |
       (degenerate ? F_DEGENERATE : 0) |
+      (rowsWithLog.has(i) ? F_HAS_LOG : 0) |
       (span.depth === 0 && (span.flags & (F_ORPHAN | F_CYCLE)) === 0 ? F_ROOT : 0);
   }
 
-  const logs = readLogs(payload);
   const summary: LayoutSummary = {
     spanCount: count,
     spansSeen: ordered.length,
     serviceCount: palette.size,
-    logCount: logs.count,
+    logCount: rawLogs.length,
     truncated,
     totalDurationNs: total,
-    ...(logs.worst ? { log: { level: logs.worst.level, message: logs.worst.message } } : {}),
   };
 
-  return { ok: true, buffer, count, strings, summary };
+  return { ok: true, buffer, count, strings, logs, logsSeen: rawLogs.length, summary };
 }
 
 /**
@@ -525,6 +672,8 @@ export function toResponse(
       buffer: result.buffer,
       count: result.count,
       strings: result.strings,
+      logs: result.logs,
+      logsSeen: result.logsSeen,
       summary: result.summary,
       workerMs,
     },

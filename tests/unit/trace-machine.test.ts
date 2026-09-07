@@ -33,6 +33,7 @@ const SUMMARY: TraceSummary = {
   spanCount: 7,
   serviceCount: 4,
   logCount: 3,
+  logs: [],
   truncated: false,
   rows: NO_SPANS,
   mainThreadMs: null,

@@ -1,11 +1,20 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import { traceView } from "../../src/panel/views/trace";
-import { connection, open, resetShell, selected, view } from "../../src/panel/shell";
+import {
+  connection,
+  open,
+  resetShell,
+  selected,
+  selectedLog,
+  selectedSpan,
+  view,
+} from "../../src/panel/shell";
 import type { TraceContext } from "../../src/collector/correlate";
 import { CAUSE_COPY } from "../../src/panel/views/untraced/copy";
 import { F_HAS_SPAN, F_XHR } from "../../src/shared/flags";
 import { scratch, type RequestRecord } from "../../src/shared/record";
+import type { LogRecord } from "../../src/shared/protocol";
 import type { Tier1Access, Tier2State } from "../../src/shared/stage2";
 import {
   TIER2_OFF_COPY,
@@ -33,6 +42,42 @@ const TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736";
 const LIVE: Tier2State = { kind: "live", owner: "d0bar" };
 const OFF: Tier2State = { kind: "off", reason: "not-registered" };
 
+function logRecord(over: Partial<LogRecord> = {}): LogRecord {
+  return {
+    severity: 9,
+    level: "INFO",
+    body: "cache warm",
+    bodyKind: "string",
+    offsetNs: 1_000_000,
+    timeNs: 1_700_000_000_000_000_000,
+    row: -1,
+    unattached: "no-span-id",
+    attrs: [],
+    attrsSeen: 0,
+    ...over,
+  };
+}
+
+/**
+ * Three records, and deliberately not in severity order.
+ *
+ * The severest is in the middle, so a footer that showed `logs[0]` instead of deriving the worst
+ * would pass on a sorted fixture. One is attached to row 1 and two are not, which is what makes
+ * the span badge and the three unattached labels both reachable from this one summary.
+ */
+const LOGS: LogRecord[] = [
+  logRecord(),
+  logRecord({
+    severity: 13,
+    level: "WARN",
+    body: "tariff cache miss for corridor NL-DE",
+    offsetNs: 24_000_000,
+    row: 1,
+    unattached: 0,
+  }),
+  logRecord({ severity: 5, level: "DEBUG", body: "pool idle", unattached: "span-capped" }),
+];
+
 const SUMMARY: TraceSummary = {
   spanCount: 7,
   serviceCount: 4,
@@ -40,7 +85,7 @@ const SUMMARY: TraceSummary = {
   truncated: false,
   mainThreadMs: null,
   workerMs: null,
-  log: { level: "WARN", message: "tariff cache miss for corridor NL-DE" },
+  logs: LOGS,
   /* An accessor, not an array — the shape the layout worker actually hands over. Backed by
      plain objects here because what is under test is the view, not the buffer; `layout.test.ts`
      owns the buffer. The scratch discipline is still exercised: the view reads into one record
@@ -66,6 +111,10 @@ const SUMMARY: TraceSummary = {
       width: 0.5,
       durationMs: 210,
       colorIndex: 2,
+      /* The row `LOGS[1]` names. Set here rather than derived from `logs`, because in the real
+         system it arrives as `F_HAS_LOG` in the row buffer — a separate channel from the log list,
+         and a fixture that computed one from the other would stop testing the wiring. */
+      hasLog: true,
       orphan: false,
       error: true,
       degenerate: false,
@@ -73,14 +122,20 @@ const SUMMARY: TraceSummary = {
   ]),
 };
 
-/** Wraps plain rows in the accessor the machine's `TraceSummary` now carries. */
-function rowsOf(list: SpanRow[]): SpanRows {
+/**
+ * Wraps plain rows in the accessor the machine's `TraceSummary` now carries.
+ *
+ * `hasLog` is defaulted here rather than left off, because `Object.assign` onto the caller's
+ * scratch record would otherwise leave the *previous* row's flag in place — the scratch bug this
+ * file exists to keep catching, reintroduced by the fixture instead of by the view.
+ */
+function rowsOf(list: Array<Omit<SpanRow, "hasLog"> & { hasLog?: boolean }>): SpanRows {
   return {
     count: list.length,
     read(index, out) {
       const row = list[index];
       if (!row) return false;
-      Object.assign(out, row);
+      Object.assign(out, { hasLog: false }, row);
       return true;
     },
   };
@@ -621,7 +676,7 @@ describe("traceView", () => {
     await settled();
     surface.settleQuery(0, {
       kind: "found",
-      summary: { ...SUMMARY, logCount: 0, log: undefined as never },
+      summary: { ...SUMMARY, logCount: 0, logs: [] },
     });
     await settled();
     expect(visible(surface.el, ".trace-found")).toBe(true);
@@ -638,6 +693,127 @@ describe("traceView", () => {
     surface.settleQuery(0, { kind: "found", summary: { ...SUMMARY, truncated: true } });
     await settled();
     expect(visible(surface.el, ".trace-trunc")).toBe(true);
+    surface.destroy();
+  });
+});
+
+/**
+ * The correlated log list.
+ *
+ * Two labelled targets per row, and the reason they are two is asserted here: the row action works
+ * for every record including the ones with no span, and the span badge exists only where the worker
+ * resolved a row. One gesture whose meaning depended on whether the record happened to have a span
+ * is the design this replaced.
+ */
+describe("the correlated log list", () => {
+  async function found(summary: TraceSummary = SUMMARY): Promise<Mounted> {
+    const surface = mount({ tier2: LIVE }, [requestRecord()]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+    surface.settleQuery(0, { kind: "found", summary });
+    await settled();
+    return surface;
+  }
+
+  function logRows(surface: Mounted): HTMLElement[] {
+    return [...surface.el.querySelectorAll<HTMLElement>(".log-row")];
+  }
+
+  it("lists every record it was given, in the order they arrived", async () => {
+    const surface = await found();
+    expect(logRows(surface).map((row) => textOf(row, ".log-msg"))).toEqual([
+      "cache warm",
+      "tariff cache miss for corridor NL-DE",
+      "pool idle",
+    ]);
+    surface.destroy();
+  });
+
+  it("derives the footer's worst rather than showing the first record", async () => {
+    /* `LOGS` puts the severest in the middle on purpose: a footer reading `logs[0]` would pass on
+       any severity-sorted fixture and be wrong on a real payload. */
+    const surface = await found();
+    expect(textOf(surface.el, ".trace-log-level")).toBe("WARN");
+    expect(textOf(surface.el, ".trace-log-msg")).toBe("tariff cache miss for corridor NL-DE");
+    surface.destroy();
+  });
+
+  it("names both numbers when the cap kept fewer than the trace held", async () => {
+    /* "200 correlated logs" on a trace holding 4000 is a count of what the panel chose to keep,
+       presented as a count of what the trace has. */
+    const surface = await found({ ...SUMMARY, logCount: 412 });
+    expect(textOf(surface.el, ".trace-log-link")).toBe("3 of 412 correlated logs");
+    surface.destroy();
+  });
+
+  it("says one log in the singular", async () => {
+    const surface = await found({ ...SUMMARY, logCount: 1, logs: [LOGS[0]!] });
+    expect(textOf(surface.el, ".trace-log-link")).toBe("1 correlated log");
+    surface.destroy();
+  });
+
+  it("labels an unattached record instead of offering a span it cannot select", async () => {
+    const surface = await found();
+    const rows = logRows(surface);
+    /* Three readings, and `span not rendered` is the one only the worker could distinguish — the
+       span is in the trace, the row cap dropped it, and saying "not returned" would be false. */
+    expect(rows.map((row) => textOf(row, ".log-nospan"))).toEqual([
+      "trace-level",
+      "",
+      "span not rendered",
+    ]);
+    expect(rows.map((row) => row.querySelector(".log-span") !== null)).toEqual([
+      false,
+      true,
+      false,
+    ]);
+    expect(rows.map((row) => row.dataset["unattached"])).toEqual(["true", "false", "true"]);
+    surface.destroy();
+  });
+
+  it("opens the record the row names, whether or not it has a span", async () => {
+    const surface = await found();
+    logRows(surface)[2]!.querySelector<HTMLButtonElement>(".log-open")!.click();
+    await settled();
+
+    expect(view()).toBe("log");
+    /* The index, not the record. The detail view resolves it against the live list on every read,
+       so a re-layout replaces what it shows instead of leaving it on a detached object. */
+    expect(selectedLog()).toBe(2);
+    /* Opening a record must not move the waterfall's selection: the two actions are separate. */
+    expect(selectedSpan()).toBe(-1);
+    surface.destroy();
+  });
+
+  it("selects the span a record names, and stays on the trace", async () => {
+    const surface = await found();
+    logRows(surface)[1]!.querySelector<HTMLButtonElement>(".log-span")!.click();
+    await settled();
+    await frame();
+
+    expect(selectedSpan()).toBe(1);
+    expect(view()).toBe("trace");
+    expect(selectedLog()).toBe(-1);
+
+    const rows = [...surface.el.querySelectorAll<HTMLElement>(".span-row")].filter(
+      (row) => !row.hidden,
+    );
+    expect(rows.map((row) => row.dataset["picked"])).toEqual(["false", "true"]);
+    surface.destroy();
+  });
+
+  it("marks the rows a record names, and only those", async () => {
+    const surface = await found();
+    /* The virtualizer paints on a frame, so the row pool is empty until one has passed. */
+    await frame();
+    const rows = [...surface.el.querySelectorAll<HTMLElement>(".span-row")].filter(
+      (row) => !row.hidden,
+    );
+    /* Read off the row's own `hasLog`, which the worker set from `F_HAS_LOG` — the only side that
+       could resolve a log's `spanId` to a row index. */
+    expect(rows.map((row) => row.dataset["haslog"])).toEqual(["false", "true"]);
     surface.destroy();
   });
 });

@@ -433,13 +433,21 @@ describe("correlated logs", () => {
     });
 
     expect(result.summary.logCount).toBe(3);
-    expect(result.summary.log).toEqual({ level: "ERROR", message: "tariff lookup failed" });
+    /* All three, in payload order. The footer's "worst" is derived in the view now: reducing
+       the reply to one record here is what made a log list impossible to build without a
+       protocol change, and `layout-logs.test.ts` owns the ordering and cap rules. */
+    expect(result.logs.map((log) => [log.level, log.body])).toEqual([
+      ["INFO", "cache warm"],
+      ["ERROR", "tariff lookup failed"],
+      ["WARN", "retrying"],
+    ]);
+    expect(result.logsSeen).toBe(3);
   });
 
-  it("reports no log rather than an empty one", () => {
+  it("reports no logs rather than an empty one", () => {
     const result = ok([{ id: "root", duration: 10 }]);
     expect(result.summary.logCount).toBe(0);
-    expect(result.summary.log).toBeUndefined();
+    expect(result.logs).toEqual([]);
   });
 });
 

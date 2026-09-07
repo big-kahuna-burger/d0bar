@@ -88,6 +88,8 @@ function okReply(id: number, count = 1): LayoutResponse {
     buffer,
     count,
     strings: ["GET /api/quote", "edge"],
+    logs: [],
+    logsSeen: 0,
     summary: {
       spanCount: count,
       spansSeen: count,

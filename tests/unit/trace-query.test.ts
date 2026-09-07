@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { QueryOutcome } from "../../src/shared/broker";
 import type { Flattened, LayoutClient } from "../../src/panel/layout-client";
+import type { LogRecord } from "../../src/shared/protocol";
 import { TRACE_DETAILS_PATH, createTraceQuery, traceDetailsBody } from "../../src/trace/query";
 import { NO_SPANS, type TraceQueryRequest } from "../../src/trace/traceMachine";
 
@@ -23,6 +24,20 @@ const REQUEST: TraceQueryRequest = {
   timeRange: { from: AT - 2000, to: AT + 2000 },
 };
 
+/** One correlated record, whole — the query's job is to carry it through, not to read it. */
+const WARN_LOG: LogRecord = {
+  severity: 13,
+  level: "WARN",
+  body: "tariff cache miss",
+  bodyKind: "string",
+  offsetNs: 4_000_000,
+  timeNs: 1_700_000_000_000_000_000,
+  row: -1,
+  unattached: "no-span-id",
+  attrs: [],
+  attrsSeen: 0,
+};
+
 function flattened(over: Partial<Flattened> = {}): Flattened {
   return {
     rows: { count: 3, read: () => true },
@@ -33,8 +48,9 @@ function flattened(over: Partial<Flattened> = {}): Flattened {
       logCount: 1,
       truncated: false,
       totalDurationNs: 412_000_000,
-      log: { level: "WARN", message: "tariff cache miss" },
     },
+    logs: [WARN_LOG],
+    logsSeen: 1,
     workerMs: 6,
     ...over,
   };
@@ -207,7 +223,7 @@ describe("the response body", () => {
     expect(outcome.summary.mainThreadMs!).toBeLessThan(50);
   });
 
-  it("carries the summary's counts and its worst log through", async () => {
+  it("carries the summary's counts and the whole log list through", async () => {
     const { query } = harness(ok("{}"));
     const outcome = await query(REQUEST, new AbortController().signal);
     if (outcome.kind !== "found") throw new Error(outcome.kind);
@@ -215,7 +231,9 @@ describe("the response body", () => {
     expect(outcome.summary.spanCount).toBe(3);
     expect(outcome.summary.serviceCount).toBe(2);
     expect(outcome.summary.logCount).toBe(1);
-    expect(outcome.summary.log).toEqual({ level: "WARN", message: "tariff cache miss" });
+    /* The same objects, not copies: the detail view resolves `selectedLog()` against this array
+       on every read, so anything that rebuilt the records here would make an index meaningless. */
+    expect(outcome.summary.logs).toEqual([WARN_LOG]);
   });
 });
 

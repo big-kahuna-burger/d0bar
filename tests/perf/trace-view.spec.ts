@@ -194,6 +194,265 @@ test("gives four rows on one page four different causes", async ({ page }) => {
   expect(xhr.swShown).toBe(false);
 });
 
+/* ── the correlated log list, in a browser ──
+ *
+ * `tests/unit/trace-view.test.ts` settles what the list *renders*, against a hand-built summary.
+ * What only a browser settles is the whole path: a real `d0-bar` element, the real panel bundle,
+ * the shipped layout worker parsing real OTLP off a message boundary, the `F_HAS_LOG` bit crossing
+ * in a transferred `ArrayBuffer`, and a real click landing on the row the worker resolved.
+ *
+ * **The broker is faked in the page, not the API.** The trace query runs inside the service
+ * worker, which holds the credential and resolves its destination against a compiled region table
+ * — a page cannot name an origin, which is the point of that design and not something to weaken
+ * for a test. So the fake goes at the message boundary the page already owns: one wrapper around
+ * `ServiceWorker.prototype.postMessage` that answers `status` and `query` on the `MessagePort` the
+ * caller transferred, and passes everything else through. Same seam, and the same reasoning, as
+ * the `attachShadow` interception above: open the platform, not the product.
+ */
+
+/** Two spans and three log records. Every case the list can render is in here once. */
+const TRACE_WITH_LOGS = JSON.stringify({
+  resourceSpans: [
+    {
+      resource: { attributes: [{ key: "service.name", value: { stringValue: "edge" } }] },
+      scopeSpans: [
+        {
+          spans: [
+            {
+              spanId: "aaaaaaaaaaaaaaaa",
+              name: "GET /api/hero",
+              startTimeUnixNano: "1700000000000000000",
+              endTimeUnixNano: "1700000000400000000",
+            },
+            {
+              spanId: "bbbbbbbbbbbbbbbb",
+              parentSpanId: "aaaaaaaaaaaaaaaa",
+              name: "pricing.lookup",
+              startTimeUnixNano: "1700000000100000000",
+              endTimeUnixNano: "1700000000300000000",
+            },
+          ],
+        },
+      ],
+    },
+  ],
+  resourceLogs: [
+    {
+      scopeLogs: [
+        {
+          logRecords: [
+            {
+              severityNumber: 9,
+              severityText: "INFO",
+              body: { stringValue: "corridor cache warm" },
+              timeUnixNano: "1700000000050000000",
+            },
+            {
+              severityNumber: 17,
+              severityText: "ERROR",
+              body: { stringValue: "tariff lookup failed" },
+              timeUnixNano: "1700000000200000000",
+              spanId: "bbbbbbbbbbbbbbbb",
+              attributes: [
+                { key: "corridor", value: { stringValue: "NL-DE" } },
+                { key: "http.status_code", value: { intValue: "503" } },
+                { key: "payload", value: { kvlistValue: { values: [] } } },
+              ],
+            },
+            {
+              severityNumber: 13,
+              severityText: "WARN",
+              body: { stringValue: "retrying once" },
+              timeUnixNano: "1700000000250000000",
+              spanId: "cccccccccccccccc",
+            },
+          ],
+        },
+      ],
+    },
+  ],
+});
+
+/** Two frames: one for the effect the click scheduled, one for the paint it schedules in turn. */
+function settle(page: import("@playwright/test").Page) {
+  return page.evaluate(
+    () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+  );
+}
+
+/** Answers the panel's broker messages in the page, leaving the real worker alone otherwise. */
+async function fakeBroker(page: import("@playwright/test").Page, body: string) {
+  await page.addInitScript((payload: string) => {
+    const original = ServiceWorker.prototype.postMessage;
+    ServiceWorker.prototype.postMessage = function (
+      message: unknown,
+      transfer?: unknown,
+    ): void {
+      const request = message as { kind?: string };
+      const ports = (Array.isArray(transfer) ? transfer : []) as MessagePort[];
+      const port = ports[0];
+      /* Only the two the panel asks for. Anything else — the collector's own messages to its
+         worker — goes through untouched, so tier 2 stays genuinely live. */
+      if (port && request.kind === "status") {
+        port.postMessage({
+          kind: "status",
+          status: {
+            connected: true,
+            source: "session",
+            hint: "••••test",
+            apiOrigin: "https://api.eu-west-1.aws.dash0.com",
+            dataset: "default",
+          },
+        });
+        return;
+      }
+      if (port && request.kind === "query") {
+        port.postMessage({ kind: "query", outcome: { ok: true, status: 200, body: payload } });
+        return;
+      }
+      original.call(this, message as never, transfer as never);
+    };
+  }, body);
+}
+
+/** Opens the first traced row, which the fake broker answers with `TRACE_WITH_LOGS`. */
+async function openTracedRow(page: import("@playwright/test").Page) {
+  /* A **same-origin** `/api/resource` fetch: `app.js` puts a `traceparent` on those and on nothing
+     else, so this is the row that has a span id to query with. Anchored, because the cross-origin
+     copies render as `localhost:8732/api/…` and carry no header. (`/api/hero` also has one, but it
+     is issued with `?delay=800` and is not in the ring when the panel opens — probed.) */
+  await openRow(page, "/api/resource", "startsWith");
+  await page.waitForFunction(() => {
+    const found = window.__d0root!.querySelector(".trace-found") as HTMLElement | null;
+    return found !== null && !found.hidden;
+  });
+  /* Two frames, so the virtualizer has painted its row pool. */
+  await page.evaluate(
+    () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+  );
+}
+
+test("carries a log's span through the real worker to the row it names", async ({ page }) => {
+  await fakeBroker(page, TRACE_WITH_LOGS);
+  await openPanel(page);
+  await openTracedRow(page);
+
+  const list = await page.evaluate(() => {
+    const root = window.__d0root!;
+    const rows = [...root.querySelectorAll<HTMLElement>(".log-row")];
+    return {
+      count: rows.length,
+      messages: rows.map((row) => row.querySelector(".log-msg")?.textContent?.trim() ?? ""),
+      badges: rows.map((row) => row.querySelector(".log-span") !== null),
+      labels: rows.map((row) => row.querySelector(".log-nospan")?.textContent?.trim() ?? ""),
+      /* The footer's worst-of, derived from the list rather than carried as a second field. */
+      worst: root.querySelector(".trace-log-level")?.textContent?.trim() ?? "",
+      link: root.querySelector(".trace-log-link")?.textContent?.trim() ?? "",
+    };
+  });
+
+  expect(list.count).toBe(3);
+  expect(list.messages).toEqual([
+    "corridor cache warm",
+    "tariff lookup failed",
+    "retrying once",
+  ]);
+  /* Only the record naming a span the worker emitted gets a badge — and the two that do not are
+     labelled with *why*, which is the distinction the whole `LogUnattached` enum exists for. */
+  expect(list.badges).toEqual([false, true, false]);
+  expect(list.labels).toEqual(["trace-level", "", "span not returned"]);
+  expect(list.worst).toBe("ERROR");
+  expect(list.link).toBe("3 correlated logs");
+
+  /* The click. `F_HAS_LOG` and the row index both came out of a transferred buffer the shipped
+     worker wrote — nothing on this side computed either. */
+  await page.evaluate(() => {
+    const rows = [...window.__d0root!.querySelectorAll<HTMLElement>(".log-row")];
+    rows[1]!.querySelector<HTMLElement>(".log-span")!.click();
+  });
+  /* Read on a later turn than the click: `data-picked` is written by the virtualizer's repaint,
+     which is scheduled on a frame. Reading in the same `evaluate` sees the pre-click DOM. */
+  await settle(page);
+
+  const picked = await page.evaluate(() => {
+    const root = window.__d0root!;
+    const spans = [...root.querySelectorAll<HTMLElement>(".span-row")].filter((r) => !r.hidden);
+    return {
+      picked: spans.map((row) => row.dataset["picked"]),
+      hasLog: spans.map((row) => row.dataset["haslog"]),
+      labels: spans.map((row) => row.querySelector(".span-label")?.textContent?.trim() ?? ""),
+    };
+  });
+
+  expect(picked.labels).toEqual(["GET /api/hero", "pricing.lookup"]);
+  expect(picked.picked).toEqual(["false", "true"]);
+  expect(picked.hasLog).toEqual(["false", "true"]);
+});
+
+test("opens a log record's detail view and returns to the trace", async ({ page }) => {
+  await fakeBroker(page, TRACE_WITH_LOGS);
+  await openPanel(page);
+  await openTracedRow(page);
+
+  await page.evaluate(() => {
+    [...window.__d0root!.querySelectorAll<HTMLElement>(".log-row")][1]!
+      .querySelector<HTMLElement>(".log-open")!
+      .click();
+  });
+  await settle(page);
+
+  const detail = await page.evaluate(() => {
+    const root = window.__d0root!;
+    const view = root.querySelector(".logview") as HTMLElement;
+    return {
+      shown: !view.hidden,
+      level: root.querySelector(".logview-level")?.textContent?.trim() ?? "",
+      body: root.querySelector(".logview-body")?.textContent?.trim() ?? "",
+      head: root.querySelector(".logview-attrs-head")?.textContent?.trim() ?? "",
+      keys: [...root.querySelectorAll<HTMLElement>(".logview-attrs dt")].map(
+        (node) => node.textContent ?? "",
+      ),
+      values: [...root.querySelectorAll<HTMLElement>(".logview-attrs dd")].map(
+        (node) => node.textContent ?? "",
+      ),
+      /* The trace *surface* is hidden while the log sits over it — probed, not assumed; the
+         panel shows one surface at a time. What is preserved is the selection behind it, which
+         is why the back button below lands on a found trace and not on a refetch. */
+      traceHidden: (root.querySelector(".trace") as HTMLElement).hidden,
+    };
+  });
+
+  expect(detail.shown).toBe(true);
+  expect(detail.level).toBe("ERROR");
+  expect(detail.body).toBe("tariff lookup failed");
+  expect(detail.head).toBe("attributes · 3");
+  expect(detail.keys).toEqual(["corridor", "http.status_code", "payload"]);
+  /* The `kvlistValue` is **named**, not blank. A blank third value here is the exact reading the
+     old `stringValue`-only reader produced, and it is indistinguishable from an empty attribute. */
+  expect(detail.values).toEqual(["NL-DE", "503", "⟨kvlist⟩"]);
+  expect(detail.traceHidden).toBe(true);
+
+  await page.evaluate(() =>
+    window.__d0root!.querySelector<HTMLElement>(".logview-back")!.click(),
+  );
+  await settle(page);
+
+  const returned = await page.evaluate(() => {
+    const root = window.__d0root!;
+    return {
+      logShown: !(root.querySelector(".logview") as HTMLElement).hidden,
+      /* Back to the trace, not to the list: `popToList` would clear the selection and abort the
+         query whose result the reader was just reading. */
+      foundShown: !(root.querySelector(".trace-found") as HTMLElement).hidden,
+      listShown: !(root.querySelector(".requests") as HTMLElement).hidden,
+    };
+  });
+
+  expect(returned.logShown).toBe(false);
+  expect(returned.foundShown).toBe(true);
+  expect(returned.listShown).toBe(false);
+});
+
 /** Pops back to the list, so the next row can be opened. */
 async function back(page: import("@playwright/test").Page) {
   await page.evaluate(() =>

@@ -28,6 +28,7 @@
  */
 
 import type { Cause } from "../collector/coverage";
+import type { LogRecord } from "../shared/protocol";
 
 /** Half-width of the query's time range, in milliseconds. The handoff's `timeRange ±2s`. */
 export const RANGE_MS = 2000;
@@ -92,6 +93,14 @@ export interface SpanRow {
    * measurement, and must say so — otherwise it is indistinguishable from a 2 ms span.
    */
   degenerate: boolean;
+  /**
+   * A correlated log record names this span.
+   *
+   * Read off `F_HAS_LOG`, which only the worker can set: the row buffer carries no span id, so the
+   * main thread cannot match a log's `spanId` to a row at all. This flag is the whole of the
+   * relationship as seen from the span's side.
+   */
+  hasLog: boolean;
 }
 
 /**
@@ -118,6 +127,7 @@ export function spanScratch(): SpanRow {
     orphan: false,
     error: false,
     degenerate: false,
+    hasLog: false,
   };
 }
 
@@ -127,12 +137,20 @@ export const NO_SPANS: SpanRows = { count: 0, read: () => false };
 export interface TraceSummary {
   spanCount: number;
   serviceCount: number;
+  /** Records the response held, before {@link LOG_CAP} — so it can exceed `logs.length`. */
   logCount: number;
   /** The backend returned more spans than it sent. The UI must say so. */
   truncated: boolean;
   rows: SpanRows;
-  /** The single most severe correlated log, for the footer. Absent when there are none. */
-  log?: { level: string; message: string };
+  /**
+   * The correlated logs, capped and each with its row resolved by the worker.
+   *
+   * Replaced a single `log?: {level, message}` — the severest, handed over separately. Two answers
+   * to "which log is worst" in one summary disagree the first time the cap drops the severest
+   * record, leaving a footer that names a log absent from the list beneath it. The footer derives
+   * its line from this array instead, and `readLogs` caps by severity so the severest survives.
+   */
+  logs: readonly LogRecord[];
   /**
    * Main-thread ms this flattening cost, or `null` when nothing measured it. **Null is not zero**:
    * `flattened in worker · 0 ms on main thread` is the most self-serving number this panel can

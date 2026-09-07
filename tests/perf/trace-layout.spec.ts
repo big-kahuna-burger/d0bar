@@ -1,4 +1,9 @@
 import { expect, test } from "@playwright/test";
+/* Imported, not written as a literal. It was `version: 1` here, and the correlated-logs change
+   bumped the protocol to 2 — which turned both of these into `version-mismatch` and made the whole
+   budget unmeasurable. Node-side only: the number is passed into `page.evaluate`, so nothing of the
+   panel bundle reaches the thread being measured. */
+import { LAYOUT_PROTOCOL_VERSION } from "../../src/shared/protocol";
 
 /**
  * The layout worker's budget, against the real artifact and a real 4000-span trace.
@@ -59,7 +64,7 @@ test(
     );
 
     const measured: Measured = await page.evaluate(
-      async ({ longTaskMs }) => {
+      async ({ longTaskMs, PROTOCOL }) => {
         const longTasks: number[] = [];
         /* The browser's own reading, not a timer of ours. `buffered: true` is deliberately not
          used — only tasks that happen *during* the layout are of interest, and the fixture's own
@@ -133,7 +138,14 @@ test(
             });
           });
 
-          worker.postMessage({ kind: "layout", version: 1, id: 1, body, from: 0, to: 0 });
+          worker.postMessage({
+            kind: "layout",
+            version: PROTOCOL,
+            id: 1,
+            body,
+            from: 0,
+            to: 0,
+          });
         });
 
         /* Let any task the layout provoked land before the observer is torn down. */
@@ -143,7 +155,7 @@ test(
 
         return { ...(reply as unknown as Measured), longTasks, detached: true };
       },
-      { longTaskMs: LONG_TASK_MS },
+      { longTaskMs: LONG_TASK_MS, PROTOCOL: LAYOUT_PROTOCOL_VERSION },
     );
 
     const report =
@@ -175,7 +187,7 @@ test("transfers the row buffer rather than copying it", async ({ page }) => {
     () => (window as unknown as { __fixtureReady: Promise<void> }).__fixtureReady,
   );
 
-  const detached = await page.evaluate(async () => {
+  const detached = await page.evaluate(async (PROTOCOL: number) => {
     const body = await fetch("/trace-4000.json").then((response) => response.text());
     const worker = new Worker("/dist/d0bar-layout-worker.js", { type: "module" });
 
@@ -207,10 +219,10 @@ test("transfers the row buffer rather than copying it", async ({ page }) => {
           });
           worker.terminate();
         });
-        worker.postMessage({ kind: "layout", version: 1, id: 1, body, from: 0, to: 0 });
+        worker.postMessage({ kind: "layout", version: PROTOCOL, id: 1, body, from: 0, to: 0 });
       },
     );
-  });
+  }, LAYOUT_PROTOCOL_VERSION);
 
   expect(detached.bytes).toBe(detached.expected);
   /* Ownership, demonstrated: the page can transfer it onward, which a cloned view could not do

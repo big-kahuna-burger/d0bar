@@ -1,5 +1,6 @@
 import {
   F_DEGENERATE,
+  F_HAS_LOG,
   F_ERROR,
   F_ORPHAN,
   LAYOUT_PROTOCOL_VERSION,
@@ -7,6 +8,7 @@ import {
   layoutViews,
   type LayoutResponse,
   type LayoutSummary,
+  type LogRecord,
   type LayoutViews,
 } from "../shared/protocol";
 import type { SpanRow } from "../trace/traceMachine";
@@ -69,6 +71,7 @@ function spanRows(views: LayoutViews, count: number, strings: string[]): SpanRow
       out.orphan = (flags & F_ORPHAN) !== 0;
       out.error = (flags & F_ERROR) !== 0;
       out.degenerate = (flags & F_DEGENERATE) !== 0;
+      out.hasLog = (flags & F_HAS_LOG) !== 0;
       return true;
     },
   };
@@ -77,6 +80,10 @@ function spanRows(views: LayoutViews, count: number, strings: string[]): SpanRow
 export interface Flattened {
   rows: SpanRows;
   summary: LayoutSummary;
+  /** The correlated logs, capped and with each row resolved by the worker. */
+  logs: LogRecord[];
+  /** Records the response held, before the cap. */
+  logsSeen: number;
   /** Milliseconds the worker spent. The only number the header's cost line may be printed from. */
   workerMs: number;
 }
@@ -196,6 +203,8 @@ export function layoutClient(options: LayoutClientOptions = {}): LayoutClient {
         entry.resolve({
           rows: spanRows(layoutViews(reply.buffer, reply.count), reply.count, reply.strings),
           summary: reply.summary,
+          logs: reply.logs,
+          logsSeen: reply.logsSeen,
           workerMs: reply.workerMs,
         });
       }

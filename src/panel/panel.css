@@ -1052,13 +1052,30 @@
   color: var(--d0-warning-inline);
 }
 
+/* A `<details>`, so the disclosure state, focus and Enter/Space are the platform's. */
 .trace-log {
+  border-top: 1px solid var(--d0-stroke);
+  background: var(--d0-lvl2-bg);
+}
+
+.trace-log-sum {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 9px 14px;
-  border-top: 1px solid var(--d0-stroke);
-  background: var(--d0-lvl2-bg);
+  cursor: pointer;
+  /* The default triangle sits before the level chip and pushes the whole row; the row's own
+     right-hand link already reads as the affordance. */
+  list-style: none;
+}
+
+.trace-log-sum::-webkit-details-marker {
+  display: none;
+}
+
+.trace-log-sum:focus-visible {
+  outline: 2px solid var(--d0-cta);
+  outline-offset: -2px;
 }
 
 .trace-log-level {
@@ -1084,6 +1101,227 @@
   flex: none;
 }
 
+/* ── correlated log rows ──
+   Two labelled targets per row, never one element disambiguated by hit-testing: the row opens the
+   record, the badge selects the span. Sibling buttons, because nesting buttons is invalid HTML. */
+
+.trace-log-list {
+  max-height: 168px;
+  overflow-y: auto;
+  border-top: 1px solid var(--d0-stroke);
+}
+
+.log-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 0 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--d0-stroke) 50%, transparent);
+}
+
+.log-row:last-child {
+  border-bottom: 0;
+}
+
+.log-open {
+  display: grid;
+  grid-template-columns: 44px 58px 1fr;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 0 6px 14px;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.log-open:hover {
+  background: color-mix(in oklab, var(--d0-cta) 8%, transparent);
+}
+
+.log-open:focus-visible {
+  outline: 2px solid var(--d0-cta);
+  outline-offset: -2px;
+}
+
+.log-lvl {
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--d0-dim);
+}
+
+/* Three colours for OTLP's twenty-four severities, banded in `logcopy.ts`. `none` is a record
+   whose emitter set no severity — muted rather than coloured, because guessing one would be the
+   panel inventing a level the record does not have. */
+.log-lvl[data-sev="warn"] {
+  color: var(--d0-warning-inline);
+}
+
+.log-lvl[data-sev="error"] {
+  color: var(--d0-error);
+}
+
+.log-lvl[data-sev="info"] {
+  color: var(--d0-text);
+}
+
+.log-off {
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.log-msg {
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+  color: var(--d0-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.log-span {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--d0-stroke);
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  font-size: 10px;
+  color: var(--d0-cta);
+  cursor: pointer;
+}
+
+.log-span:hover {
+  border-color: var(--d0-cta);
+}
+
+.log-span:focus-visible {
+  outline: 2px solid var(--d0-cta);
+  outline-offset: 1px;
+}
+
+/* Stated, not omitted and not a disabled button with no reason. Three readings that send a reader
+   to three different places — see `UNATTACHED_LABEL`. */
+.log-nospan {
+  flex: none;
+  font-size: 10px;
+  color: var(--d0-dim);
+  font-style: italic;
+}
+
+/* ── log detail view ── */
+
+.logview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 16px;
+  overflow-y: auto;
+  max-height: 340px;
+}
+
+.logview-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logview-back {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  color: var(--d0-cta);
+  cursor: pointer;
+}
+
+.logview-level {
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--d0-warning-inline);
+}
+
+.logview-when {
+  margin-left: auto;
+  font-family: var(--d0-font-mono);
+  font-size: 10px;
+  color: var(--d0-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.logview-body {
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--d0-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 9px 11px;
+  border: 1px solid var(--d0-stroke);
+  border-radius: 6px;
+  background: var(--d0-lvl2-bg);
+}
+
+.logview-unattached {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--d0-dim);
+  border-left: 2px solid var(--d0-stroke);
+  padding-left: 10px;
+}
+
+.logview-attrs-head {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--d0-dim);
+}
+
+.logview-attrs {
+  display: grid;
+  grid-template-columns: minmax(90px, 38%) 1fr;
+  gap: 3px 10px;
+  margin: 0;
+  font-family: var(--d0-font-mono);
+  font-size: 11px;
+}
+
+.logview-attrs dt {
+  color: var(--d0-dim);
+  overflow-wrap: anywhere;
+}
+
+.logview-attrs dd {
+  margin: 0;
+  color: var(--d0-text);
+  overflow-wrap: anywhere;
+}
+
+/* A named kind is this panel's word for a value it cannot render, not the record's own text —
+   muted so it never reads as the value itself. */
+.logview-attrs
+  dd:not([data-kind="string"]):not([data-kind="int"]):not([data-kind="double"]):not(
+    [data-kind="bool"]
+  ) {
+  color: var(--d0-dim);
+  font-style: italic;
+}
+
+.logview-gone {
+  font-size: 11px;
+  color: var(--d0-dim);
+}
+
 /* ── span rows ── */
 
 /* The handoff's 300px, against the request list's 288px: a waterfall is read down a tree,
@@ -1107,6 +1345,23 @@
 
 .span-row:hover {
   background: var(--d0-hover-bg);
+}
+
+/* The relationship, from the span's side. Set from `F_HAS_LOG`, which only the worker can write —
+   the row buffer carries no span id, so the main thread could not derive this. */
+.span-row[data-haslog="true"] .span-label::after {
+  content: "◆";
+  margin-left: 6px;
+  font-size: 8px;
+  color: var(--d0-warning-inline);
+  vertical-align: 1px;
+}
+
+/* Where a log jumped the reader to. Distinct from :hover so it survives the pointer moving on —
+   the point of the jump is that the row stays identifiable after the scroll settles. */
+.span-row[data-picked="true"] {
+  background: color-mix(in oklab, var(--d0-cta) 14%, transparent);
+  box-shadow: inset 2px 0 0 var(--d0-cta);
 }
 
 .span-name {

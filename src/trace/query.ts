@@ -162,7 +162,7 @@ export function createTraceQuery(options: TraceQueryOptions): TraceQuery {
         logCount: flattened.summary.logCount,
         truncated: flattened.summary.truncated,
         rows: flattened.rows,
-        ...(flattened.summary.log ? { log: flattened.summary.log } : {}),
+        logs: flattened.logs,
         mainThreadMs: Math.max(0, mainThreadMs),
         workerMs: flattened.workerMs,
       },

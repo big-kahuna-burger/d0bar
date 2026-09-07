@@ -9,6 +9,7 @@ import { resolveTiers } from "./tier";
 import { requestsView } from "./views/requests";
 import { traceView } from "./views/trace";
 import { connectView } from "./views/connect";
+import { logView } from "./views/log";
 import { connectedLine } from "./views/connect/copy";
 import { untracedView } from "./views/untraced";
 import { vitalsView } from "./views/vitals";
@@ -367,6 +368,17 @@ export function openPanel(options: PanelOptions): PanelHandle {
   const connectSurface = connectView();
   bindings.add(bindHidden(connectSurface.el, () => view() !== "connect"));
 
+  /* One log record in full, pushed over the trace. Reads the live summary through the machine
+     rather than being handed the array: a re-layout replaces the summary, and a captured array
+     would leave this rendering a record the trace no longer contains. */
+  const logSurface = logView({
+    logs: () => {
+      const at = trace.machine.state();
+      return at.name === "found" ? at.summary.logs : [];
+    },
+  });
+  bindings.add(bindHidden(logSurface.el, () => view() !== "log"));
+
   /* Focus follows the pushed surface, or Escape stops working the moment it opens. After the
      `hidden` binding: `focus()` on a hidden element is a no-op and effects run in registration
      order. */
@@ -374,6 +386,7 @@ export function openPanel(options: PanelOptions): PanelHandle {
     effect(() => {
       if (view() === "trace") trace.focus();
       if (view() === "connect") connectSurface.focus();
+      if (view() === "log") logSurface.focus();
     }),
   );
 
@@ -388,14 +401,23 @@ export function openPanel(options: PanelOptions): PanelHandle {
         showVitals() ||
         showUntraced() ||
         view() === "trace" ||
-        view() === "connect",
+        view() === "connect" ||
+        view() === "log",
     ),
   );
   /* Every tab is built now, so there is nothing left for this node to say. Kept rather than
      deleted: it is the slot a future tab lands in, and an empty body with no element at all
      is a layout that has never been rendered. */
   bindings.add(bindText(emptyText, () => ""));
-  body.append(requests.el, vitals.el, untraced.el, trace.el, connectSurface.el, empty);
+  body.append(
+    requests.el,
+    vitals.el,
+    untraced.el,
+    trace.el,
+    connectSurface.el,
+    logSurface.el,
+    empty,
+  );
 
   /* Repaint on the way back in. While hidden the view drops every batch on the floor by
      design, so returning from another tab has to catch up in one go — the next request
@@ -667,6 +689,7 @@ export function openPanel(options: PanelOptions): PanelHandle {
          was in flight must not leave a thread parsing something nobody will look at. */
       layout.destroy();
       connectSurface.destroy();
+      logSurface.destroy();
       panel.remove();
       root.adoptedStyleSheets = root.adoptedStyleSheets.filter((s) => s !== sheet);
     },

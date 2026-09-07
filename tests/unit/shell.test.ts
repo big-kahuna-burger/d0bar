@@ -4,10 +4,15 @@ import {
   inpDelta,
   perturbation,
   inpDeltaMode,
+  openLog,
+  popToList,
   recallScroll,
   rememberScroll,
   resetShell,
   selectTab,
+  selected,
+  selectedLog,
+  selectedSpan,
   tab,
   tier2,
   view,
@@ -133,5 +138,53 @@ describe("returning from a trace", () => {
     rememberScroll("requests", 480);
     resetShell();
     expect(recallScroll("requests")).toBe(0);
+  });
+});
+
+/**
+ * The log detail view sits on the trace, which makes the surface stack three deep and Escape's
+ * meaning depth-dependent. Each step is asserted here rather than in the view, because it is a
+ * decision about where a reader lands and not a thing to see.
+ */
+describe("the log surface", () => {
+  it("pops to the trace, not to the list", () => {
+    /* The load-bearing half: `selected` stays set. The trace view's only entry into the query
+       machine is an effect over `open`/`view`/`selected`, so clearing it would abort the query
+       whose summary holds the record the reader just closed. */
+    selected.set(3);
+    view.set("trace");
+    openLog(1);
+    expect([view(), selectedLog()]).toEqual(["log", 1]);
+
+    escape();
+    expect([view(), selected(), selectedLog()]).toEqual(["trace", 3, -1]);
+  });
+
+  it("takes two Escapes to reach the list from a log record", () => {
+    selected.set(3);
+    view.set("trace");
+    openLog(0);
+    escape();
+    escape();
+    expect([view(), selected()]).toEqual(["list", -1]);
+  });
+
+  it("drops both trace-scoped selections when the trace itself is popped", () => {
+    /* `selectedLog` is an index into a summary that `popToList` discards, and `selectedSpan` a row
+       index into a buffer it discards with it. Either one surviving would point into the *next*
+       trace the reader opens. */
+    selected.set(3);
+    view.set("trace");
+    selectedSpan.set(7);
+    openLog(2);
+    popToList();
+    expect([selectedLog(), selectedSpan()]).toEqual([-1, -1]);
+  });
+
+  it("forgets both on reset", () => {
+    openLog(2);
+    selectedSpan.set(7);
+    resetShell();
+    expect([view(), selectedLog(), selectedSpan()]).toEqual(["list", -1, -1]);
   });
 });

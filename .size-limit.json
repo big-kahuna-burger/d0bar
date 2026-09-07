@@ -1,32 +1,32 @@
 [
   {
-    "name": "stage 1 ESM \u2014 collector + pill, as shipped",
+    "name": "stage 1 ESM — collector + pill, as shipped",
     "path": "dist/d0bar.js",
     "limit": "9 kB",
     "gzip": true
   },
   {
-    "name": "stage 1 IIFE \u2014 collector + pill, as shipped",
+    "name": "stage 1 IIFE — collector + pill, as shipped",
     "path": "dist/d0bar.iife.js",
     "limit": "9 kB",
     "gzip": true
   },
   {
-    "name": "stage 2 \u2014 the panel, loaded on first open",
+    "name": "stage 2 — the panel, loaded on first open",
     "path": "dist/d0bar.panel.js",
-    "limit": "25 kB",
+    "limit": "28 kB",
     "gzip": true
   },
   {
-    "name": "service worker \u2014 observation plus the token broker",
+    "name": "service worker — observation plus the token broker",
     "path": "dist/d0bar-sw.js",
     "limit": "3 kB",
     "gzip": true
   },
   {
-    "name": "layout worker \u2014 trace flattening, off the main thread",
+    "name": "layout worker — trace flattening, off the main thread",
     "path": "dist/d0bar-layout-worker.js",
-    "limit": "3 kB",
+    "limit": "3.5 kB",
     "gzip": true
   }
 ]

@@ -12,8 +12,15 @@ import type { OtelState } from "../shared/stage2";
 
 export type Tab = "requests" | "vitals" | "untraced";
 
-/** Which surface is showing. `trace` is pushed over the list and popped by Escape. */
-export type View = "list" | "trace" | "connect";
+/**
+ * Which surface is showing. `trace` is pushed over the list and popped by Escape.
+ *
+ * `log` is pushed over `trace`, not over the list — it renders one record out of the trace summary,
+ * so the trace's query has to stay alive underneath it. `views/trace/index.ts` treats both as live
+ * for exactly that reason: deselecting on the view change would abort the query and discard the
+ * summary holding the record the reader just opened.
+ */
+export type View = "list" | "trace" | "connect" | "log";
 
 export const open = signal(false);
 export const tab = signal<Tab>("requests");
@@ -21,6 +28,23 @@ export const view = signal<View>("list");
 
 /** Selected record, as a ring index. `-1` is nothing selected. */
 export const selected = signal(-1);
+
+/**
+ * The open log record, as an **index into the trace summary's `logs`**. `-1` is none.
+ *
+ * An index and not the record: the summary already holds the array, and passing the object would
+ * put two copies of one record in two views — where a re-layout replaces the summary and leaves the
+ * detail view rendering a record that no longer exists in the trace behind it.
+ */
+export const selectedLog = signal(-1);
+
+/**
+ * The span a log record pointed at, as a **row index** into the trace's span rows. `-1` is none.
+ *
+ * Separate from {@link selected}, which is a *ring* index into the host's requests. These two count
+ * different things and conflating them would select an unrelated request.
+ */
+export const selectedSpan = signal(-1);
 
 /** Which tooltip is showing, by id. Empty string is none — only ever one at a time. */
 export const tip = signal("");
@@ -206,6 +230,28 @@ export const showUntracedBadge = computed(() => untracedCount() > 0);
 export function popToList(): void {
   view.set("list");
   selected.set(-1);
+  /* Both trace-scoped selections go with it. Leaving `selectedLog` set would have the detail view
+     holding an index into a summary that is about to be discarded. */
+  selectedLog.set(-1);
+  selectedSpan.set(-1);
+}
+
+/** Opens one log record's detail view, over the trace. */
+export function openLog(index: number): void {
+  dismissTip();
+  selectedLog.set(index);
+  view.set("log");
+}
+
+/**
+ * Back out of the log detail view to the trace it belongs to.
+ *
+ * Not `popToList`: the trace is still the reader's context, and clearing `selected` would abort the
+ * query whose result they were reading.
+ */
+export function popToTrace(): void {
+  selectedLog.set(-1);
+  view.set("trace");
 }
 
 /**
@@ -220,6 +266,12 @@ export function escape(): void {
   /* Any pushed surface pops before the panel closes. Listing them rather than testing
      `!== "list"` so that adding a surface is a decision about Escape, not a silent inheritance
      of it — a surface with unsaved input may want to confirm rather than discard. */
+  /* One level, not all the way out: the log detail view sits on the trace, and Escape from it
+     returns the reader to the trace they opened it from. */
+  if (view() === "log") {
+    popToTrace();
+    return;
+  }
   if (view() === "trace" || view() === "connect") {
     popToList();
     return;
@@ -250,6 +302,8 @@ export function resetShell(): void {
   tab.set("requests");
   view.set("list");
   selected.set(-1);
+  selectedLog.set(-1);
+  selectedSpan.set(-1);
   dismissTip();
   untracedCount.set(0);
   scrollByTab.clear();

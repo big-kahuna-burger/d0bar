@@ -14,7 +14,7 @@
  * are separate artifacts and a host may cache them differently — a worker one version behind reads
  * the right bytes at the wrong offsets and draws a plausible, wrong waterfall.
  */
-export const LAYOUT_PROTOCOL_VERSION = 1;
+export const LAYOUT_PROTOCOL_VERSION = 2;
 
 /**
  * Row cap. Not memory (8192 rows is 216 kB) but readability: past this the waterfall is unreadable
@@ -24,8 +24,21 @@ export const LAYOUT_PROTOCOL_VERSION = 1;
  */
 export const SPAN_CAP = 8192;
 
+/**
+ * Log record cap. Readability again, not memory: a trace with more than this many correlated logs is
+ * not read by scrolling, and `logsSeen` past it is the honest answer. Records are selected for the
+ * cap **by severity**, so the severest can never be the one dropped — see `readLogs`.
+ */
+export const LOG_CAP = 200;
+
+/**
+ * Attributes surfaced per log record. OTLP puts no bound on the list, so an unbounded list is an
+ * unbounded reply; a record whose attributes were truncated reports `attrsSeen`.
+ */
+export const ATTR_CAP = 64;
+
 /* ── row flags ──
-   One `u8` rather than five booleans (five bytes). Each is a statement the UI must render; none of
+   One `u8` rather than six booleans (six bytes). Each is a statement the UI must render; none of
    these conditions is repaired silently. */
 
 /** The row has no parent inside this trace *and* was not made an orphan — the real root. */
@@ -38,6 +51,8 @@ export const F_ORPHAN = 1 << 2;
 export const F_CYCLE = 1 << 3;
 /** Zero or negative duration, widened to a minimum visible width so the row is still clickable. */
 export const F_DEGENERATE = 1 << 4;
+/** A correlated log record names this span. Set by the worker, which is the only side that can. */
+export const F_HAS_LOG = 1 << 5;
 
 /**
  * Bytes per row. Fields are grouped widest-first so every view lands on its natural alignment
@@ -58,7 +73,10 @@ export interface LayoutViews {
   width: Float32Array;
   depth: Uint8Array;
   paletteIndex: Uint8Array;
-  /** {@link F_ROOT} | {@link F_ERROR} | {@link F_ORPHAN} | {@link F_CYCLE} | {@link F_DEGENERATE} */
+  /**
+   * {@link F_ROOT} | {@link F_ERROR} | {@link F_ORPHAN} | {@link F_CYCLE} | {@link F_DEGENERATE} |
+   * {@link F_HAS_LOG}
+   */
   flags: Uint8Array;
 }
 
@@ -103,8 +121,60 @@ export interface LayoutSummary {
   truncated: boolean;
   /** The trace's whole extent, nanoseconds — the denominator `left` and `width` are fractions of. */
   totalDurationNs: number;
-  /** The single most severe correlated log, for the footer. Absent when there are none. */
-  log?: { level: string; message: string };
+}
+
+/**
+ * How an OTLP `AnyValue` was read.
+ *
+ * `"string"` is the only kind rendered as text. Every other variant is **named** rather than
+ * blanked: the previous reader was `typeof body?.stringValue === "string" ? … : ""`, so a record
+ * whose body was a `kvlistValue` rendered as a level, a time and nothing — which reads as an empty
+ * log line rather than as a body this panel does not render. `"absent"` is no value at all.
+ */
+export type LogValueKind =
+  "string" | "int" | "double" | "bool" | "array" | "kvlist" | "bytes" | "absent";
+
+/**
+ * Why a log record has no waterfall row.
+ *
+ * Three, not one, and the third is the reason this is an enum at all: only the worker knows whether
+ * {@link SPAN_CAP} dropped the span a record names, and reporting *"the cap dropped it"* as *"no
+ * such span in this trace"* is a confident claim about the reader's own data that happens to be
+ * false. The UI renders distinct copy per value.
+ */
+export type LogUnattached = "no-span-id" | "span-not-in-trace" | "span-capped";
+
+/** One attribute of a log record, its value read through the same kind logic as a body. */
+export interface LogAttr {
+  key: string;
+  /** Empty unless `kind` is `"string"`. */
+  value: string;
+  kind: LogValueKind;
+}
+
+/** One correlated log record, as the panel receives it. */
+export interface LogRecord {
+  /** OTLP `severityNumber`, 0 when absent. The cap and the footer's worst-of both order on it. */
+  severity: number;
+  /** OTLP `severityText`, or `"LOG"`. */
+  level: string;
+  /** Empty unless `bodyKind` is `"string"`. */
+  body: string;
+  bodyKind: LogValueKind;
+  /** Nanoseconds since the trace's start, clamped at 0 — see `readLogs` on clock skew. */
+  offsetNs: number;
+  /** Absolute timestamp, nanoseconds. The detail view shows it; `offsetNs` cannot be un-subtracted. */
+  timeNs: number;
+  /**
+   * Index into the row buffer, or `-1`. Not optional: an absent field and a deliberate "no owner"
+   * are the same shape in JSON, and the panel would have to guess which it received.
+   */
+  row: number;
+  /** `0` exactly when `row >= 0`. */
+  unattached: LogUnattached | 0;
+  attrs: LogAttr[];
+  /** Attributes the record held, before {@link ATTR_CAP}. */
+  attrsSeen: number;
 }
 
 export interface LayoutRequest {
@@ -154,6 +224,15 @@ export type LayoutResponse =
       count: number;
       /** Interned names and services; `nameId` / `serviceId` index into this. */
       strings: string[];
+      /**
+       * The correlated logs, capped. Plain objects beside the transfer rather than packed into the
+       * buffer: they are bounded two orders of magnitude below the rows, are read only when the
+       * reader opens the disclosure, and are mostly *strings*, which a typed array cannot hold
+       * without interning them. `strings` already establishes that structured data crosses here.
+       */
+      logs: LogRecord[];
+      /** Records the response held, before {@link LOG_CAP}. Equals `summary.logCount`. */
+      logsSeen: number;
       summary: LayoutSummary;
       /** Milliseconds the worker spent parsing and laying out. Measured, never assumed. */
       workerMs: number;
