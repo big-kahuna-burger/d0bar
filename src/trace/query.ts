@@ -45,8 +45,18 @@ export interface TraceQueryOptions {
    * previous region — which fails as an authorization error and reads as a bad token.
    */
   apiOrigin(): string;
-  /** The dataset to query. Dash0 scopes traces by dataset; `default` is the standard one. */
-  dataset?: string;
+  /**
+   * The dataset to query, read at call time for the same reason as {@link apiOrigin} — and with
+   * a sharper failure behind it.
+   *
+   * A stale origin fails as an authorization error, which at least looks like a connection
+   * problem. A stale *dataset* does not fail at all: Dash0 answers 404, the machine treats 404 as
+   * the ingest-lag signal, and five retries later the panel says the trace did not become
+   * queryable. This was previously `dataset?: string`, snapshotted in the factory and passed by
+   * nobody, so every query in the shipped product went to `default` and any token belonging to
+   * another dataset could not resolve a single trace.
+   */
+  dataset(): string;
 }
 
 /**
@@ -87,10 +97,9 @@ export function traceDetailsBody(request: TraceQueryRequest, dataset: string): s
 }
 
 export function createTraceQuery(options: TraceQueryOptions): TraceQuery {
-  const dataset = options.dataset ?? "default";
-
   return async (request, signal): Promise<TraceQueryOutcome> => {
     const origin = options.apiOrigin();
+    const dataset = options.dataset();
     if (origin === "") {
       return { kind: "error", message: SEND_FAILURE_COPY["not-connected"] };
     }

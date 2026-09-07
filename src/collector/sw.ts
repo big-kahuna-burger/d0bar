@@ -16,16 +16,61 @@
 import { assertSettled } from "./phase";
 
 export type Tier2State =
-  { kind: "live"; owner: "d0bar" | "host" } | { kind: "off"; reason: Tier2Blocked };
+  | { kind: "live"; owner: "d0bar" | "host" }
+  | { kind: "pending"; reason: Tier2Pending }
+  | { kind: "off"; reason: Tier2Blocked };
 
 /** Why tier 2 is unavailable. Each maps to copy the panel shows verbatim. */
 export type Tier2Blocked =
   "unsupported" | "insecure-context" | "scope-owned" | "registration-failed" | "not-registered";
 
+/**
+ * Registered, and not observing yet.
+ *
+ * A third state, because the two that existed could not express the most common reading of all:
+ * **a worker that has been registered does not control the page that registered it.**
+ * `navigator.serviceWorker.controller` is null until the worker activates *and* claims, which on
+ * a first visit means the next navigation. Until then no `fetch` event reaches it and tier 2
+ * records nothing.
+ *
+ * `startTier2` used to report `live` the moment `register()` resolved, so the panel said tier 2
+ * was observing while every row read untraced — a wrong reading delivered with full confidence,
+ * on every first visit, and the one that cost a debugging session here. It also covers the
+ * developer case: a rebuild that rewrites the worker file installs a new worker, which waits.
+ *
+ * One reason rather than two: "not controlled yet" and "a new version is waiting" have the same
+ * remedy — reload — and cannot always be told apart from the page.
+ */
+export type Tier2Pending = "awaiting-control";
+
 let state: Tier2State = { kind: "off", reason: "not-registered" };
 
+/**
+ * Resolved at read time, not cached.
+ *
+ * The registration outcome is a fact about the past; whether a worker is *controlling this page*
+ * is a fact about now, and the browser already computes it. Reading it here rather than storing
+ * a boolean means no `controllerchange` listener — this file adds no listener to anything the
+ * host owns — and the reading corrects itself the moment control arrives.
+ *
+ * `owner: "host"` is exempt: that state is only ever reached through {@link noteWorkerRecords},
+ * which is evidence that records are arriving, and evidence outranks a capability check.
+ */
 export function tier2State(): Tier2State {
+  if (state.kind === "live" && state.owner === "d0bar" && !controlled()) {
+    return { kind: "pending", reason: "awaiting-control" };
+  }
   return state;
+}
+
+function controlled(): boolean {
+  try {
+    return Boolean(navigator.serviceWorker?.controller);
+  } catch {
+    /* A partitioned context can throw on the container. Treated as "not controlling", which is
+       the reading that understates rather than overstates. */
+    return false;
+  }
 }
 
 /**

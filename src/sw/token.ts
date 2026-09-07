@@ -1,4 +1,4 @@
-import type { TokenSource, TokenStatus } from "../shared/broker";
+import { DEFAULT_DATASET, type TokenSource, type TokenStatus } from "../shared/broker";
 import { DEFAULT_REGION, originFor } from "../shared/regions";
 import { openDb } from "./db";
 import { TOKEN_STORE } from "./protocol";
@@ -39,6 +39,21 @@ let source: TokenSource = "none";
  */
 let region = DEFAULT_REGION;
 
+/**
+ * The dataset the token belongs to.
+ *
+ * Held here for the same reason as `region` — a token for one dataset is not a token for another —
+ * but the failure it prevents is quieter, and was found in production use rather than reasoned
+ * about. A query into the wrong dataset does not fail: the API answers 404, the trace machine
+ * treats 404 as the ingest-lag signal and retries five times, and the panel reports "the trace
+ * did not become queryable" for a trace that was ingested minutes earlier. A wrong region at
+ * least produces an authorization error.
+ *
+ * Not resolved against a table, unlike the region, because it names no destination — see the
+ * note on `BrokerRequest`'s `connect` variant.
+ */
+let dataset = DEFAULT_DATASET;
+
 /** The last four characters, or `""`. Short tokens yield `""` rather than most of themselves. */
 function hintOf(token: string): string {
   return token.length > 8 ? token.slice(-4) : "";
@@ -52,6 +67,9 @@ export function status(): TokenStatus {
     /* Resolved here, never stored. Whatever is on disk is an id, and an id that is no longer in
        the table resolves to `""` — a refusal — rather than to a stale origin. */
     apiOrigin: held === "" ? "" : originFor(region),
+    /* Reported whether or not a token is connected — the connect surface prefills its field
+       from this, and there is nothing to withhold: a dataset name is not a credential. */
+    dataset,
   };
 }
 
@@ -83,6 +101,7 @@ export async function set(
   token: string,
   persist: boolean,
   regionId: string,
+  datasetName: string,
 ): Promise<TokenStatus> {
   /* Refused rather than defaulted. Falling back to a region the user did not pick would send
      their token somewhere they did not choose, which is the one mistake this argument exists to
@@ -94,6 +113,12 @@ export async function set(
      nothing connected. */
   if (originFor(regionId) === "") return clear();
   region = regionId;
+  /* **The one place the default is applied.** Resolving it here rather than at query time means
+     `status()` reports the dataset that will actually be sent, so the surface can display it and
+     the trace view can name it in a failure message without either of them re-deriving the
+     fallback. The previous arrangement computed it inside `createTraceQuery`, where nothing
+     could see it — which is how a hardcoded `"default"` survived. */
+  dataset = datasetName.trim() || DEFAULT_DATASET;
   held = token.trim();
   source = held === "" ? "none" : persist ? "stored" : "session";
 
@@ -103,7 +128,7 @@ export async function set(
   }
   /* Switching to session-only removes an earlier persisted copy. Otherwise choosing the safer
      mode would leave the less safe copy behind it, which is the opposite of what was asked. */
-  if (persist) await putStored(held, region);
+  if (persist) await putStored(held, region, dataset);
   else await removeStored();
 
   return status();
@@ -114,6 +139,7 @@ export async function clear(): Promise<TokenStatus> {
   held = "";
   source = "none";
   region = DEFAULT_REGION;
+  dataset = DEFAULT_DATASET;
   await removeStored();
   return status();
 }
@@ -135,6 +161,11 @@ export async function restore(): Promise<TokenStatus> {
     if (originFor(storedRegion) === "") return status();
     held = stored;
     region = storedRegion;
+    /* A missing or empty key becomes the default, where an unknown region refuses outright. The
+       asymmetry is deliberate: an unhonoured region would send the credential to an origin the
+       user never chose, and a dataset cannot send it anywhere. Refusing to restore a token over
+       a dataset is a cost with no protection behind it. */
+    dataset = (await readStored(DATASET_KEY)) || DEFAULT_DATASET;
     source = "stored";
   }
   return status();
@@ -145,6 +176,7 @@ export function resetMemory(): void {
   held = "";
   source = "none";
   region = DEFAULT_REGION;
+  dataset = DEFAULT_DATASET;
 }
 
 /* ── the persisted copy ───────────────────────────────────────────────────────────────────
@@ -154,6 +186,7 @@ export function resetMemory(): void {
 
 const KEY = "auth";
 const REGION_KEY = "region";
+const DATASET_KEY = "dataset";
 
 /* Storage can be denied outright — a partitioned context, or a browser configured to block
    site data. `openDb()` resolves `undefined` rather than throwing, and every caller below
@@ -161,7 +194,7 @@ const REGION_KEY = "region";
    mid-paste. */
 const open = openDb;
 
-async function putStored(token: string, regionId: string): Promise<void> {
+async function putStored(token: string, regionId: string, datasetName: string): Promise<void> {
   const db = await open();
   if (!db) return;
   await new Promise<void>((resolve) => {
@@ -175,6 +208,7 @@ async function putStored(token: string, regionId: string): Promise<void> {
     const store = tx.objectStore(TOKEN_STORE);
     store.put(token, KEY);
     store.put(regionId, REGION_KEY);
+    store.put(datasetName, DATASET_KEY);
     tx.oncomplete = () => resolve();
     tx.onerror = () => resolve();
     tx.onabort = () => resolve();
@@ -215,6 +249,7 @@ async function removeStored(): Promise<void> {
     const store = tx.objectStore(TOKEN_STORE);
     store.delete(KEY);
     store.delete(REGION_KEY);
+    store.delete(DATASET_KEY);
     tx.oncomplete = () => resolve();
     tx.onerror = () => resolve();
     tx.onabort = () => resolve();

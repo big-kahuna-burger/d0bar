@@ -7,12 +7,17 @@ import {
   regionsIn,
   type EnvironmentId,
 } from "../../../shared/regions";
-import { connect, disconnect, status } from "../../broker";
+import { connect, controlled, disconnect, status } from "../../broker";
 import { connection, popToList, view } from "../../shell";
+import { DEFAULT_DATASET } from "../../../shared/broker";
 import {
   CUSTODY,
+  DATASET_LABEL,
+  DATASET_NOTE,
+  EMPTY_TOKEN,
   ENVIRONMENT_LABEL,
   INTRO,
+  REFUSED,
   REGION_LABEL,
   REGION_NOTE,
   NO_WORKER,
@@ -107,6 +112,24 @@ export function connectView(): ConnectView {
   input.spellcheck = false;
   input.placeholder = "auth_…";
   field.append(fieldLabel, input);
+
+  /* ── dataset ──
+     A plain text input, not a `password` and not a `select`. Not a password because it is not a
+     secret and hiding it would hide the one part of the connection that fails without saying so;
+     not a select because listing the datasets would mean querying the API before the developer
+     asked for anything, which `trace-view` forbids. */
+  const dsField = el("label", "conn-field");
+  const dsLabel = el("span", "conn-field-label");
+  dsLabel.textContent = DATASET_LABEL;
+  const dsInput = el("input", "conn-input");
+  dsInput.type = "text";
+  dsInput.autocomplete = "off";
+  dsInput.spellcheck = false;
+  dsInput.placeholder = DEFAULT_DATASET;
+  dsField.append(dsLabel, dsInput);
+
+  const dsNote = el("p", "conn-intro");
+  dsNote.textContent = DATASET_NOTE;
 
   /* ── environment ── */
   const envField = el("div", "conn-field");
@@ -227,6 +250,28 @@ export function connectView(): ConnectView {
 
   const state = el("p", "conn-state");
 
+  /**
+   * Failures from the last submit, in their own node.
+   *
+   * **Separate from `state` because sharing it was the bug.** `onSubmit` wrote its message into
+   * `state` and then called `render()` in its `finally`, and `render` assigns `state.textContent`
+   * unconditionally — so every failed connect wrote an explanation and blanked it in the same
+   * tick. Clicking Connect with no worker, or with a region the worker refuses, did visibly
+   * nothing at all.
+   *
+   * One node per writer is the fix, not careful ordering: ordering is a property of two
+   * functions staying in step, and this is the second time in this panel that two writers on one
+   * text node have produced a surface that looked broken while working.
+   */
+  const notice = el("p", "conn-warn");
+  notice.hidden = true;
+
+  /** The one writer of `notice`. Hidden when empty, so the styled block takes no space unused. */
+  function say(message: string): void {
+    notice.textContent = message;
+    notice.hidden = message === "";
+  }
+
   root.append(
     heading,
     intro,
@@ -234,6 +279,8 @@ export function connectView(): ConnectView {
     reqList,
     unverifiable,
     field,
+    dsField,
+    dsNote,
     envField,
     envNote,
     regionField,
@@ -243,16 +290,33 @@ export function connectView(): ConnectView {
     custody,
     actions,
     state,
+    notice,
   );
 
   function persistChosen(): boolean {
     return radios.some((radio) => radio.checked && radio.value === "stored");
   }
 
+  /**
+   * Whether the developer has touched the dataset field.
+   *
+   * `render` runs on every `connection()` change, and the field has to be prefilled from the
+   * connected dataset — otherwise reconnecting a persisted token would submit whatever the box
+   * happens to show, which after a reload is the placeholder's meaning rather than the stored
+   * dataset. But prefilling unconditionally would overwrite what is being typed the moment a
+   * status reply lands, which is exactly the bug that made the `/try/` trace id disappear from
+   * under its own status badge. So: prefilled until touched, never after.
+   */
+  let dsTouched = false;
+  dsInput.addEventListener("input", () => {
+    dsTouched = true;
+  });
+
   function render(): void {
     const current = connection();
     state.textContent = current.connected ? connectedLine(current) : "";
     drop.hidden = !current.connected;
+    if (!dsTouched) dsInput.value = current.dataset === DEFAULT_DATASET ? "" : current.dataset;
   }
 
   let busy = false;
@@ -260,12 +324,20 @@ export function connectView(): ConnectView {
   async function onSubmit(): Promise<void> {
     if (busy) return;
     const token = input.value.trim();
-    if (token === "") return;
+    /* An empty field is not a failure to explain, but it must not be silent either — the button
+       looks identical to a broken one otherwise, which is how the original report arrived. */
+    if (token === "") {
+      say(EMPTY_TOKEN);
+      return;
+    }
 
+    say("");
     busy = true;
     submit.disabled = true;
     try {
-      const result = await connect(token, persistChosen(), region.value);
+      /* Sent as typed, including blank — the worker resolves the default, so the value the
+         status reports back is the value that will be queried. */
+      const result = await connect(token, persistChosen(), region.value, dsInput.value.trim());
       connection.set(result);
       if (result.connected) {
         /* Cleared on success and not before: a failed paste that wiped the field would make
@@ -273,8 +345,11 @@ export function connectView(): ConnectView {
         input.value = "";
         popToList();
       } else {
-        /* The only way `connect` reports nothing is that no worker took the message. */
-        state.textContent = NO_WORKER;
+        /* Two different failures, two different next steps. `askStatus` collapses them into one
+           disconnected status, so the controller is checked here rather than guessed at — this
+           previously reported "no worker is controlling this page" for a token the worker had
+           received and refused, which sends the developer to reload a page that is fine. */
+        say(controlled() ? REFUSED : NO_WORKER);
       }
     } finally {
       busy = false;
@@ -292,6 +367,9 @@ export function connectView(): ConnectView {
   drop.addEventListener("click", () => void onDrop());
   back.addEventListener("click", () => popToList());
   input.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (event.key === "Enter") void onSubmit();
+  });
+  dsInput.addEventListener("keydown", (event: KeyboardEvent) => {
     if (event.key === "Enter") void onSubmit();
   });
 

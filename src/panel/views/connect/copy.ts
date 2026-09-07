@@ -28,9 +28,9 @@ export const REQUIREMENTS: ReadonlyArray<{ setting: string; value: string; why: 
     why: "d0bar never writes. A token with more could change dashboards and alert rules.",
   },
   {
-    setting: "Dataset",
+    setting: "Dataset access",
     value: "just this page's",
-    why: "Keeps a leaked token to one environment.",
+    why: "Keeps a leaked token to one environment. Name that dataset in the field below.",
   },
   {
     setting: "Signal types",
@@ -62,6 +62,25 @@ export const REGION_NOTE =
   "The region your organization is in. A token from one region is rejected by every other, and the rejection looks the same as a revoked token.";
 
 export const ENVIRONMENT_LABEL = "Environment";
+
+/**
+ * The dataset field's label and its footnote.
+ *
+ * The footnote is the third admission on this screen, and it earned its place the same way the
+ * other two did — by the failure happening. A token scoped to a dataset that is not `default`
+ * previously could not resolve a single trace: the query went to `default`, Dash0 answered 404,
+ * and the panel spent five retries and then told the developer their trace "did not become
+ * queryable". The name is asked for now, and this says what happens when it is wrong, because
+ * d0bar can no more check a dataset name against a token than it can check its permissions.
+ *
+ * `REQUIREMENTS` also has a "Dataset" row. That one is advice about how to *scope the token*
+ * when creating it; this is the *name*. Labelled distinctly so the two are not read as one
+ * control.
+ */
+export const DATASET_LABEL = "Dataset to query";
+
+export const DATASET_NOTE =
+  "The dataset your spans are in. Leave it blank for `default`. d0bar cannot check the name against your token, and a wrong one is indistinguishable from a trace that is not there — the query succeeds and returns nothing.";
 
 export interface CustodyOption {
   id: "session" | "stored";
@@ -95,7 +114,11 @@ export const CUSTODY: readonly CustodyOption[] = [
 export function connectedLine(status: TokenStatus): string {
   if (!status.connected) return "Not connected";
   const where = status.source === "stored" ? "remembered on this device" : "this session only";
-  return status.hint === "" ? `Connected, ${where}` : `Connected · …${status.hint} · ${where}`;
+  /* The dataset is named here because it is the one part of the connection that fails silently.
+     A wrong region or a revoked token produces a rejection; a wrong dataset produces an empty
+     answer, so the only place it can be caught is by being visible before anything is queried. */
+  const head = status.hint === "" ? "Connected" : `Connected · …${status.hint}`;
+  return `${head} · ${status.dataset} · ${where}`;
 }
 
 /** One sentence per way a query can fail, each naming a different next step. */
@@ -109,6 +132,28 @@ export const FAILURE: Record<QueryFailure, string> = {
     "The Dash0 API could not be reached. This is a network or worker problem, not a token problem.",
 };
 
+/**
+ * Shown when Connect is pressed with nothing in the token field.
+ *
+ * The handler returned early and silently before, which is indistinguishable from a dead button —
+ * and it is the first thing anyone does when a click appears to do nothing.
+ */
+export const EMPTY_TOKEN = "Paste a token first — the field is empty.";
+
 /** Shown when the page has no controlling worker, which is where connecting is impossible. */
 export const NO_WORKER =
   "d0bar's service worker is not controlling this page yet, and it is what holds the token. On a first visit it takes control after one reload.";
+
+/**
+ * Shown when a worker *is* controlling the page and the connection still came back disconnected.
+ *
+ * Distinct from {@link NO_WORKER}, which was previously shown for both. The two have opposite
+ * next steps — reload, versus check the region — and telling someone to reload a page whose
+ * worker is working sends them round a loop that cannot fix anything.
+ *
+ * The region is named because it is the failure the worker produces silently: `set()` refuses a
+ * region that is not in its compiled table and returns a cleared status rather than an error, so
+ * a stale `D0BAR_REGION` or a region dropped from the table lands here.
+ */
+export const REFUSED =
+  "The worker did not accept that connection. It refuses a region it does not recognise, and returns no reason — check the region and try again.";

@@ -205,6 +205,9 @@ export type OtelState =
 /** Mirrors `collector/sw.ts`. Duplicated per the duplication rule. */
 export type Tier2State =
   | { kind: "live"; owner: "d0bar" | "host" }
+  /* Registered and not observing yet — see the long note on `Tier2Pending` in `collector/sw.ts`.
+     The state the two-state model could not express, and the reading a first visit produces. */
+  | { kind: "pending"; reason: "awaiting-control" }
   | {
       kind: "off";
       reason:

@@ -14,6 +14,9 @@ import { readFile } from "node:fs/promises";
 import { watch } from "node:fs";
 import { extname, join, normalize, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+/* The `/try/` demo's server-side spans. Pure synthesis, gated on a header only the demo sends —
+   see the module docblock for why it cannot be allowed to run under a measured arm. */
+import { backendSpans } from "./otel/backend.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
@@ -101,21 +104,31 @@ const DASH0 = {
      setup reports itself unconfigured. */
   token: process.env.DASH0_TOKEN ?? process.env.INGEST_TOKEN,
   /**
-   * No default, and specifically not `"default"`.
+   * The dataset **both sides must agree on**, which is why it now defaults rather than being
+   * omitted.
    *
-   * `dash0-dataset: default` is not "the obvious dataset" — it is a *claim* the token has to be
-   * authorized for, and an ingest token usually is not:
+   * `dash0-dataset` is a claim the token has to be authorized for, and a token that is not gets:
    *
    *     PermissionDenied: authentication token is not authorized to ingest into dataset "default"
    *
-   * That surfaced as a 401 through the proxy while the identical request sent by hand returned
-   * `200 {"partialSuccess":{}}`, because the hand-written one carried no dataset header. Omitted,
-   * the token ingests into whatever dataset it belongs to, which is what anyone pasting a token
-   * means. Set this only to override that deliberately.
+   * The first version omitted the header for that reason, letting the token use whatever dataset
+   * it belongs to. That worked for ingest and broke the *other* end: d0bar's panel has to name a
+   * dataset to query, and a name nobody can state is a name nobody can type. So it is explicit
+   * here, `default` unless overridden, and the same string goes in the panel's dataset field.
+   * If the token is not authorized for it, the 401 above says so plainly — which is a better
+   * failure than spans landing somewhere the panel will never look.
    */
-  dataset: process.env.DASH0_DATASET,
+  dataset: process.env.DASH0_DATASET || "default",
 };
 
+/* The endpoint and dataset, and **never the token**. `console.log(DASH0)` printed the whole
+   object, token included, into the terminal and any CI log that ran the fixture — the one place
+   in this repo that leaked a credential. What is worth seeing on startup is where telemetry is
+   going, which is this. */
+console.log(
+  `dash0: ${DASH0.ingress} dataset=${DASH0.dataset}` +
+    (DASH0.token ? ` token=…${DASH0.token.slice(-4)}` : " token=(unset)"),
+);
 /* The token alone decides this. The endpoint always resolves to something, so treating a
    defaulted endpoint as "configured" would turn a missing token into a 401 from a real Dash0
    region — a confusing failure a long way from its cause. */
@@ -153,7 +166,7 @@ async function forwardOtlp(req, res, signal) {
       JSON.stringify({
         error: "DASH0_TOKEN is not set, so nothing was forwarded.",
         required: ["DASH0_TOKEN (or INGEST_TOKEN)"],
-        defaulted: { ingress: DASH0.ingress, dataset: DASH0.dataset ?? "(the token's own)" },
+        defaulted: { ingress: DASH0.ingress, dataset: DASH0.dataset },
         hint: "Put DASH0_TOKEN (or INGEST_TOKEN) in .env at the repo root — see .env.example — and restart the fixture server.",
       }),
     );
@@ -186,6 +199,42 @@ async function forwardOtlp(req, res, signal) {
     console.error(`otlp ${signal}: forward failed —`, error.message);
     res.writeHead(502, { "content-type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ error: String(error) }));
+  }
+}
+
+/**
+ * Sends a synthesised span payload straight to Dash0.
+ *
+ * Direct, not through `/otlp/v1/traces`: that route exists so *page* script never holds the
+ * token, and this is already the process that holds it. Round-tripping through our own HTTP
+ * server to reach a function in the same file would only add a way for it to fail.
+ *
+ * Failures are logged and swallowed. A demo whose waterfall is missing its server half is a
+ * worse outcome than one that also throws, but neither is worth a 500 on a request that already
+ * returned 200.
+ */
+async function sendSpans(payload) {
+  const headers = {
+    "content-type": "application/json",
+    authorization: `Bearer ${DASH0.token}`,
+  };
+  if (DASH0.dataset) headers["dash0-dataset"] = DASH0.dataset;
+  try {
+    const upstream = await fetch(`${DASH0.ingress}/v1/traces`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const count = payload.resourceSpans.reduce(
+      (total, entry) => total + entry.scopeSpans[0].spans.length,
+      0,
+    );
+    console.log(
+      `otlp traces: ${count} backend span(s) across ${payload.resourceSpans.length} service(s) -> ${upstream.status}`,
+    );
+    if (!upstream.ok) console.error(`  ${(await upstream.text()).slice(0, 300)}`);
+  } catch (error) {
+    console.error("otlp traces: backend span send failed —", error.message);
   }
 }
 
@@ -346,16 +395,49 @@ const server = createServer(async (req, res) => {
   }
 
   if (path.startsWith("/api/") || path.startsWith("/legacy/")) {
+    /* Taken before the sleep so the emitted SERVER span covers the whole handler, which is what
+       makes it line up with the browser's bar. `performance.timeOrigin + performance.now()` and
+       not `Date.now()`: the same clock the browser's spans are built from, to sub-millisecond. */
+    const startMs = performance.timeOrigin + performance.now();
     await sleep(Number(url.searchParams.get("delay") ?? 20));
+    const status = Number(url.searchParams.get("status") ?? 200);
     /* Same-origin responses expose their timings. Requests the fixture sends to `localhost`
        instead of `127.0.0.1` are cross-origin and deliberately carry no
        Timing-Allow-Origin, so the browser reports zeroed phase timings for them. */
-    res.writeHead(Number(url.searchParams.get("status") ?? 200), {
+    res.writeHead(status, {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
       "access-control-allow-origin": "*",
     });
     res.end(JSON.stringify({ ok: true, path }));
+
+    /**
+     * The server side of the trace, emitted **after the response** and only for the demo.
+     *
+     * Three gates, and each one is load-bearing:
+     *
+     *   - `x-d0bar-demo` is sent by `/try/`'s scenarios and by nothing else. Every measured arm
+     *     fetches these same routes, and building JSON and opening a socket behind a request
+     *     whose timing is the subject would be the fixture measuring instead of being measured.
+     *   - `dash0Configured`, because with no token there is nowhere to send it.
+     *   - a valid sampled `traceparent`, checked inside `backendSpans`. d0bar reads trace context
+     *     and never injects it, so a request without one belongs to no trace and inventing one
+     *     here would fabricate a trace the browser has no span in.
+     *
+     * Not awaited. The response has already been written; the developer is watching a waterfall,
+     * not this socket, and a slow ingress must not hold the handler open.
+     */
+    if (req.headers["x-d0bar-demo"] && dash0Configured) {
+      const payload = backendSpans({
+        traceparent: req.headers["traceparent"],
+        method: req.method,
+        path,
+        status,
+        startMs,
+        endMs: performance.timeOrigin + performance.now(),
+      });
+      if (payload) void sendSpans(payload);
+    }
     return;
   }
 
@@ -430,7 +512,7 @@ const server = createServer(async (req, res) => {
       JSON.stringify({
         configured: dash0Configured,
         ingress: DASH0.ingress,
-        dataset: DASH0.dataset ?? null,
+        dataset: DASH0.dataset,
         environment: DASH0_ENV,
       }),
     );

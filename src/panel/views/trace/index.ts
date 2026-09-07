@@ -17,6 +17,7 @@ import {
   RANGE_MS,
   spanScratch,
   TIER2_OFF_COPY,
+  TIER2_PENDING_COPY,
   UNQUERYABLE_COPY,
   type SpanRow,
   type SpanRows,
@@ -407,7 +408,11 @@ export function traceView(options: TraceViewOptions): TraceView {
          against the other has to find the same answer — which they would not have before, when
          this file derived its own coarser three-way version. */
       if (at.name === "none") {
-        return at.why === "tier-2-off" ? TIER2_OFF_COPY : CAUSE_COPY[at.why];
+        if (at.why !== "tier-2-off") return CAUSE_COPY[at.why];
+        /* Two readings behind one classifier value. `tier-2-off` means "the worker saw nothing",
+           which is true whether the worker cannot run here or simply is not controlling the page
+           yet — and only one of those is the developer's to fix. */
+        return options.tier2().kind === "pending" ? TIER2_PENDING_COPY : TIER2_OFF_COPY;
       }
       return "";
     }),
@@ -451,7 +456,12 @@ export function traceView(options: TraceViewOptions): TraceView {
   bindings.add(
     bindText(waitTitleText, () => {
       const at = state();
-      if (at.name === "exhausted") return "The trace did not become queryable.";
+      /* Not "the trace did not become queryable" any more. That sentence named ingest lag as the
+         cause of a 404, and 404 has two — not ingested yet, and not in this dataset. It was wrong
+         in the field: spans that had been in Dash0 for six minutes read as never having arrived,
+         because the query went to `default` and the token's dataset was not `default`. What is
+         actually known is the query and its answer, so that is what this says. */
+      if (at.name === "exhausted") return "No trace with this id in the connected dataset.";
       if (at.name === "failed") return "The trace query failed.";
       return "Trace not queryable yet — waiting for ingest.";
     }),
@@ -484,7 +494,11 @@ export function traceView(options: TraceViewOptions): TraceView {
         : 0;
       const when = found ? `The request finished ${formatDuration(ago)} ago. ` : "";
       if (at.name === "exhausted") {
-        return `${when}d0bar stopped retrying rather than polling indefinitely.`;
+        /* Both causes, and the dataset that was queried — the developer is the only one who can
+           tell which it is, and they cannot without knowing what was asked. The elapsed-time
+           prefix stays in front of it: it is what makes ingest lag implausible when the request
+           finished minutes ago, and so it is what points at the other cause. */
+        return `${when}Either it has not been ingested, or it is not in “${connection().dataset}” — d0bar cannot tell which, and stopped retrying rather than polling indefinitely.`;
       }
       return `${when}d0bar retries on a backoff and cancels in flight if you click another request.`;
     }),

@@ -358,7 +358,13 @@ describe("traceView", () => {
        state the developer fixes in ten seconds, so the screen has to say which. This copy
        previously read "d0bar has no credentialed backend to query yet", which stopped being
        true the day the connect surface shipped. */
-    connection.set({ connected: false, source: "none", hint: "", apiOrigin: "" });
+    connection.set({
+      connected: false,
+      source: "none",
+      hint: "",
+      apiOrigin: "",
+      dataset: "default",
+    });
     const surface = mount({ tier2: LIVE, withQuery: false }, [requestRecord()]);
     open.set(true);
     view.set("trace");
@@ -380,6 +386,7 @@ describe("traceView", () => {
       source: "session",
       hint: "wxyz",
       apiOrigin: "https://api.eu-west-1.aws.dash0.com",
+      dataset: "app-prod",
     });
     const surface = mount({ tier2: LIVE, withQuery: false }, [requestRecord()]);
     open.set(true);
@@ -504,10 +511,44 @@ describe("traceView", () => {
     surface.settleQuery(0, { kind: "not-found" });
     await settled();
 
-    expect(textOf(surface.el, ".trace-wait-title")).toBe("The trace did not become queryable.");
+    expect(textOf(surface.el, ".trace-wait-title")).toBe(
+      "No trace with this id in the connected dataset.",
+    );
     expect(visible(surface.el, ".lag-dots")).toBe(false);
     expect(visible(surface.el, ".trace-retry")).toBe(true);
     expect(visible(surface.el, ".trace-none")).toBe(false);
+    surface.destroy();
+  });
+
+  it("names both causes of an exhausted query, and the dataset it asked", async () => {
+    /**
+     * The title used to read "The trace did not become queryable", which asserts ingest lag as
+     * the cause of a 404 — and 404 has two causes. The other one shipped: nothing carried a
+     * dataset, so every query went to `default` and a token belonging to another dataset made
+     * every trace read as never ingested, minutes after it was.
+     *
+     * So the assertion is not on the sentence but on the property: the copy must name the
+     * dataset it queried, and must not claim to know which cause it hit.
+     */
+    connection.set({
+      connected: true,
+      source: "session",
+      hint: "wxyz",
+      apiOrigin: "https://api.eu-west-1.aws.dash0.com",
+      dataset: "app-prod",
+    });
+    const surface = mount({ tier2: LIVE, ceiling: 1 }, [requestRecord()]);
+    open.set(true);
+    view.set("trace");
+    selected.set(0);
+    await settled();
+    surface.settleQuery(0, { kind: "not-found" });
+    await settled();
+
+    const why = textOf(surface.el, ".trace-wait-why");
+    expect(why, "the dataset that was queried is not named").toContain("app-prod");
+    expect(why, "one of the two causes is missing").toContain("not been ingested");
+    expect(why, "the copy asserts a cause it cannot know").toContain("cannot tell which");
     surface.destroy();
   });
 

@@ -135,12 +135,18 @@ A comment claiming a property is not a property. If it can regress silently, ass
   way: a `tier2` p95 of 5.60 ms against a 5 ms gate that passed cleanly on CI (the local run had
   a build and a push underneath it), and an INP row that could never fail on a laptop fast
   enough to land both arms in the same 8 ms quantum. Push it and read the run.
-- **An agent never runs Playwright. At all.** Not the suite, not `test:perf`, not one targeted
-  spec, not a throwaway probe — `pnpm exec playwright test` and `pnpm test:perf` are prohibited
-  to you. They are slow, they hold port 8732, and a stale fixture server left behind by an
-  interrupted run silently serves old routes into the _next_ run. Push and read the CI run
-  instead; that is the only place a browser result is produced. If a browser check is the only
-  way to settle something, say so and ask — do not run it "just once".
+- **No full Playwright runs. Targeted debugging is fine and expected.** `pnpm test:perf` and a
+  bare `pnpm exec playwright test` are prohibited to you — they are slow, they take the machine,
+  and a timing number they produce is worthless anyway (see _CI calibrates_ above). But **one
+  named spec or a throwaway probe is a debugging tool, not a test run**, and refusing to reach
+  for it is worse than the cost of running it: some things — service workers above all — cannot
+  be observed any other way. The in-app browser pane cannot register a service worker at all
+  (`/try/d0bar-sw.js`, `/d0bar-sw.js` and the untouched `/host-sw.js` all fail identically with
+  "An unknown error occurred when fetching the script" while a page `fetch` of the same script
+  returns 200), so tier 2 is invisible without Playwright. Run the one spec, read it, delete the
+  probe. Two cautions that are real: the config is `reuseExistingServer: false` on port 8732, so
+  a fixture server already running there must be stopped first, and an interrupted run can leave
+  one behind that silently serves old routes into the next.
 - **Unit tests, typecheck and lint are yours to run.** `pnpm vitest run`, `pnpm exec tsc
 --noEmit`, `pnpm lint`, `pnpm build`. These are fast, hold no ports and produce no timing
   numbers.

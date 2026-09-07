@@ -59,6 +59,18 @@ async function askStatus(message: BrokerRequest): Promise<TokenStatus> {
   return reply.status;
 }
 
+/**
+ * Whether a worker controls this page at all.
+ *
+ * Exported so the connect surface can tell its two failures apart. `askStatus` collapses them —
+ * no controller, a timeout and a refusal all arrive as a disconnected status — and the surface
+ * was reporting all three as "no worker is controlling this page", which is a false explanation
+ * for a token the worker received and declined. The same check `ask` makes, read by the caller.
+ */
+export function controlled(): boolean {
+  return Boolean(navigator.serviceWorker?.controller);
+}
+
 /** Current custody state. Answers `DISCONNECTED` when there is no worker to ask. */
 export function status(): Promise<TokenStatus> {
   return askStatus({ kind: "status" });
@@ -72,8 +84,13 @@ export function status(): Promise<TokenStatus> {
  * token is not stored here, not held in a variable that outlives this call, and never returned
  * by any message. The caller is expected to clear its input on success.
  */
-export function connect(token: string, persist: boolean, region: string): Promise<TokenStatus> {
-  return askStatus({ kind: "connect", token, persist, region });
+export function connect(
+  token: string,
+  persist: boolean,
+  region: string,
+  dataset: string,
+): Promise<TokenStatus> {
+  return askStatus({ kind: "connect", token, persist, region, dataset });
 }
 
 export function disconnect(): Promise<TokenStatus> {

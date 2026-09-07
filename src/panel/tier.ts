@@ -1,4 +1,4 @@
-import type { Tier2Blocked, Tier2State } from "../collector/sw";
+import type { Tier2Blocked, Tier2Pending, Tier2State } from "../collector/sw";
 import type { OtelState } from "../shared/stage2";
 
 /**
@@ -12,9 +12,16 @@ import type { OtelState } from "../shared/stage2";
  * `planned` is not a synonym for `off`. Off means the capability exists and is unavailable
  * here, with a reason worth reading. Planned means d0bar has not built it yet, and saying
  * "off" would blame the host's environment for our own backlog.
+ *
+ * `pending` is not a synonym for either, and it is the newest of the four for a bad reason:
+ * tier 2 used to report `live` from the moment `register()` resolved, which is before the
+ * worker controls the page and therefore before it can see a single request. The panel claimed
+ * to be observing while every row read untraced. A tier that is going to work shortly is not
+ * off, and it is certainly not live — it is the one state the strip can also tell you how to
+ * fix, so it says so.
  */
 
-export type TierState = "live" | "off" | "planned";
+export type TierState = "live" | "pending" | "off" | "planned";
 
 export interface Tier {
   label: string;
@@ -39,6 +46,18 @@ const BLOCKED_COPY: Record<Tier2Blocked, string> = {
 
 const TIER_2_LIVE_D0BAR =
   "d0bar's own service worker is observing requests. It reads headers and returns — it never calls respondWith, so the browser services every request exactly as it would without it.";
+
+/**
+ * Copy for tier 2 registered but not observing.
+ *
+ * Names the remedy, which no other tier state can: everything else here is a property of the
+ * host's environment that a developer either can or cannot change, and this one clears itself on
+ * the next navigation.
+ */
+const PENDING_COPY: Record<Tier2Pending, string> = {
+  "awaiting-control":
+    "d0bar's service worker is registered but is not controlling this page yet, so it cannot see any requests and every row will read as untraced. A service worker never controls the page that registered it — reload to hand it control. This is also what you see briefly after the worker file changes, because the new version installs and waits.",
+};
 
 const TIER_2_LIVE_HOST =
   "The host page's own service worker imported d0bar's module, so tier 2 is live inside a worker d0bar does not own.";
@@ -78,6 +97,25 @@ const TIER_4_LIVE_HOST =
  * every other tier only ever adds to it. Tier 3 is `planned` because nothing is wired to it,
  * which is a statement about this codebase rather than about the host.
  */
+function tier2Row(tier2: Tier2State): Tier {
+  if (tier2.kind === "live") {
+    return {
+      label: "2 SW",
+      state: "live",
+      detail: tier2.owner === "d0bar" ? TIER_2_LIVE_D0BAR : TIER_2_LIVE_HOST,
+    };
+  }
+  if (tier2.kind === "pending") {
+    /* "reload" in the label, not only in the tooltip. This is the one tier state with an action
+       attached, and a tooltip is not where an action belongs — the whole reason this state exists
+       is that the previous reading told nobody anything was wrong. */
+    return { label: "2 SW — reload", state: "pending", detail: PENDING_COPY[tier2.reason] };
+  }
+  /* The label states the degradation too, not only the dot — a screenshot, a monochrome display
+     and a colour-blind reader all lose the dot. */
+  return { label: "2 SW off", state: "off", detail: BLOCKED_COPY[tier2.reason] };
+}
+
 export function resolveTiers(tier2: Tier2State, otel: OtelState): Tier[] {
   return [
     {
@@ -86,19 +124,7 @@ export function resolveTiers(tier2: Tier2State, otel: OtelState): Tier[] {
       detail:
         "The timing spine: every request and every vital, read from the browser rather than intercepted. buffered: true means entries from before the toolbar mounted are included.",
     },
-    tier2.kind === "live"
-      ? {
-          label: "2 SW",
-          state: "live",
-          detail: tier2.owner === "d0bar" ? TIER_2_LIVE_D0BAR : TIER_2_LIVE_HOST,
-        }
-      : {
-          /* The label states the degradation too, not only the dot — a screenshot, a
-             monochrome display and a colour-blind reader all lose the dot. */
-          label: "2 SW off",
-          state: "off",
-          detail: BLOCKED_COPY[tier2.reason],
-        },
+    tier2Row(tier2),
     {
       label: "3 Server-Timing",
       state: "planned",

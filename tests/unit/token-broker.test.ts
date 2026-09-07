@@ -25,6 +25,7 @@ import { clear, resetMemory, restore, set, status } from "../../src/sw/token";
 const API = "https://api.eu-west-1.aws.dash0.com";
 const TOKEN = "auth_0123456789abcdefwxyz";
 const REGION = "prod:eu-west-1";
+const DATASET = "app-prod";
 
 /**
  * Reads the persisted copy the way the *host page* would.
@@ -34,22 +35,35 @@ const REGION = "prod:eu-west-1";
  * the assertions below check the store from outside the module that owns it, which is both the
  * stronger test and an honest depiction of who can look.
  */
-async function stored(): Promise<string | undefined> {
+async function stored(key = "auth"): Promise<string | undefined> {
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
   const value = await new Promise<unknown>((resolve) => {
-    const request = db
-      .transaction(TOKEN_STORE, "readonly")
-      .objectStore(TOKEN_STORE)
-      .get("auth");
+    const request = db.transaction(TOKEN_STORE, "readonly").objectStore(TOKEN_STORE).get(key);
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => resolve(undefined);
   });
   db.close();
   return typeof value === "string" ? value : undefined;
+}
+
+/** Deletes one key from the persisted store, to stand in for a token written by an older build. */
+async function removeKey(key: string): Promise<void> {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  await new Promise<void>((resolve) => {
+    const tx = db.transaction(TOKEN_STORE, "readwrite");
+    tx.objectStore(TOKEN_STORE).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => resolve();
+  });
+  db.close();
 }
 
 function collector() {
@@ -88,21 +102,28 @@ describe("what the page can learn", () => {
   });
 
   it("reports connection, source and a four-character hint and nothing else", async () => {
-    await set(TOKEN, false, REGION);
+    await set(TOKEN, false, REGION, DATASET);
     const reading = status();
     expect(reading).toEqual({
       connected: true,
       source: "session",
       hint: "wxyz",
       apiOrigin: API,
+      dataset: DATASET,
     });
-    /* The shape is the guarantee: four fields, and the token is not derivable from any of
-       them. A fifth field added later has to face this assertion. */
-    expect(Object.keys(reading).sort()).toEqual(["apiOrigin", "connected", "hint", "source"]);
+    /* The shape is the guarantee: these five fields, and the token is not derivable from any of
+       them. A sixth field added later has to face this assertion. */
+    expect(Object.keys(reading).sort()).toEqual([
+      "apiOrigin",
+      "connected",
+      "dataset",
+      "hint",
+      "source",
+    ]);
   });
 
   it("gives no hint at all for a token short enough to be exposed by one", async () => {
-    await set("auth_1", false, REGION);
+    await set("auth_1", false, REGION, DATASET);
     expect(status().hint).toBe("");
   });
 
@@ -124,16 +145,16 @@ describe("custody", () => {
        test asserted that session-only opens no database at all, and it failed — because
        choosing session-only after having persisted has to *delete* the earlier copy, which
        means opening the store. The guarantee is about writing, not about touching. */
-    await set(TOKEN, false, REGION);
+    await set(TOKEN, false, REGION, DATASET);
     expect(status()).toMatchObject({ connected: true, source: "session" });
     expect(await stored()).toBeUndefined();
   });
 
   it("removes an earlier persisted copy when the safer mode is chosen", async () => {
-    await set(TOKEN, true, REGION);
+    await set(TOKEN, true, REGION, DATASET);
     expect(await stored()).toBe(TOKEN);
 
-    await set(TOKEN, false, REGION);
+    await set(TOKEN, false, REGION, DATASET);
     /* Otherwise choosing session-only would be the option that leaves a credential on disk. */
     expect(await stored(), "the persisted copy outlived the choice to stop persisting").toBe(
       undefined,
@@ -141,20 +162,28 @@ describe("custody", () => {
   });
 
   it("removes the persisted copy on disconnect", async () => {
-    await set(TOKEN, true, REGION);
+    await set(TOKEN, true, REGION, DATASET);
     await clear();
     expect(await stored()).toBeUndefined();
   });
 
   it("reports disconnected once cleared", async () => {
-    await set(TOKEN, false, REGION);
+    await set(TOKEN, false, REGION, DATASET);
     expect(status().connected).toBe(true);
     await clear();
-    expect(status()).toEqual({ connected: false, source: "none", hint: "", apiOrigin: "" });
+    expect(status()).toEqual({
+      connected: false,
+      source: "none",
+      hint: "",
+      apiOrigin: "",
+      /* Back to the default, not to the dataset that was connected. A cleared credential must
+         not leave the next connection prefilled from the last one. */
+      dataset: "default",
+    });
   });
 
   it("survives a worker restart when persisted, and does not when not", async () => {
-    await set(TOKEN, true, REGION);
+    await set(TOKEN, true, REGION, DATASET);
     expect(status().source).toBe("stored");
 
     /* A terminated worker loses its realm. `restore()` is what a revived one calls, and
@@ -164,7 +193,7 @@ describe("custody", () => {
     expect((await restore()).source).toBe("stored");
 
     /* The same restart with a session-only token correctly finds nothing. */
-    await set(TOKEN, false, REGION);
+    await set(TOKEN, false, REGION, DATASET);
     resetMemory();
     expect((await restore()).connected).toBe(false);
   });
@@ -172,7 +201,7 @@ describe("custody", () => {
 
 describe("which region", () => {
   it("resolves the id to an origin and reports it back", async () => {
-    expect((await set(TOKEN, false, "prod:us-west-2")).apiOrigin).toBe(
+    expect((await set(TOKEN, false, "prod:us-west-2", DATASET)).apiOrigin).toBe(
       "https://api.us-west-2.aws.dash0.com",
     );
   });
@@ -181,14 +210,14 @@ describe("which region", () => {
     /* The refusal is the security property. A page that could name its own origin — directly,
        or by way of an id the worker resolved from something the page sent — could have the
        token attached to a request it receives. Choosing from a fixed table cannot do that. */
-    const reading = await set(TOKEN, false, "evil-region-1");
+    const reading = await set(TOKEN, false, "evil-region-1", DATASET);
     expect(reading.connected).toBe(false);
     expect(reading.apiOrigin).toBe("");
   });
 
   it("does not connect to the previous region when a later id is refused", async () => {
-    await set(TOKEN, false, REGION);
-    await set(TOKEN, false, "evil-region-1");
+    await set(TOKEN, false, REGION, DATASET);
+    await set(TOKEN, false, "evil-region-1", DATASET);
     /* Otherwise a refused region would leave the token live against whatever was selected
        before, which is a connection the user did not ask for. */
     expect(status().connected).toBe(false);
@@ -199,7 +228,7 @@ describe("which region", () => {
       "fetch",
       vi.fn(async () => new Response("{}", { status: 200 })),
     );
-    await set(TOKEN, false, "prod:us-west-2");
+    await set(TOKEN, false, "prod:us-west-2", DATASET);
     const reply = collector();
 
     await handle({ kind: "query", url: `${API}/api/spans` }, reply);
@@ -215,8 +244,88 @@ describe("which region", () => {
     expect((reply.replies[1] as { outcome: { ok: boolean } }).outcome.ok).toBe(true);
   });
 
+  /**
+   * The dataset, which is the part of the credential that fails without saying so.
+   *
+   * A query into the wrong dataset is answered 404, the trace machine reads 404 as ingest lag and
+   * retries five times, and the panel then reports that the trace never became queryable. That is
+   * what shipped: nothing carried a dataset, `createTraceQuery` fell back to `"default"`, and a
+   * token belonging to any other dataset could not resolve a single trace. These assert the
+   * mechanism that fixes it; `trace-query.test.ts` asserts that the query actually sends it.
+   */
+  it("defaults a blank dataset rather than sending an empty one", async () => {
+    expect((await set(TOKEN, false, REGION, "")).dataset).toBe("default");
+    expect((await set(TOKEN, false, REGION, "   ")).dataset).toBe("default");
+  });
+
+  it("trims the dataset it was given", async () => {
+    expect((await set(TOKEN, false, REGION, "  app-prod  ")).dataset).toBe("app-prod");
+  });
+
+  it("persists the dataset with the token, and restores it", async () => {
+    await set(TOKEN, true, "prod:us-west-2", DATASET);
+    expect(await stored("dataset")).toBe(DATASET);
+    resetMemory();
+    /* The token surviving without its dataset would restore a credential aimed at `default` —
+       every query 404s, and the panel blames ingest. */
+    expect((await restore()).dataset).toBe(DATASET);
+  });
+
+  it("writes no dataset to the store in session-only mode", async () => {
+    await set(TOKEN, true, REGION, DATASET);
+    expect(await stored("dataset")).toBe(DATASET);
+    /* Choosing the safer custody mode has to *remove* the earlier copy, not merely stop adding
+       to it — the same property the token itself has, and which its own test once caught. */
+    await set(TOKEN, false, REGION, DATASET);
+    expect(await stored("dataset")).toBeUndefined();
+  });
+
+  it("removes the persisted dataset when the credential is cleared", async () => {
+    await set(TOKEN, true, REGION, DATASET);
+    await clear();
+    expect(await stored("dataset")).toBeUndefined();
+    expect(status().dataset).toBe("default");
+  });
+
+  it("restores to the default when only the dataset key is missing", async () => {
+    await set(TOKEN, true, REGION, DATASET);
+    /* A token persisted by an older build has no dataset key. It restores rather than being
+       refused — unlike an unknown region, which is refused because it names a destination the
+       credential would be sent to. A dataset names nothing, so refusing would cost the user
+       their session and protect nothing. */
+    await removeKey("dataset");
+    resetMemory();
+    const reading = await restore();
+    expect(reading.connected).toBe(true);
+    expect(reading.dataset).toBe("default");
+  });
+
+  it("carries the dataset across the connect message", async () => {
+    const reply = collector();
+    await handle(
+      { kind: "connect", token: TOKEN, persist: false, region: REGION, dataset: DATASET },
+      reply,
+    );
+    expect(reply.replies[0]).toEqual({ kind: "status", status: status() });
+    expect(status().dataset).toBe(DATASET);
+    /* And the token is still not in the reply — the new field must not have opened a channel. */
+    expect(textOf(reply.replies[0])).not.toContain(TOKEN);
+  });
+
+  it("connects to the default when the message's dataset is not a string", async () => {
+    const reply = collector();
+    /* Narrowed in `messages.ts` rather than trusted. A malformed message must not put a
+       non-string into a request body. */
+    await handle(
+      { kind: "connect", token: TOKEN, persist: false, region: REGION, dataset: 7 },
+      reply,
+    );
+    expect(status().connected).toBe(true);
+    expect(status().dataset).toBe("default");
+  });
+
   it("restores the region alongside the token after a worker restart", async () => {
-    await set(TOKEN, true, "prod:us-west-2");
+    await set(TOKEN, true, "prod:us-west-2", DATASET);
     resetMemory();
     /* The token surviving without its region would restore a credential aimed at the default
        region — a silent 401 that reads exactly like a revoked token. */
@@ -255,7 +364,7 @@ describe("query outcomes", () => {
   it("refuses a foreign origin without reaching the network", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
-    await set(TOKEN, false, REGION);
+    await set(TOKEN, false, REGION, DATASET);
 
     const reply = collector();
     await handle({ kind: "query", url: "https://evil.test/api/spans" }, reply);
@@ -268,7 +377,7 @@ describe("query outcomes", () => {
   });
 
   it("names a rejected token separately from an unreachable API", async () => {
-    await set(TOKEN, false, REGION);
+    await set(TOKEN, false, REGION, DATASET);
     const reply = collector();
 
     vi.stubGlobal(
@@ -306,7 +415,7 @@ describe("query outcomes", () => {
   });
 
   it("sends the bearer, omits credentials, and puts the token nowhere else", async () => {
-    await set(TOKEN, false, REGION);
+    await set(TOKEN, false, REGION, DATASET);
     const fetchSpy = vi.fn(async () => new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
 

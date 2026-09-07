@@ -43,11 +43,22 @@ export async function handle(data: unknown, reply: Replier): Promise<void> {
 
   switch (message.kind) {
     case "connect": {
-      const { token, persist, region } = data as Extract<BrokerRequest, { kind: "connect" }>;
+      const { token, persist, region, dataset } = data as Extract<
+        BrokerRequest,
+        { kind: "connect" }
+      >;
       if (typeof token !== "string" || typeof region !== "string") return;
       reply.postMessage({
         kind: "status",
-        status: await set(token, persist === true, region),
+        /* Narrowed rather than trusted, like `query`'s `method` and `body`: anything that is
+           not a string becomes blank, which `set` resolves to the default. A malformed message
+           connects to `default` instead of putting a non-string in a request body. */
+        status: await set(
+          token,
+          persist === true,
+          region,
+          typeof dataset === "string" ? dataset : "",
+        ),
       });
       return;
     }

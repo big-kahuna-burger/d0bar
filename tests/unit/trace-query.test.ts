@@ -49,6 +49,7 @@ function harness(
   outcome: QueryOutcome | (() => Promise<QueryOutcome>),
   layoutResult: Flattened | Error = flattened(),
   origin = ORIGIN,
+  dataset = "default",
 ) {
   const state: Harness = { calls: [], bodies: [] };
   const layout: LayoutClient = {
@@ -67,6 +68,7 @@ function harness(
     },
     layout,
     apiOrigin: () => origin,
+    dataset: () => dataset,
   });
   return { query, state };
 }
@@ -112,6 +114,7 @@ describe("the request", () => {
       },
       layout: { flatten: () => Promise.resolve(flattened()), destroy() {} },
       apiOrigin: () => origin,
+      dataset: () => "default",
     });
     const seen: string[] = [];
 
@@ -121,6 +124,43 @@ describe("the request", () => {
 
     expect(seen[0]).toContain("eu-west-1");
     expect(seen[1]).toContain("us-west-2");
+  });
+
+  it("sends the connected dataset, not a hardcoded default", async () => {
+    /* This is the assertion whose absence let the original defect ship. `dataset` was an optional
+       field nobody passed, so every query in the built product went to `"default"` — and because
+       a query into the wrong dataset is answered 404 rather than rejected, the panel presented it
+       as a trace that had not been ingested. */
+    const { query, state } = harness(ok("{}"), flattened(), ORIGIN, "app-prod");
+    await query(REQUEST, new AbortController().signal);
+
+    expect((JSON.parse(state.calls[0]!.init.body) as { dataset: string }).dataset).toBe(
+      "app-prod",
+    );
+  });
+
+  it("reads the dataset at call time, not at construction", async () => {
+    /* Same property as the origin above, and the failure is quieter: a stale origin produces an
+       authorization error, a stale dataset produces an empty answer that reads as a missing
+       trace. Asserted by changing the value between two calls and reading both bodies — a
+       snapshot taken in the factory passes every other test in this file. */
+    let dataset = "app-prod";
+    const sent: string[] = [];
+    const query = createTraceQuery({
+      send: (_url, init) => {
+        sent.push((JSON.parse(init.body) as { dataset: string }).dataset);
+        return Promise.resolve(ok("{}"));
+      },
+      layout: { flatten: () => Promise.resolve(flattened()), destroy() {} },
+      apiOrigin: () => ORIGIN,
+      dataset: () => dataset,
+    });
+
+    await query(REQUEST, new AbortController().signal);
+    dataset = "app-staging";
+    await query(REQUEST, new AbortController().signal);
+
+    expect(sent).toEqual(["app-prod", "app-staging"]);
   });
 
   it("refuses to query at all with nothing connected", async () => {

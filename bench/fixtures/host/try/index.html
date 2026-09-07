@@ -99,6 +99,16 @@
         text-decoration: none;
         cursor: grab;
       }
+      /* The untraced-requests button, set apart because it is the one that deliberately
+         produces nothing to look at in a trace view. */
+      .drag.ghost {
+        background: transparent;
+        color: var(--accent);
+      }
+      .drag:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
       .row {
         display: flex;
         gap: 14px;
@@ -134,15 +144,91 @@
         padding-left: 14px;
         color: var(--dim);
       }
+
+      /* The service-worker banner.
+         Loud on purpose. The state it reports — registered, not controlling — is invisible,
+         has a one-click remedy, and makes every row on the page read "untraced"; a quiet line
+         of grey text is what let a whole debugging session go the wrong way. */
+      #sw-banner {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin: 0 0 20px;
+        padding: 12px 16px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        font-size: 14px;
+      }
+      /* Both schemes, following the page's own pattern: light values here, dark in the query
+         below. A single hardcoded palette put light green on a dark green ground in light
+         mode — a status banner nobody can read is not a status banner. */
+      #sw-banner[data-state="live"] {
+        border-color: #7fc79b;
+        background: #eaf7ef;
+        color: #14622f;
+      }
+      #sw-banner[data-state="pending"] {
+        border-color: #d9a63c;
+        background: #fdf3e0;
+        color: #7a4c05;
+        font-weight: 600;
+      }
+      #sw-banner[data-state="off"] {
+        border-color: #d99a9a;
+        background: #fdecec;
+        color: #7d1f1f;
+      }
+      @media (prefers-color-scheme: dark) {
+        #sw-banner[data-state="live"] {
+          border-color: #1f6b3a;
+          background: #0f2015;
+          color: #7ee2a8;
+        }
+        #sw-banner[data-state="pending"] {
+          border-color: #8a5a12;
+          background: #241a08;
+          color: #f5c46b;
+        }
+        #sw-banner[data-state="off"] {
+          border-color: #7a2a2a;
+          background: #240f0f;
+          color: #f09a9a;
+        }
+      }
+      #sw-reload {
+        margin-left: auto;
+        padding: 6px 14px;
+        border: 0;
+        border-radius: 6px;
+        background: var(--accent);
+        color: #fff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      #sw-detail {
+        font-weight: 400;
+        opacity: 0.8;
+      }
     </style>
   </head>
   <body>
     <main>
       <h1>Try d0bar on a real page</h1>
       <p class="lede">
-        d0bar is already running on this page, all tiers live — look bottom-right. Below is how
-        to put it on a site of your own.
+        d0bar is already running on this page — look bottom-right. The banner below says which
+        tiers are actually observing, which on a first visit is not all of them. Below that is
+        how to put it on a site of your own.
       </p>
+
+      <!-- Filled in by script; `off` until then, because "no worker" is the honest reading of a
+           page whose script has not run rather than a state to leave blank. -->
+      <div id="sw-banner" data-state="off">
+        <span id="sw-text">checking the service worker…</span>
+        <span id="sw-detail"></span>
+        <button id="sw-reload" type="button" hidden>Reload to hand it control</button>
+      </div>
 
       <h2>This page, with everything on</h2>
       <p>
@@ -153,20 +239,77 @@
         under it is not the arm it claims to be.
       </p>
       <p class="row">
-        <button class="drag" id="traffic" type="button">Make some requests</button>
-        <button class="drag" id="session" type="button">Run a fake checkout</button>
+        <button class="drag" data-scenario="checkout" type="button">Checkout</button>
+        <button class="drag" data-scenario="search" type="button">Search fan-out</button>
+        <button class="drag" data-scenario="cascade" type="button">Failure cascade</button>
+        <button class="drag" data-scenario="cold" type="button">Cold start</button>
+        <button class="drag ghost" id="traffic" type="button">Untraced requests</button>
       </p>
       <pre id="otel-status">checking Dash0 forwarding…</pre>
       <pre id="otel-trace" hidden></pre>
 
-      <h2>Sending to Dash0</h2>
+      <h2>Four shapes, because one shape proves nothing</h2>
       <p>
-        &ldquo;Run a fake checkout&rdquo; emits a nested trace and log records from the page's
-        own SDK — five child spans around real requests, one of them a 503 that ends the span
-        with an error status, and DEBUG/INFO/WARN/ERROR logs correlated to the span that was
-        current. The requests are genuine, so tier 1 records resource entries for them and tier
-        4 has something to join against; a generator that emitted spans without traffic would
-        look right in Dash0 and prove nothing about d0bar.
+        Each button emits a genuinely distributed trace: the page's own SDK produces the client
+        spans, and the fixture server answers with the server side — a <code>SERVER</code> span
+        parented to the browser's span, and the database, cache, queue and downstream-service
+        work beneath it. Three or four services per trace, five levels deep.
+      </p>
+      <table>
+        <tr>
+          <th>Button</th>
+          <th>Shape</th>
+          <th>What it is for</th>
+        </tr>
+        <tr>
+          <td>Checkout</td>
+          <td>Deep, with a parallel fan-out</td>
+          <td>
+            Three pricing calls start together, so bars overlap rather than forming a staircase.
+            The card charge 503s and the retry succeeds — a span erroring beside a sibling that
+            did not.
+          </td>
+        </tr>
+        <tr>
+          <td>Search fan-out</td>
+          <td>Wide: eight siblings at once</td>
+          <td>
+            Depth tells you nothing here and only durations do. One shard is five times slower
+            than the rest, which is the thing you actually opened the panel to find.
+          </td>
+        </tr>
+        <tr>
+          <td>Failure cascade</td>
+          <td>An error propagating up three levels</td>
+          <td>
+            The leaf 500s and every ancestor is marked <code>ERROR</code> on the way back up,
+            three services from the click. The trace you open after seeing one red row.
+          </td>
+        </tr>
+        <tr>
+          <td>Cold start</td>
+          <td>Eleven serial spans</td>
+          <td>
+            Nothing overlaps, the total is the sum, and the only question is which link to
+            break. The shape where a waterfall earns its keep.
+          </td>
+        </tr>
+        <tr>
+          <td>Untraced requests</td>
+          <td>Twelve bare fetches</td>
+          <td>
+            No <code>traceparent</code>, so every row reads <code>NONE</code> — see below for
+            why that is correct rather than broken.
+          </td>
+        </tr>
+      </table>
+      <p class="note">
+        The server side is <strong>synthesised around real timings</strong> and labelled as such
+        (<code>telemetry.sdk.name: d0bar-fixture</code>). The trace context, the route, the
+        status and every timestamp are real; there is no Postgres behind it and nothing is
+        charged. It is also gated on a header only these buttons send — the measured arms fetch
+        the same routes, and a fixture that did work behind a request whose timing is the
+        subject would be measuring itself.
       </p>
       <h2>Why some rows say NONE, and why that is right</h2>
       <p>
@@ -327,15 +470,150 @@ node bench/fixtures/server.mjs</pre>
            button looked broken while working perfectly. */
         var traceOut = document.getElementById("otel-trace");
 
-        document.getElementById("session").addEventListener("click", function () {
-          OtelFixture.fakeSession({ sessionId: "try-" + Date.now() }).then(function (traceId) {
-            /* The trace id is printed because it is the only thing that turns "I clicked a
-               button" into "this exact trace, in Dash0". Searching by time is guesswork. */
+        /* One handler for every scenario button, keyed off `data-scenario`. The buttons stay
+           dumb on purpose: a button names a scenario, and what a scenario *is* lives in
+           `bench/fixtures/otel/entry.js` where it can be read as a whole. */
+        var running = false;
+        var buttons = document.querySelectorAll("[data-scenario]");
+        Array.prototype.forEach.call(buttons, function (button) {
+          button.addEventListener("click", function () {
+            /* Serialised. Two scenarios at once would interleave their requests into one
+               resource timeline, and the point of the four shapes is that they look different
+               from each other. */
+            if (running) return;
+            running = true;
+            var name = button.getAttribute("data-scenario");
+            Array.prototype.forEach.call(buttons, function (other) {
+              other.disabled = true;
+            });
             traceOut.hidden = false;
-            traceOut.textContent =
-              "trace " + traceId + "\nexporting… (1.5s batch delay, then look for it in Dash0)";
+            traceOut.textContent = "running " + name + "…";
+
+            OtelFixture.runScenario(name)
+              .then(function (traceId) {
+                /* The trace id is printed because it is the only thing that turns "I clicked a
+                   button" into "this exact trace, in Dash0". Searching by time is guesswork.
+                   It is also what to paste into the panel to check d0bar against the backend. */
+                traceOut.textContent =
+                  name +
+                  "\ntrace " +
+                  traceId +
+                  "\nexporting… (1.5s batch delay, then open it in Dash0 — or click its row in d0bar)";
+              })
+              .catch(function (error) {
+                /* Shown, not swallowed. A scenario that threw and said nothing is the same
+                   dead-button problem the connect surface just had. */
+                traceOut.textContent = name + "\nfailed: " + error;
+              })
+              .finally(function () {
+                running = false;
+                Array.prototype.forEach.call(buttons, function (other) {
+                  other.disabled = false;
+                });
+              });
           });
         });
+
+        /* ── Service-worker state, said out loud ────────────────────────────────────────────
+           Three readings, and the middle one is the whole reason this exists:
+
+             controller is d0bar's worker   → live     → rows carry trace ids
+             registered, no controller      → pending  → worker sees nothing; reload
+             no registration / unsupported  → off      → tier 2 is not available here
+
+           A worker never controls the page that registered it: `controller` stays null until
+           the worker activates *and* claims, which on a first visit means the next navigation.
+           Nothing is wrong on a first load — but everything reads untraced, so the page has to
+           say which of the three it is instead of letting the reader infer it from empty rows.
+
+           `controllerchange` fires when control arrives, so the banner corrects itself without
+           a poll. This is the fixture, not d0bar: one listener here is free, and d0bar's own
+           reading in `src/collector/sw.ts` is derived at read time and adds no listener at all.
+
+           `/try/` is never a measured arm, so this script's cost is not a benchmark concern —
+           but it stays inside this page rather than the shared host fixture for that reason. */
+        var banner = document.getElementById("sw-banner");
+        var swText = document.getElementById("sw-text");
+        var swDetail = document.getElementById("sw-detail");
+        var swReload = document.getElementById("sw-reload");
+
+        swReload.addEventListener("click", function () {
+          location.reload();
+        });
+
+        function say(state, text, detail) {
+          banner.setAttribute("data-state", state);
+          swText.textContent = text;
+          swDetail.textContent = detail || "";
+          swReload.hidden = state !== "pending";
+        }
+
+        function paintSw() {
+          if (!("serviceWorker" in navigator)) {
+            say("off", "Tier 2 off — this browser has no service worker support.");
+            return;
+          }
+          if (!isSecureContext) {
+            say(
+              "off",
+              "Tier 2 off — service workers need a secure context (https or localhost).",
+            );
+            return;
+          }
+          var controller = null;
+          try {
+            controller = navigator.serviceWorker.controller;
+          } catch (error) {
+            /* A partitioned context can throw on the container. Reported as unknown rather
+               than guessed at in either direction. */
+            say("off", "Tier 2 unknown — the service worker container is not reachable here.");
+            return;
+          }
+          if (controller && controller.scriptURL.indexOf("d0bar-sw.js") !== -1) {
+            say(
+              "live",
+              "Tier 2 live — d0bar's worker is controlling this page.",
+              controller.scriptURL,
+            );
+            return;
+          }
+
+          navigator.serviceWorker
+            .getRegistration()
+            .then(function (registration) {
+              if (!registration) {
+                say(
+                  "off",
+                  "Tier 2 off — no service worker is registered for /try/ yet.",
+                  "d0bar registers it after the load phase settles; if this stays, the /try/d0bar-sw.js route is not being served.",
+                );
+                return;
+              }
+              var waiting = registration.waiting ? "a new version is waiting" : "installing";
+              say(
+                "pending",
+                "Registered, but NOT controlling this page — every request will read as untraced.",
+                waiting +
+                  ". A worker never controls the page that registered it; reload and it takes over.",
+              );
+            })
+            .catch(function () {
+              say("off", "Tier 2 unknown — could not read the registration.");
+            });
+        }
+
+        paintSw();
+        if ("serviceWorker" in navigator) {
+          navigator.serviceWorker.addEventListener("controllerchange", paintSw);
+          /* The first paint runs before d0bar has registered anything — registration is
+             deliberately deferred until the load phase settles, so this script sees "no
+             registration" and would be stuck there. `ready` resolves once a worker for this
+             scope is active, which is the moment the reading changes from `off` to `pending`,
+             and it is the only edge `controllerchange` does not cover: control never arrives
+             on this navigation, so without this the banner would keep saying nothing is
+             registered while a worker sits waiting. */
+          navigator.serviceWorker.ready.then(paintSw).catch(function () {});
+        }
 
         /* Asked rather than assumed. An exporter posting into a 501 looks exactly like one
            that worked, so the page states which it is before anyone clicks. */

@@ -330,6 +330,10 @@ export function openPanel(options: PanelOptions): PanelHandle {
        the panel open, and a captured origin would query the previous one and fail as an
        authorization error. */
     apiOrigin: () => connection().apiOrigin,
+    /* Same reasoning, and the failure is quieter: a dataset carried over from a previous
+       connection returns 404 rather than an authorization error, which reads as a trace that
+       does not exist. Resolved by the worker, so this is never `""`. */
+    dataset: () => connection().dataset,
   });
 
   /**

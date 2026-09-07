@@ -408,6 +408,17 @@ export const TIER2_OFF_COPY =
   "Tier 2 is unavailable on this origin, so d0bar never saw a traceparent. It says so rather than guessing.";
 
 /**
+ * The same absence, with a remedy — and it must not be worded like the line above.
+ *
+ * "Unavailable on this origin" is a statement about the environment and invites nobody to do
+ * anything. A registered worker that has not taken control is a statement about *this page load*
+ * and clears on the next one, so saying the first thing here would send a developer looking for a
+ * CSP rule or a MIME type that is not the problem.
+ */
+export const TIER2_PENDING_COPY =
+  "d0bar's service worker is registered but not controlling this page yet, so no traceparent was ever seen. Reload and this request will carry its trace.";
+
+/**
  * Why a visible trace id cannot be asked about. Two reasons, not interchangeable: one the developer
  * can act on in ten seconds, one they cannot act on at all.
  */
