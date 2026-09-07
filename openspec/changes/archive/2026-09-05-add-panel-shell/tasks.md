@@ -2,11 +2,13 @@
 
 ## 1. Reactive core
 
-> The core lives in `packages/spark/` (published as `spark-signals`), not under `src/panel/`.
+> The core lives in `packages/signals/` (published as `@d0bar/signals`), not under `src/panel/`.
+> (Both were renamed after this change was archived — it was `packages/spark/` / `spark-signals`.
+> Updated here rather than left as a path that no longer exists.)
 > It is useful on its own and nothing in it is d0bar-specific, so it is a workspace package
 > with its own tests and size budget. Paths below were corrected to match.
 
-- [x] 1.1 `packages/spark/src/signal.ts` — `signal`, `computed`, `effect`; synchronous push, no scheduler
+- [x] 1.1 `packages/signals/src/signal.ts` — `signal`, `computed`, `effect`; synchronous push, no scheduler
 - [x] 1.2 Cycle guard and a dev-only warning on a write inside a computed
 - [x] 1.3 `bind.ts` — `bindText(node, fn)`, `bindStyle(el, prop, fn)`, `bindVar(el, name, fn)`, `bindAttr`
 - [x] 1.4 `list.ts` — keyed list reconciliation, append-only fast path (the streaming case)

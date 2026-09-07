@@ -1,4 +1,4 @@
-import { effect } from "spark-signals/signal";
+import { effect } from "@d0bar/signals/signal";
 import {
   DEFAULT_REGION,
   ENVIRONMENTS,

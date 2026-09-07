@@ -169,7 +169,7 @@ less. d0bar never claims a measurement it did not take.
 
 ## Related
 
-**[⚡ spark-signals](packages/spark)** — the ~1 kB signals core built for d0bar's panel, published
+**[@d0bar/signals](packages/signals)** — the ~1 kB signals core built for d0bar's panel, published
 separately because it's useful on its own. No virtual DOM, no scheduler, no framework.
 
 ---

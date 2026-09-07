@@ -1,4 +1,4 @@
-import { computed, signal } from "spark-signals/signal";
+import { computed, signal } from "@d0bar/signals/signal";
 import type { Tier2State } from "../collector/sw";
 import { DISCONNECTED, type TokenStatus } from "../shared/broker";
 import type { OtelState } from "../shared/stage2";

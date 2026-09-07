@@ -1,5 +1,5 @@
-import { bindAttr, bindHidden, bindText, on } from "spark-signals/bind";
-import { effect, scope, signal } from "spark-signals/signal";
+import { bindAttr, bindHidden, bindText, on } from "@d0bar/signals/bind";
+import { effect, scope, signal } from "@d0bar/signals/signal";
 import { classify } from "../../../collector/coverage";
 import { traceContext, type TraceContext } from "../../../collector/correlate";
 import { scratch, type RequestRecord } from "../../../shared/record";

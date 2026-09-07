@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@d0bar/signals':
+        specifier: workspace:*
+        version: link:packages/signals
       '@eslint/js':
         specifier: ^9.17.0
         version: 9.39.5
@@ -68,9 +71,6 @@ importers:
       size-limit:
         specifier: ^11.1.6
         version: 11.2.0
-      spark-signals:
-        specifier: workspace:*
-        version: link:packages/spark
       terser:
         specifier: ^5.37.0
         version: 5.51.2
@@ -87,7 +87,7 @@ importers:
         specifier: ^3.2.6
         version: 3.2.6(@types/node@26.4.1)(jiti@2.7.0)(jsdom@30.0.1)(supports-color@10.2.2)(terser@5.51.2)
 
-  packages/spark: {}
+  packages/signals: {}
 
 packages:
 

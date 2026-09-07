@@ -1,12 +1,12 @@
 [
   {
-    "name": "\u26a1 spark \u2014 signals, bindings, keyed list",
+    "name": "@d0bar/signals — signals, bindings, keyed list",
     "path": "src/index.ts",
     "limit": "1.6 kB",
     "gzip": true
   },
   {
-    "name": "\u26a1 spark/signal \u2014 the graph alone",
+    "name": "@d0bar/signals/signal — the graph alone",
     "path": "src/signal.ts",
     "limit": "900 B",
     "gzip": true

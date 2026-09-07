@@ -1,17 +1,17 @@
 # Tasks — extract the bench harness
 
 Package name assumed `frame-budget` throughout; `packages/frame-budget/` is the directory.
-Mirrors `packages/spark/`'s layout, which is the only extraction precedent in this repo.
+Mirrors `packages/signals/`'s layout, which is the only extraction precedent in this repo.
 
 ## 1. Package scaffold
 
 - [ ] 1.1 `packages/frame-budget/package.json` — MIT, `type: module`, `sideEffects: false`,
       `@playwright/test` as a **peer** dependency, `build` / `test` / `prepublishOnly` scripts
-      matching `packages/spark/package.json`
+      matching `packages/signals/package.json`
 - [ ] 1.2 `packages/frame-budget/tsconfig.json` and `tsconfig.build.json`, extending
       `tsconfig.base.json` with `declaration`, `declarationMap`, `outDir: dist`, `rootDir: src`
 - [ ] 1.3 `packages/frame-budget/vitest.config.ts` for the package's own unit tests
-- [ ] 1.4 Add the package to the root `build` script's `pnpm -F` chain, beside `spark-signals`
+- [ ] 1.4 Add the package to the root `build` script's `pnpm -F` chain, beside `@d0bar/signals`
 - [ ] 1.5 `packages/frame-budget/README.md` — what it measures, what it cannot see, and the
       three instruments it exists because of (`long-animation-frame`, `longtask`, in-product
       timing) with the reason each is insufficient

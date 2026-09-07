@@ -1,5 +1,5 @@
-import { bindAttr, bindClass, bindHidden, bindText, on } from "spark-signals/bind";
-import { effect, scope } from "spark-signals/signal";
+import { bindAttr, bindClass, bindHidden, bindText, on } from "@d0bar/signals/bind";
+import { effect, scope } from "@d0bar/signals/signal";
 import panelCss from "./panel.css?inline";
 import { flushCorrelation } from "../collector/correlate";
 import { query as brokerQuery } from "./broker";

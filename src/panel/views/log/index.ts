@@ -1,5 +1,5 @@
-import { bindHidden, bindText, on } from "spark-signals/bind";
-import { effect, scope } from "spark-signals/signal";
+import { bindHidden, bindText, on } from "@d0bar/signals/bind";
+import { effect, scope } from "@d0bar/signals/signal";
 import { ATTR_CAP, type LogRecord, type LogValueKind } from "../../../shared/protocol";
 import { popToTrace, selectedLog } from "../../shell";
 

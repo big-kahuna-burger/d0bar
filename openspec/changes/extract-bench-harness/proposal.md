@@ -19,7 +19,7 @@ several specs ask.
 
 ## What Changes
 
-- New workspace package holding the measurement and the gate, built like `spark-signals`:
+- New workspace package holding the measurement and the gate, built like `@d0bar/signals`:
   its own `package.json`, `tsconfig.build.json`, tests and README under `packages/`.
 - `attributedDuring()` moves into it, with its trace reduction (`reduce()`) exported and unit
   tested — the arithmetic is settleable without a browser and is not today.
@@ -52,5 +52,5 @@ None. This changes how d0bar's own budgets are enforced, not what any shipped ca
 - Unchanged: `src/`. No shipped code is touched, and the package is a devDependency — it must
   never appear in a d0bar bundle.
 - Assumption recorded rather than asked: the package is named `frame-budget` and is published
-  under MIT like `spark-signals`. Both are cosmetic and cheap to change before the first
+  under MIT like `@d0bar/signals`. Both are cosmetic and cheap to change before the first
   publish; neither affects the shape of anything below.

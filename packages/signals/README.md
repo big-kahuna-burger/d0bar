@@ -1,4 +1,4 @@
-# ⚡ spark-signals
+# @d0bar/signals
 
 **A ~1 kB signals core with direct DOM bindings. No virtual DOM, no scheduler, no framework.**
 
@@ -6,11 +6,11 @@
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ```bash
-npm i spark-signals
+npm i @d0bar/signals
 ```
 
 ```ts
-import { signal, computed, effect } from "spark-signals/signal";
+import { signal, computed, effect } from "@d0bar/signals/signal";
 
 const count = signal(0);
 const doubled = computed(() => count() * 2);
@@ -38,7 +38,7 @@ Concretely:
 
 **This is probably not for you if** you are building an application. Use Solid, Svelte, Vue or
 Preact — they are excellent, they have ecosystems, and they solve problems this deliberately
-does not. spark exists because d0bar could not afford any of them, not because they are wrong.
+does not. This exists because d0bar could not afford any of them, not because they are wrong.
 
 ---
 
@@ -55,7 +55,7 @@ So this is what was left after removing everything that wasn't load-bearing.
 ## API
 
 ```ts
-import { signal, computed, effect, scope } from "spark-signals/signal";
+import { signal, computed, effect, scope } from "@d0bar/signals/signal";
 import {
   bindText,
   bindVar,
@@ -64,8 +64,8 @@ import {
   bindClass,
   bindHidden,
   on,
-} from "spark-signals/bind";
-import { list } from "spark-signals/list";
+} from "@d0bar/signals/bind";
+import { list } from "@d0bar/signals/list";
 ```
 
 **`signal(initial)`** — a readable/writable value. Call it to read, `.set(v)` to write,
@@ -114,17 +114,17 @@ Define `__DEV__` at build time to enable guards: a write from inside a `computed
 rather than silently desynchronising the graph, and a reactive cycle throws instead of
 exhausting the stack.
 
-If your bundler doesn't define it, spark resolves it to `false` rather than throwing a
+If your bundler doesn't define it, this resolves it to `false` rather than throwing a
 `ReferenceError` — so the package works with no build step at all.
 
 ---
 
 ## Budgets
 
-|                              |                                       |
-| ---------------------------- | ------------------------------------- |
-| everything                   | ≤ 1.6 kB gzip — currently **1.11 kB** |
-| `spark-signals/signal` alone | ≤ 900 B gzip                          |
+|                               |                                       |
+| ----------------------------- | ------------------------------------- |
+| everything                    | ≤ 1.6 kB gzip — currently **1.11 kB** |
+| `@d0bar/signals/signal` alone | ≤ 900 B gzip                          |
 
 Enforced by `pnpm size` in CI. These are limits, not aspirations.
 

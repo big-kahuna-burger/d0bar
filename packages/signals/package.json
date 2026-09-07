@@ -1,7 +1,7 @@
 {
-  "name": "spark-signals",
+  "name": "@d0bar/signals",
   "version": "0.1.0",
-  "description": "\u26a1 A ~1 kB synchronous signals core with direct DOM bindings and keyed list reconciliation.",
+  "description": "A ~1 kB synchronous signals core with direct DOM bindings and keyed list reconciliation.",
   "keywords": [
     "signals",
     "reactive",
@@ -13,6 +13,9 @@
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -48,9 +51,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/big-kahuna-burger/d0bar.git",
-    "directory": "packages/spark"
+    "directory": "packages/signals"
   },
-  "homepage": "https://github.com/big-kahuna-burger/d0bar/tree/main/packages/spark#readme",
+  "homepage": "https://github.com/big-kahuna-burger/d0bar/tree/main/packages/signals#readme",
   "bugs": {
     "url": "https://github.com/big-kahuna-burger/d0bar/issues"
   }
