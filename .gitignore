@@ -5,7 +5,7 @@ dist
 bench/last-budget.json
 test-results
 playwright-report
-
+.env
 # eslint's and prettier's own caches. Both key entries on file content, so a stale entry
 # misses rather than lying; `--cache-strategy content` is set because mtime is meaningless
 # on a fresh CI checkout.

@@ -46,20 +46,80 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * fixture that contradicted that would be teaching the wrong thing, so the fixture server plays
  * the part a collector plays in a real deployment.
  *
- * Read from the environment, never a file in the repo and never a default. Absent is the
- * ordinary case: `/otlp/*` then answers 501 with what to set, `/try/` still runs every tier it
- * can, and nothing anywhere pretends telemetry was delivered.
+ * Everything except the token has a default, because everything except the token is guessable
+ * and the token is not. Put the token in `.env` (gitignored; `.env.example` is the template)
+ * and the rest only needs touching to leave eu-west-1 prod:
  *
- *   DASH0_INGRESS   e.g. https://ingress.eu-west-1.aws.dash0.com
- *   DASH0_TOKEN     an auth token for that region
- *   DASH0_DATASET   optional; the header is omitted when unset, which means `default`
+ * ```
+ *   DASH0_TOKEN     required. No default, and no default is possible.
+ *                   `INGEST_TOKEN` is accepted as an alias — it is what Dash0's own UI calls
+ *                   the thing, so it is what ends up pasted into a `.env`.
+ *   DASH0_ENV       prod | dev              default dev
+ *   DASH0_CLOUD     aws | gcp               default aws
+ *   DASH0_REGION    e.g. eu-west-1          default eu-west-1
+ *   DASH0_DATASET                           default: send no header at all
+ *   DASH0_INGRESS   full origin; overrides the three above outright
+ * ```
+ *
+ * The host pattern is `ingress.<region>.<cloud>.dash0[-dev].com`, mirroring the `api.` table in
+ * `src/shared/regions.ts` — and probed the same way rather than assumed, since a name that
+ * resolves is not a name that ingests:
+ *
+ * ```
+ *                                          POST /v1/traces, unauthenticated
+ * ingress.eu-west-1.aws.dash0.com          401
+ * ingress.us-west-2.aws.dash0.com          401
+ * ingress.eu-west-1.aws.dash0-dev.com      401
+ * ingress.europe-west4.gcp.dash0-dev.com   401
+ * ```
+ *
+ * `401` rather than `404` is what separates an ingest endpoint from a wildcard cert.
  */
+
+/* Optional, and optional in the strong sense: no `.env`, no warning, no behaviour change.
+   `loadEnvFile` throws on a missing file, and the fixture's ordinary use has no `.env` at all —
+   every perf arm runs without one and must not learn to depend on it. */
+try {
+  process.loadEnvFile(join(repoRoot, ".env"));
+} catch {
+  /* Absent or unreadable. `DASH0_TOKEN` from the real environment still works. */
+}
+
+/* `dev` by default. This fixture is a development demo in a repository whose org lives on
+   `dash0-dev.com`, and a default that 401s for everyone who actually runs it is not a default. */
+const DASH0_ENV = process.env.DASH0_ENV === "prod" ? "prod" : "dev";
+const DASH0_CLOUD = process.env.DASH0_CLOUD === "gcp" ? "gcp" : "aws";
+const DASH0_REGION =
+  process.env.DASH0_REGION ?? (DASH0_CLOUD === "gcp" ? "europe-west4" : "eu-west-1");
+
 const DASH0 = {
-  ingress: process.env.DASH0_INGRESS?.replace(/\/+$/, ""),
-  token: process.env.DASH0_TOKEN,
+  ingress:
+    process.env.DASH0_INGRESS?.replace(/\/+$/, "") ??
+    `https://ingress.${DASH0_REGION}.${DASH0_CLOUD}.${DASH0_ENV === "dev" ? "dash0-dev" : "dash0"}.com`,
+  /* `INGEST_TOKEN` second, because Dash0's UI names it that and a `.env` written from the UI
+     will say so. Silently ignoring the name the product used is how a correctly configured
+     setup reports itself unconfigured. */
+  token: process.env.DASH0_TOKEN ?? process.env.INGEST_TOKEN,
+  /**
+   * No default, and specifically not `"default"`.
+   *
+   * `dash0-dataset: default` is not "the obvious dataset" — it is a *claim* the token has to be
+   * authorized for, and an ingest token usually is not:
+   *
+   *     PermissionDenied: authentication token is not authorized to ingest into dataset "default"
+   *
+   * That surfaced as a 401 through the proxy while the identical request sent by hand returned
+   * `200 {"partialSuccess":{}}`, because the hand-written one carried no dataset header. Omitted,
+   * the token ingests into whatever dataset it belongs to, which is what anyone pasting a token
+   * means. Set this only to override that deliberately.
+   */
   dataset: process.env.DASH0_DATASET,
 };
-const dash0Configured = Boolean(DASH0.ingress && DASH0.token);
+
+/* The token alone decides this. The endpoint always resolves to something, so treating a
+   defaulted endpoint as "configured" would turn a missing token into a 401 from a real Dash0
+   region — a confusing failure a long way from its cause. */
+const dash0Configured = Boolean(DASH0.token);
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -91,10 +151,10 @@ async function forwardOtlp(req, res, signal) {
     res.writeHead(501, { "content-type": "application/json; charset=utf-8" });
     res.end(
       JSON.stringify({
-        error: "Dash0 forwarding is not configured.",
-        set: ["DASH0_INGRESS", "DASH0_TOKEN"],
-        optional: ["DASH0_DATASET"],
-        hint: "Restart the fixture server with those in the environment.",
+        error: "DASH0_TOKEN is not set, so nothing was forwarded.",
+        required: ["DASH0_TOKEN (or INGEST_TOKEN)"],
+        defaulted: { ingress: DASH0.ingress, dataset: DASH0.dataset ?? "(the token's own)" },
+        hint: "Put DASH0_TOKEN (or INGEST_TOKEN) in .env at the repo root — see .env.example — and restart the fixture server.",
       }),
     );
     return;
@@ -363,11 +423,15 @@ const server = createServer(async (req, res) => {
      and looking like it worked. The token itself is never in this response. */
   if (path === "/otlp/status") {
     res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    /* The resolved endpoint is returned whether or not a token exists, so someone reading the
+       badge can see they are pointed at the wrong region before they wonder about the token.
+       The token itself is never in this response, set or not. */
     res.end(
       JSON.stringify({
         configured: dash0Configured,
-        ingress: DASH0.ingress ?? null,
+        ingress: DASH0.ingress,
         dataset: DASH0.dataset ?? null,
+        environment: DASH0_ENV,
       }),
     );
     return;
