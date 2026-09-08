@@ -73,6 +73,9 @@ export async function attributedDuring(
   matches: (url: string) => boolean,
   body: () => Promise<void>,
 ): Promise<Attribution> {
+  if (page.context().browser()?.browserType().name() !== "chromium") {
+    throw new Error("frame-budget attribution requires Chromium and its CDP tracing protocol");
+  }
   const cdp = await page.context().newCDPSession(page);
   const events: TraceEvent[] = [];
   cdp.on("Tracing.dataCollected", (payload: { value: TraceEvent[] }) => {
@@ -100,7 +103,11 @@ export async function attributedDuring(
     await cdp.detach();
   }
 
-  return reduce(events, matches);
+  const attribution = reduce(events, matches);
+  if (attribution.totalMs === 0) {
+    throw new Error("frame-budget attributed no script time to the supplied matcher");
+  }
+  return attribution;
 }
 
 /** Exported for its own unit test — the arithmetic is worth settling without a browser. */
@@ -169,6 +176,3 @@ export function reduce(events: TraceEvent[], matches: (url: string) => boolean):
     taskCount: tasks.length,
   };
 }
-
-/** d0bar's own bundles, and nothing the fixture serves. */
-export const isD0bar = (url: string): boolean => url.includes("/dist/d0bar");

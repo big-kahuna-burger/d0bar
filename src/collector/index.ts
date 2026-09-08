@@ -26,10 +26,12 @@ import { resetCorrelation } from "./correlate";
 import { resetSelfCost, selfCost } from "./selfcost";
 import { loadStage2, prefetchStage2, type PanelHandle } from "../shared/stage2";
 import { installShortcut } from "./shortcut";
+import { readPanelRestore, type RestoredPictureInPictureWindow } from "../shared/panel-restore";
 import { resetVitals, snapshot as vitalsSnapshot } from "./vitals";
 import { resetTier2, startTier2, tier2State, type SwConfig, type Tier2State } from "./sw";
 import { detectOtel, otelState, resetOtel, type OtelState } from "./otel";
 import type { SelfCost } from "./selfcost";
+import { epochSource, resetEpoch, selectTier, type EpochSource } from "./epoch";
 
 /**
  * Stage 1 — the only part of the toolbar on the host's critical path. Everything here is the opt-in
@@ -71,6 +73,8 @@ export interface D0barHandle {
 export interface Diagnostics {
   phase: "collecting" | "settled";
   entryTypes: readonly string[];
+  /** Which browser capability supplies route epochs. */
+  epochSource: EpochSource;
   /** Whether tier 2 is live, and if not, why not. */
   tier2: Tier2State;
   /** Whether tier 4 is live, who owns the attachment, and if it is off, why. */
@@ -82,6 +86,8 @@ export interface Diagnostics {
   interned: number;
   internOverflows: number;
   scheduling: string;
+  /** Whether this browser exposes Document Picture-in-Picture for panel detachment. */
+  panelDetach: boolean;
 }
 
 const inert: D0barHandle = {
@@ -91,6 +97,7 @@ const inert: D0barHandle = {
     return {
       phase: "collecting",
       entryTypes: [],
+      epochSource: "document",
       tier2: { kind: "off", reason: "not-registered" },
       otel: { kind: "off", reason: "no-sdk" },
       self: {
@@ -107,6 +114,7 @@ const inert: D0barHandle = {
       interned: 0,
       internOverflows: 0,
       scheduling: "none",
+      panelDetach: "documentPictureInPicture" in globalThis,
     };
   },
 };
@@ -157,9 +165,13 @@ export function init(config: D0barConfig): D0barHandle {
   }
   liveConfig = config;
 
+  selectTier();
+
   const stopPhase = beginPhaseTracking();
   const stopObserving = startObserving();
   definePill();
+
+  let pendingRestore = readPanelRestore(location.pathname + location.search);
 
   let panel: PanelHandle | undefined;
   let panelOpen = false;
@@ -181,8 +193,31 @@ export function init(config: D0barConfig): D0barHandle {
 
     opening = true;
     pill.setPending(true);
-    loadStage2()
-      .then((module) => {
+    const restore = pendingRestore;
+    pendingRestore = undefined;
+    pill.setRestorePending(false);
+    /* `requestWindow()` is invoked directly from the pill click. The browser therefore sees a
+       user activation even if the stage-2 import resolves later. */
+    const restoreWindow: Promise<RestoredPictureInPictureWindow | undefined> = restore
+      ? (() => {
+          const api = (
+            globalThis as typeof globalThis & {
+              documentPictureInPicture?: {
+                requestWindow(options: {
+                  width: number;
+                  height: number;
+                }): Promise<RestoredPictureInPictureWindow>;
+              };
+            }
+          ).documentPictureInPicture;
+          if (!api) return Promise.resolve(undefined);
+          return api
+            .requestWindow({ width: restore.width, height: restore.height })
+            .catch(() => undefined);
+        })()
+      : Promise.resolve(undefined);
+    Promise.all([loadStage2(), restoreWindow])
+      .then(([module, restoredWindow]) => {
         /* `destroy()` may have run while stage 2 was in flight. */
         const current = pill.root();
         if (!current) return;
@@ -255,6 +290,8 @@ export function init(config: D0barConfig): D0barHandle {
             },
             onVitals: onVitalsBatch,
           },
+          restore,
+          restoreWindow: restoredWindow,
           onClose() {
             panelOpen = false;
             pill.focus();
@@ -277,6 +314,7 @@ export function init(config: D0barConfig): D0barHandle {
   }
 
   const pill = mountPill(toggle);
+  pill.setRestorePending(pendingRestore !== undefined);
 
   /* The toolbar's only listener on the host page. Registered here in stage 1, so the chord
      opens the panel before stage 2 has ever been fetched — which is the whole reason it
@@ -335,6 +373,7 @@ export function init(config: D0barConfig): D0barHandle {
       resetSpanSink();
       resetOtel();
       resetTier2();
+      resetEpoch();
       live = undefined;
       liveConfig = undefined;
     },
@@ -344,6 +383,7 @@ export function init(config: D0barConfig): D0barHandle {
       return {
         phase: currentPhase(),
         entryTypes: activeEntryTypes(),
+        epochSource: epochSource(),
         self: selfCost(),
         tier2: tier2State(),
         otel: otelState(),
@@ -352,6 +392,7 @@ export function init(config: D0barConfig): D0barHandle {
         interned: interned.size,
         internOverflows: interned.overflows,
         scheduling: scheduleMode(),
+        panelDetach: "documentPictureInPicture" in globalThis,
       };
     },
   };

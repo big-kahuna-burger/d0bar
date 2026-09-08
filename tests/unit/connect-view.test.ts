@@ -58,12 +58,12 @@ describe("the environment toggle and region picker", () => {
     const options = [...selectOf(surface).options].map((option) => option.value);
     /* The list is the security property. A picker that could name an origin the worker did not
        compile in would be the page choosing where the token goes. */
-    expect(options).toEqual(regionsIn("prod").map((region) => region.id));
+    expect(options).toEqual(regionsIn("dev").map((region) => region.id));
   });
 
   it("swaps the region list when the environment toggle changes", () => {
     surface = connectView();
-    expect(selectOf(surface).value).toBe("prod:eu-west-1");
+    expect(selectOf(surface).value).toBe("dev:eu-west-1");
 
     envButton(surface, "Development").click();
     expect([...selectOf(surface).options].map((option) => option.value)).toEqual(
@@ -83,9 +83,9 @@ describe("the environment toggle and region picker", () => {
     const select = selectOf(surface);
     expect(originOf(surface)).toBe(originFor(select.value));
 
-    select.value = "prod:us-west-2";
+    select.value = "dev:europe-west4";
     select.dispatchEvent(new Event("change"));
-    expect(originOf(surface)).toBe("https://api.us-west-2.aws.dash0.com");
+    expect(originOf(surface)).toBe("https://api.europe-west4.gcp.dash0-dev.com");
   });
 
   it("preselects the debug global when it names a known region", () => {
@@ -108,8 +108,8 @@ describe("the environment toggle and region picker", () => {
        than adding a destination. */
     (globalThis as { D0BAR_REGION?: unknown }).D0BAR_REGION = "https://evil.test";
     surface = connectView();
-    expect(selectOf(surface).value).toBe("prod:eu-west-1");
-    expect(envButton(surface, "Production").getAttribute("aria-checked")).toBe("true");
+    expect(selectOf(surface).value).toBe("dev:eu-west-1");
+    expect(envButton(surface, "Development").getAttribute("aria-checked")).toBe("true");
   });
 });
 

@@ -1,10 +1,10 @@
 # Tasks — epoch model
 
 ## 1. Tier selection
-- [ ] 1.1 `src/collector/epoch.ts` — `selectTier()`, run once at start: `soft-navigation` in `PerformanceObserver.supportedEntryTypes` → 1; `typeof navigation !== "undefined"` → 2; else 3
-- [ ] 1.2 `epochSource(): "soft-navigation" | "navigation-api" | "document"` for the diagnostics surface
+- [x] 1.1 `src/collector/epoch.ts` — `selectTier()`, run once at start: `soft-navigation` in `PerformanceObserver.supportedEntryTypes` → 1; `typeof navigation !== "undefined"` → 2; else 3
+- [x] 1.2 `epochSource(): "soft-navigation" | "navigation-api" | "document"` for the diagnostics surface
 - [ ] 1.3 Tier is frozen after selection; assert in dev that no tier-2 id is assigned once tier 1 is chosen
-- [ ] 1.4 Feature-detect via `supportedEntryTypes`, not by observing and catching — a caught throw is indistinguishable from a real failure
+- [x] 1.4 Feature-detect via `supportedEntryTypes`, not by observing and catching — a caught throw is indistinguishable from a real failure
 
 ## 2. Tier 1 — soft-navigation
 - [ ] 2.1 Observe `soft-navigation` with `buffered: true`; each entry opens an epoch keyed by its `navigationId`
@@ -22,8 +22,8 @@
 - [ ] 3.5 `navigation.activation` read once at start to distinguish a prerender activation from a fresh load
 
 ## 4. Tier 3 — document
-- [ ] 4.1 Constant epoch 0, no listeners, no observers
-- [ ] 4.2 UI copy: route boundaries unavailable on this browser — asserted, not left to the view layer
+- [x] 4.1 Constant epoch 0, no listeners, no observers
+- [x] 4.2 UI copy: route boundaries unavailable on this browser — asserted, not left to the view layer
 
 ## 5. Ring
 - [ ] 5.1 Add `epochId` as a fourth `u32` column; stride 80 → 84 bytes, `U32_COUNT` 3 → 4

@@ -2,7 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { attributedDuring, isD0bar } from "./attribution";
+import { attributedDuring } from "@d0bar/frame-budget";
+
+/** d0bar's own bundles, and nothing the fixture serves. */
+const isD0bar = (url: string): boolean => url.includes("/dist/d0bar");
 
 /**
  * The observer-effect budget: the same fixture loaded with the toolbar enabled and disabled, the
@@ -253,47 +256,56 @@ function choose(n: number, k: number): number {
 }
 
 async function measure(page: Page, arm: Arm): Promise<Sample> {
+  /* Apply the same slowdown before every arm, including the discarded warm-ups. A per-page
+     session keeps the setting from leaking into unrelated browser tests. */
+  const throttle = await page.context().newCDPSession(page);
+  await throttle.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+
   /* The tracer is started before the navigation, so the load phase — where the moratorium
      applies and where the toolbar's cost would matter most — is inside the window. */
-  const attribution = await attributedDuring(page, isD0bar, async () => {
-    await page.goto(`/?d0bar=${arm}`, { waitUntil: "load" });
-    await page.evaluate(
-      () => (window as unknown as { __fixtureReady: Promise<void> }).__fixtureReady,
-    );
+  try {
+    const attribution = await attributedDuring(page, isD0bar, async () => {
+      await page.goto(`/?d0bar=${arm}`, { waitUntil: "load" });
+      await page.evaluate(
+        () => (window as unknown as { __fixtureReady: Promise<void> }).__fixtureReady,
+      );
 
-    /* Real input events, so the browser emits genuine `event` entries with interaction ids.
+      /* Real input events, so the browser emits genuine `event` entries with interaction ids.
        `#confirm-hold` blocks 84 ms and gives the fixture its poor INP — two clicks suffice, since
        below fifty interactions INP is just the slowest. `#cheap-tap` does almost nothing, and is
        where a toolbar cost is visible: see `cheapTapsOverQuantum`. */
-    for (let i = 0; i < 2; i++) {
-      await page.click("#confirm-hold");
-      await page.waitForTimeout(120);
-    }
-    for (let i = 0; i < 5; i++) {
-      await page.click("#cheap-tap");
-      await page.waitForTimeout(120);
-    }
-    await page.waitForTimeout(300);
-  });
+      for (let i = 0; i < 2; i++) {
+        await page.click("#confirm-hold");
+        await page.waitForTimeout(120);
+      }
+      for (let i = 0; i < 5; i++) {
+        await page.click("#cheap-tap");
+        await page.waitForTimeout(120);
+      }
+      await page.waitForTimeout(300);
+    });
 
-  const m = await page.evaluate(() => {
-    const metrics = (window as unknown as { __metrics: Sample }).__metrics;
+    const m = await page.evaluate(() => {
+      const metrics = (window as unknown as { __metrics: Sample }).__metrics;
+      return {
+        lcp: metrics.lcp,
+        cls: metrics.cls,
+        tbt: metrics.tbt,
+        longTasks: metrics.longTasks,
+        inp: metrics.inp,
+        cheapTapsOverQuantum: metrics.cheapTapsOverQuantum,
+        cheapTapEntries: metrics.cheapTapEntries,
+        cheapTapMax: metrics.cheapTapMax,
+      };
+    });
     return {
-      lcp: metrics.lcp,
-      cls: metrics.cls,
-      tbt: metrics.tbt,
-      longTasks: metrics.longTasks,
-      inp: metrics.inp,
-      cheapTapsOverQuantum: metrics.cheapTapsOverQuantum,
-      cheapTapEntries: metrics.cheapTapEntries,
-      cheapTapMax: metrics.cheapTapMax,
+      ...m,
+      attributedFrameMs: attribution.maxTaskMs,
+      attributedTotalMs: attribution.totalMs,
     };
-  });
-  return {
-    ...m,
-    attributedFrameMs: attribution.maxTaskMs,
-    attributedTotalMs: attribution.totalMs,
-  };
+  } finally {
+    await throttle.detach();
+  }
 }
 
 test(

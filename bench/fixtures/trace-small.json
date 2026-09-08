@@ -1,0 +1,200 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "edge-gateway"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "spans": [
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000002",
+              "name": "HTTP GET /api/shipments",
+              "startTimeUnixNano": "1770000000016000000",
+              "endTimeUnixNano": "1770000000412000000"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "shipments-api"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "spans": [
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000003",
+              "parentSpanId": "0000000000000002",
+              "name": "GET /shipments",
+              "startTimeUnixNano": "1770000000037000000",
+              "endTimeUnixNano": "1770000000377000000"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "postgres"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "spans": [
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000004",
+              "parentSpanId": "0000000000000003",
+              "name": "SELECT shipments",
+              "startTimeUnixNano": "1770000000058000000",
+              "endTimeUnixNano": "1770000000195000000"
+            },
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000007",
+              "parentSpanId": "0000000000000005",
+              "name": "SELECT tariffs",
+              "startTimeUnixNano": "1770000000247000000",
+              "endTimeUnixNano": "1770000000341000000"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "pricing-svc"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "spans": [
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000005",
+              "parentSpanId": "0000000000000003",
+              "name": "GET /rates/{corridor}",
+              "startTimeUnixNano": "1770000000198000000",
+              "endTimeUnixNano": "1770000000353000000"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "redis"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "spans": [
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000006",
+              "parentSpanId": "0000000000000005",
+              "name": "GET rate:eu:nl-de",
+              "startTimeUnixNano": "1770000000214000000",
+              "endTimeUnixNano": "1770000000217000000"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "pricing-svc"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "logRecords": [
+            {
+              "timeUnixNano": "1770000000220000000",
+              "severityNumber": 13,
+              "severityText": "WARN",
+              "body": {
+                "stringValue": "tariff cache miss for corridor NL-DE, falling back to pricing-svc"
+              },
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000005"
+            },
+            {
+              "timeUnixNano": "1770000000250000000",
+              "severityNumber": 9,
+              "severityText": "INFO",
+              "body": {
+                "stringValue": "loading tariffs from postgres"
+              },
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000007"
+            },
+            {
+              "timeUnixNano": "1770000000344000000",
+              "severityNumber": 9,
+              "severityText": "INFO",
+              "body": {
+                "stringValue": "rate resolved for corridor NL-DE"
+              },
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "0000000000000005"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "webEvents": [
+    {
+      "spanId": "0000000000000001",
+      "name": "GET /shipments/8821",
+      "origin": "browser · webEvent",
+      "startTimeUnixNano": "1770000000000000000",
+      "endTimeUnixNano": "1770000000412000000"
+    }
+  ]
+}

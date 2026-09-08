@@ -75,7 +75,7 @@
         "gated": 0.344,
         "on": 1.332
       },
-      "instrument": "CDP tracing (devtools.timeline + disabled-by-default-devtools.timeline), FunctionCall/EvaluateScript events summed per RunTask by script URL — tests/perf/attribution.ts",
+      "instrument": "CDP tracing (devtools.timeline + disabled-by-default-devtools.timeline), FunctionCall/EvaluateScript events summed per RunTask by script URL — packages/frame-budget/src/attribution.ts",
       "aggregation": "p95 across runs of the largest d0bar-attributed total inside any one top-level task",
       "spread": "off 0.000, gated 0.284-0.344, on 1.332-1.349 over two four-run samples",
       "exclusions": "Script time only. Style recalculation and layout provoked by d0bar's writes land in AnimationFrame::StyleAndLayout, which the browser attributes to no script; that work is bounded structurally by `contain: layout style` on the pill instead. Measured under tracing overhead, which inflates rather than flatters, so the number is an upper bound on the untraced one.",
@@ -244,7 +244,7 @@
       "unit": "ms of d0bar script in the worst frame",
       "lastMeasured": 1.56,
       "spread": "0.78 / 1.16 / 1.55 / 1.56 over four runs; 476-581 ms total across ~1900-2200 frames",
-      "instrument": "CDP tracing, per RunTask, attributed by script URL — tests/perf/attribution.ts",
+      "instrument": "CDP tracing, per RunTask, attributed by script URL — packages/frame-budget/src/attribution.ts",
       "rationale": "Three full passes of a 512-record list, from a page that has gone quiet. The threshold is the spec's own number and is deliberately not tightened onto the measurement: at ~5x headroom this catches a categorical regression (geometry computed in JavaScript, rows rebuilt per frame) rather than machine-to-machine variance, and a gate set at 2 ms would go red on a slower laptop while telling nobody anything. THE MAXIMUM, NOT p95, and that is the one place this file departs from the repo's own rule: p95 hides exactly the frame a user feels as a stutter, and with ~2000 frames in the window a p95 would be reporting the 100th-best frame. The max is stricter than the rule asks for, so nothing is being flattered. What this does NOT include: style recalculation and layout provoked by d0bar's writes, which the browser attributes to no script at all — that work is bounded structurally by `contain: layout style` on the row instead. The tracer's own overhead lands inside the intervals it reports, so this is an upper bound on the untraced cost."
     },
     {
@@ -255,6 +255,17 @@
       "spread": "2.24 / 1.47 / 1.14 / 1.53 over four runs; 140-162 ms total across ~565 frames",
       "instrument": "same as scrollFrameMs",
       "rationale": "300 requests over 3 s with the panel open on the list — one every 10 ms, faster than any real page sustains. The storm crosses the ring's 512 capacity partway through, so eviction and the index shift it forces are inside the measured window: the worst frame in this bench is generally that one, which is why its maximum sits above the scroll bench's despite doing a fraction of the total work. NEWLY MEASURABLE, and the reason it was not measured before is recorded rather than skipped: `onResourceBatch` held a single listener slot, `add-untraced-view` registered a second consumer for it, and the requests view's registration was overwritten — so an open list received no appends at all and this bench would have measured a static view. The bench asserts the storm landed (records reach 512 and the eviction notice appears) before it asserts anything about cost, so it cannot pass on a list nothing appended to."
+    }
+  ],
+  "panelDetach": [
+    {
+      "metric": "detachedHostScriptMs",
+      "threshold": 2,
+      "unit": "ms of host-target script while the detached panel is driven",
+      "lastMeasured": null,
+      "instrument": "CDP Performance.getMetrics ScriptDuration on the host target — tests/perf/panel-detach.spec.ts",
+      "exclusions": "Work in the Picture-in-Picture target, which is intentionally isolated from the host. Host style, layout and paint are asserted separately at exactly zero.",
+      "rationale": "The detached panel must leave no meaningful main-thread work in the page it observes. Two milliseconds allows protocol and timer noise while remaining below a visible fraction of one frame; the categorical rendering invariants have zero-tolerance assertions. CI supplies the first lastMeasured value."
     }
   ],
   "traceLayout": [

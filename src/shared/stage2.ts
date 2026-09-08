@@ -92,6 +92,10 @@ export interface PanelOptions {
   otel: OtelState;
   /** The request ring, which stage 1 owns. Projected, not copied — see `Tier1Access`. */
   tier1: Tier1Access;
+  /** UI state saved before a same-route reload, never credentials or trace payloads. */
+  restore?: import("./panel-restore").PanelRestoreState | undefined;
+  /** PiP window requested by the pill while the user's activation was still live. */
+  restoreWindow?: import("./panel-restore").RestoredPictureInPictureWindow | undefined;
 }
 
 export interface Tier1Access {

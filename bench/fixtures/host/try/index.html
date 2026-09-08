@@ -99,12 +99,6 @@
         text-decoration: none;
         cursor: grab;
       }
-      /* The untraced-requests button, set apart because it is the one that deliberately
-         produces nothing to look at in a trace view. */
-      .drag.ghost {
-        background: transparent;
-        color: var(--accent);
-      }
       .drag:disabled {
         opacity: 0.45;
         cursor: default;
@@ -217,7 +211,7 @@
     <main>
       <h1>Try d0bar on a real page</h1>
       <p class="lede">
-        d0bar is already running on this page — look bottom-right. The banner below says which
+        d0bar is already running on this page — look bottom-left. The banner below says which
         tiers are actually observing, which on a first visit is not all of them. Below that is
         how to put it on a site of your own.
       </p>
@@ -232,18 +226,23 @@
 
       <h2>This page, with everything on</h2>
       <p>
-        Same origin as the dev server, so tier 2 registers. The worker is scoped to
-        <code>/try/</code>, never to <code>/</code> — a demo page that installed a root-scoped
-        worker would go on controlling the benchmark arms at <code>/?d0bar=off</code> and
-        <code>/?d0bar=gated</code> in this browser profile afterwards, and an arm with a worker
-        under it is not the arm it claims to be.
+        Tier 2 uses a service worker scoped to <code>/try/</code>, keeping the benchmark routes
+        untouched.
       </p>
+      <p class="note">
+        Dash0 forwarding happens in the fixture server, so its token never enters page script.
+        Start the server with:
+      </p>
+      <pre>
+DASH0_INGRESS=https://ingress.&lt;region&gt;.aws.dash0.com \
+DASH0_TOKEN=&lt;your token&gt; \
+DASH0_DATASET=default \
+node bench/fixtures/server.mjs</pre>
       <p class="row">
         <button class="drag" data-scenario="checkout" type="button">Checkout</button>
         <button class="drag" data-scenario="search" type="button">Search fan-out</button>
         <button class="drag" data-scenario="cascade" type="button">Failure cascade</button>
         <button class="drag" data-scenario="cold" type="button">Cold start</button>
-        <button class="drag ghost" id="traffic" type="button">Untraced requests</button>
       </p>
       <pre id="otel-status">checking Dash0 forwarding…</pre>
       <pre id="otel-trace" hidden></pre>
@@ -294,14 +293,6 @@
             break. The shape where a waterfall earns its keep.
           </td>
         </tr>
-        <tr>
-          <td>Untraced requests</td>
-          <td>Twelve bare fetches</td>
-          <td>
-            No <code>traceparent</code>, so every row reads <code>NONE</code> — see below for
-            why that is correct rather than broken.
-          </td>
-        </tr>
       </table>
       <p class="note">
         The server side is <strong>synthesised around real timings</strong> and labelled as such
@@ -319,27 +310,9 @@
         application put one there.
       </p>
       <p>
-        &ldquo;Run a fake checkout&rdquo; therefore sets <code>traceparent</code> itself, by
-        hand, from the active span. No <code>instrumentation-fetch</code> is installed: that
-        patches <code>fetch</code>, and a page that patched <code>fetch</code> could not be used
-        to show that d0bar does not. &ldquo;Make some requests&rdquo; sends none, so those rows
-        stay untraced — a panel where every row was traced would be hiding the case you most
-        need to see.
-      </p>
-      <p>
-        The token is <strong>never in page script</strong>. The page exports to
-        <code>/otlp/v1/traces</code> and <code>/otlp/v1/logs</code> on this origin, and the
-        fixture server forwards to Dash0 — the part a collector plays in a real deployment.
-        Start the server with those in its environment:
-      </p>
-      <pre>
-DASH0_INGRESS=https://ingress.&lt;region&gt;.aws.dash0.com \
-DASH0_TOKEN=&lt;your token&gt; \
-DASH0_DATASET=default \
-node bench/fixtures/server.mjs</pre>
-      <p class="note">
-        Unset is the ordinary case and is not faked: <code>/otlp/*</code> answers 501 with what
-        to set, the badge above says so, and nothing pretends telemetry was delivered.
+        The scenario buttons set <code>traceparent</code> from their active spans. Other page
+        requests may remain untraced, which is why the panel can still show
+        <code>NONE</code> rows.
       </p>
 
       <h2>Bookmarklet</h2>
@@ -452,16 +425,6 @@ node bench/fixtures/server.mjs</pre>
           "})();";
         document.getElementById("mark").href = "javascript:" + encodeURIComponent(body);
         document.getElementById("snippet").textContent = body;
-
-        /* Something for the requests list to show. Same-origin, so the worker sees them and the
-           rows come back with a trace id rather than as untraced. */
-        document.getElementById("traffic").addEventListener("click", function () {
-          for (var i = 0; i < 12; i++) {
-            fetch("/api/demo?i=" + i + "&delay=" + (30 + i * 25) + "&t=" + Date.now()).catch(
-              function () {},
-            );
-          }
-        });
 
         var status = document.getElementById("otel-status");
         /* A second element, because these are two different facts arriving at two different

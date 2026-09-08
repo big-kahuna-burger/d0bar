@@ -1,5 +1,6 @@
 import { effect } from "@d0bar/signals/signal";
 import {
+  DEFAULT_ENVIRONMENT,
   DEFAULT_REGION,
   ENVIRONMENTS,
   environmentOf,
@@ -139,7 +140,7 @@ export function connectView(): ConnectView {
   envToggle.setAttribute("role", "radiogroup");
   envToggle.setAttribute("aria-label", ENVIRONMENT_LABEL);
 
-  const initial = debugRegion() || DEFAULT_REGION;
+  const initial = debugRegion() || regionsIn(DEFAULT_ENVIRONMENT)[0]?.id || DEFAULT_REGION;
   let env: EnvironmentId = environmentOf(initial);
 
   const envButtons = ENVIRONMENTS.map((entry) => {

@@ -63,10 +63,17 @@
 }
 
 .count,
-.vtext {
+.vtext,
+.restore {
   font-family: var(--d0-font-mono);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+
+.restore {
+  color: var(--d0-cta);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .count {

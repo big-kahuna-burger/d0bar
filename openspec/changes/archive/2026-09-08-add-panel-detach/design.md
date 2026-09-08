@@ -10,10 +10,11 @@ The reactive core lives in the host realm and drives nodes in the PiP document a
 boundary — both documents are same-origin, so direct node manipulation works. The alternative,
 duplicating state into the PiP window and syncing, adds a protocol for no benefit.
 
-Consequence to watch: nodes created with the host document's `createElement` and adopted into
-the PiP document must be created from the PiP document instead, or styles resolve against the
-wrong document. The panel is rebuilt from its template into the target document on each
-transition rather than being moved node by node.
+The live panel tree moves between same-origin shadow roots. Its bindings and worker client stay
+attached to the same nodes, so an in-flight query and every selection survive without a sync
+protocol or a second copy of state. Styles come from a fresh constructed stylesheet owned by the
+destination document; the nodes themselves use standard HTML interfaces and are adopted by the
+platform when appended to the destination root.
 
 ## Stylesheets
 `adoptedStyleSheets` must be set on the PiP document's shadow root. Constructed stylesheets are
@@ -22,7 +23,7 @@ per detach.
 
 ## Lifecycle
 - Detach: open PiP window, build the panel into it, close the in-page popover.
-- Re-attach: on PiP window close, on host navigation, or on user request.
+- Re-attach: move the live panel back on PiP window close or user request.
 - Host navigation while detached closes the PiP window — a stale panel describing a page that
   no longer exists is worse than no panel.
 - Only one PiP window per document is permitted by the API; the affordance reflects that.

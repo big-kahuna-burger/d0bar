@@ -64,10 +64,7 @@ export interface Environment {
   note: string;
 }
 
-/**
- * `prod` first and default. A toolbar that quietly defaulted to a Dash0-internal environment
- * would send a customer's token somewhere no customer has an account.
- */
+/** Production stays first in the toggle; development is the default for this developer tool. */
 export const ENVIRONMENTS: readonly Environment[] = [
   {
     id: "prod",
@@ -122,7 +119,7 @@ export const REGIONS: readonly Region[] = [
   },
 ];
 
-export const DEFAULT_ENVIRONMENT: EnvironmentId = "prod";
+export const DEFAULT_ENVIRONMENT: EnvironmentId = "dev";
 export const DEFAULT_REGION = "prod:eu-west-1";
 
 /** The origin for an id, or `""`. `""` is a refusal and every caller treats it as one. */

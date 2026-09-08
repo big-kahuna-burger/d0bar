@@ -27,7 +27,7 @@
   },
   "scripts": {
     "tokens": "node scripts/vendor-tokens.mjs",
-    "build": "pnpm tokens && pnpm -F @d0bar/signals build && pnpm typecheck && vite build && D0BAR_STAGE=2 vite build && D0BAR_STAGE=dev2 vite build && D0BAR_STAGE=sw vite build && D0BAR_STAGE=sw D0BAR_SW=module vite build && D0BAR_STAGE=worker vite build && D0BAR_STAGE=dev vite build && tsc -p tsconfig.build.json",
+    "build": "pnpm tokens && pnpm -F @d0bar/signals build && pnpm -F @d0bar/frame-budget build && pnpm typecheck && vite build && D0BAR_STAGE=2 vite build && D0BAR_STAGE=dev2 vite build && D0BAR_STAGE=sw vite build && D0BAR_STAGE=sw D0BAR_SW=module vite build && D0BAR_STAGE=worker vite build && D0BAR_STAGE=dev vite build && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/sw && tsc --noEmit -p src/worker",
     "test": "vitest run && pnpm -F @d0bar/signals test",
     "test:watch": "vitest",
@@ -40,10 +40,12 @@
     "prepublishOnly": "pnpm build && pnpm test && pnpm size",
     "fixture:otel": "node scripts/build-otel-fixture.mjs",
     "fixture:trace": "node scripts/build-trace-fixture.mjs",
+    "fixture:trace-small": "node scripts/build-small-trace-fixture.mjs",
     "test:perf:timing": "pnpm fixture:otel && pnpm fixture:trace && playwright test --project=timing --workers=1",
     "test:perf:behaviour": "pnpm fixture:otel && pnpm fixture:trace && playwright test --project=behaviour --workers=100%"
   },
   "devDependencies": {
+    "@d0bar/frame-budget": "workspace:*",
     "@d0bar/signals": "workspace:*",
     "@eslint/js": "^9.17.0",
     "@opentelemetry/api": "^1.9.1",

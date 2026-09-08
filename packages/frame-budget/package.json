@@ -1,0 +1,42 @@
+{
+  "name": "@d0bar/frame-budget",
+  "version": "0.1.0",
+  "description": "Chromium main-thread attribution and enforceable browser performance budgets.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./attribution": {
+      "types": "./dist/attribution.d.ts",
+      "default": "./dist/attribution.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "@playwright/test": ">=1.49.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.6"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm build && pnpm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/big-kahuna-burger/d0bar.git",
+    "directory": "packages/frame-budget"
+  }
+}

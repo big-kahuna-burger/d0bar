@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { attributedDuring, isD0bar } from "./attribution";
+import { attributedDuring } from "@d0bar/frame-budget";
+
+/** d0bar's own bundles, and nothing the fixture serves. */
+const isD0bar = (url: string): boolean => url.includes("/dist/d0bar");
 
 /** The spec's frame budget: no frame carries more than this much toolbar work. */
 const FRAME_BUDGET_MS = 8;

@@ -1,6 +1,19 @@
 import { bindAttr, bindClass, bindHidden, bindText, on } from "@d0bar/signals/bind";
 import { effect, scope } from "@d0bar/signals/signal";
 import panelCss from "./panel.css?inline";
+import { PRELUDE } from "../collector/tokens.gen";
+import { clearPanelRestore, savePanelRestore } from "../shared/panel-restore";
+import type {
+  PanelRestoreState,
+  RestoredPictureInPictureWindow,
+} from "../shared/panel-restore";
+import {
+  detachedRoot,
+  detachSupported,
+  ensureStyleSheet,
+  requestPanelWindow,
+  type PictureInPictureWindow,
+} from "./detach";
 import { flushCorrelation } from "../collector/correlate";
 import { query as brokerQuery } from "./broker";
 import { layoutClient } from "./layout-client";
@@ -35,6 +48,8 @@ import {
   untracedCount,
   untracedTooltip,
   view,
+  restoreShell,
+  snapshotShell,
   type Tab,
 } from "./shell";
 
@@ -54,6 +69,8 @@ export interface PanelOptions {
   otel: OtelState;
   /** The ring, owned by stage 1 — see `Tier1Access`. */
   tier1: Tier1Access;
+  restore?: PanelRestoreState | undefined;
+  restoreWindow?: RestoredPictureInPictureWindow | undefined;
 }
 
 export interface PanelHandle {
@@ -62,12 +79,16 @@ export interface PanelHandle {
   destroy(): void;
 }
 
-let sheet: CSSStyleSheet | undefined;
+const sheets = new WeakMap<Document, CSSStyleSheet>();
 
-function styleSheet(): CSSStyleSheet {
+function styleSheet(root: ShadowRoot, includeTokens = false): CSSStyleSheet {
+  const owner = root.host.ownerDocument;
+  let sheet = sheets.get(owner);
   if (!sheet) {
-    sheet = new CSSStyleSheet();
-    sheet.replaceSync(panelCss);
+    const Sheet = owner.defaultView?.CSSStyleSheet ?? CSSStyleSheet;
+    sheet = new Sheet();
+    sheet.replaceSync((includeTokens ? PRELUDE : "") + panelCss);
+    sheets.set(owner, sheet);
   }
   return sheet;
 }
@@ -148,7 +169,8 @@ const UNTRACED_TAB_NOTE =
   "Requests that left this page with no trace context, which is usually why a trace has a hole in it. Detecting one needs tier 2 or 4; with neither, this counts nothing rather than claiming zero.";
 
 export function openPanel(options: PanelOptions): PanelHandle {
-  const { root, onClose } = options;
+  const { root: hostRoot, onClose } = options;
+  let activeRoot = hostRoot;
   /**
    * Ring indices the worker produced a record for; filled by the correlation flush. Empty until
    * then, and forever with tier 2 off — hence the untraced view asking whether coverage is
@@ -161,11 +183,17 @@ export function openPanel(options: PanelOptions): PanelHandle {
      at when it changes. */
   tier2.set(options.tier2);
   otel.set(options.otel);
+  if (options.restore) {
+    restoreShell(options.restore);
+    /* Restoring inline is still a successful restore when PiP is unavailable. */
+    clearPanelRestore();
+  }
   const bindings = scope();
 
   /* Adopted alongside the pill's sheet rather than replacing it — the token prelude lives
      there, and both sheets are constructed, so neither reaches the host document. */
-  root.adoptedStyleSheets = [...root.adoptedStyleSheets, styleSheet()];
+  const hostSheet = styleSheet(hostRoot);
+  hostRoot.adoptedStyleSheets = [...hostRoot.adoptedStyleSheets, hostSheet];
 
   const panel = el("div", "panel");
   /* Manual popover: the browser's top layer, so no host stacking context can cover the
@@ -218,7 +246,108 @@ export function openPanel(options: PanelOptions): PanelHandle {
     }),
   );
 
-  head.append(title, url, hint, conn, close);
+  const canDetach = detachSupported();
+  const detach = el("button", "detach");
+  detach.type = "button";
+  detach.setAttribute("aria-label", "Detach d0bar panel");
+  detach.textContent = "↗";
+  detach.hidden = !canDetach;
+
+  head.append(title, url, hint, conn, detach, close);
+
+  const detachError = el("p", "detach-error");
+  detachError.hidden = true;
+  let detached: PictureInPictureWindow | undefined;
+  let transition = false;
+  let destroying = false;
+
+  function showDetachError(message: string): void {
+    detachError.textContent = message;
+    detachError.hidden = false;
+  }
+
+  function attachPanel(): void {
+    if (!detached || transition || destroying) return;
+    transition = true;
+    const previous = detached;
+    detached = undefined;
+    try {
+      if (panel.matches(":popover-open")) panel.hidePopover();
+      activeRoot.adoptedStyleSheets = activeRoot.adoptedStyleSheets.filter(
+        (candidate) => candidate !== styleSheet(activeRoot, true),
+      );
+      hostRoot.appendChild(panel);
+      activeRoot = hostRoot;
+      ensureStyleSheet(hostRoot, hostSheet);
+      clearPanelRestore();
+      detach.textContent = "↗";
+      detach.setAttribute("aria-label", "Detach d0bar panel");
+      if (open.peek()) panel.showPopover();
+      if (!previous.closed) previous.close();
+      panel.focus();
+    } finally {
+      transition = false;
+    }
+  }
+
+  async function detachPanel(): Promise<void> {
+    if (!canDetach || detached || transition) return;
+    transition = true;
+    detach.disabled = true;
+    detachError.hidden = true;
+    rememberScroll(tab.peek(), body.scrollTop);
+    try {
+      const target = await requestPanelWindow(panel);
+      moveToDetached(target);
+    } catch (error) {
+      showDetachError(error instanceof Error ? error.message : "The panel could not detach.");
+    } finally {
+      transition = false;
+      detach.disabled = false;
+    }
+  }
+
+  function moveToDetached(target: PictureInPictureWindow): void {
+    const pipRoot = detachedRoot(target);
+    const pipSheet = styleSheet(pipRoot, true);
+    pipRoot.adoptedStyleSheets = [pipSheet];
+    if (panel.matches(":popover-open")) panel.hidePopover();
+    hostRoot.adoptedStyleSheets = hostRoot.adoptedStyleSheets.filter(
+      (candidate) => candidate !== hostSheet,
+    );
+    pipRoot.appendChild(panel);
+    activeRoot = pipRoot;
+    detached = target;
+    detach.textContent = "↙";
+    detach.setAttribute("aria-label", "Reattach d0bar panel");
+    target.addEventListener("pagehide", attachPanel, { once: true });
+    if (open.peek()) panel.showPopover();
+    body.scrollTop = recallScroll(tab.peek());
+    detach.focus();
+    clearPanelRestore();
+  }
+
+  bindings.add(
+    on(detach, "click", () => {
+      if (detached) attachPanel();
+      else void detachPanel();
+    }),
+  );
+
+  const closeOnHostNavigation = (): void => {
+    if (detached) {
+      savePanelRestore(
+        snapshotShell(
+          location.pathname + location.search,
+          detached.innerWidth,
+          detached.innerHeight,
+        ),
+      );
+    }
+    destroying = true;
+    detached?.close();
+  };
+  window.addEventListener("pagehide", closeOnHostNavigation);
   /* The header clips the URL from the left, so the origin is the part that goes missing —
      and on a staging host the origin is often the only thing distinguishing two identical
      pages. The bubble carries the whole thing. */
@@ -493,8 +622,8 @@ export function openPanel(options: PanelOptions): PanelHandle {
   bindings.add(bindAttr(perturb, "data-state", () => perturbation().state));
   foot.appendChild(perturb);
 
-  panel.append(head, tabs, body, foot);
-  root.appendChild(panel);
+  panel.append(head, detachError, tabs, body, foot);
+  hostRoot.appendChild(panel);
 
   /* Show and hide follow the signal, so every route into the panel — click, shortcut,
      Escape, the close button — goes through one place. */
@@ -571,6 +700,11 @@ export function openPanel(options: PanelOptions): PanelHandle {
 
   bindings.add(
     on(panel, "keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key === "0") {
+        event.preventDefault();
+        open.set(false);
+        return;
+      }
       if (event.key !== "Escape") return;
       /* Stopped here so Escape never reaches the host page's own handlers while the panel
          has focus — a customer's modal must not close because we were open. */
@@ -668,6 +802,14 @@ export function openPanel(options: PanelOptions): PanelHandle {
 
   open.set(true);
 
+  if (options.restoreWindow) {
+    try {
+      moveToDetached(options.restoreWindow as PictureInPictureWindow);
+    } catch (error) {
+      showDetachError(error instanceof Error ? error.message : "The panel could not restore.");
+    }
+  }
+
   return {
     show() {
       open.set(true);
@@ -676,6 +818,9 @@ export function openPanel(options: PanelOptions): PanelHandle {
       open.set(false);
     },
     destroy() {
+      destroying = true;
+      window.removeEventListener("pagehide", closeOnHostNavigation);
+      detached?.close();
       /* Before the views, so neither a new batch nor a flush already in flight can reach a
          destroyed list. */
       flushStopped = true;
@@ -691,7 +836,9 @@ export function openPanel(options: PanelOptions): PanelHandle {
       connectSurface.destroy();
       logSurface.destroy();
       panel.remove();
-      root.adoptedStyleSheets = root.adoptedStyleSheets.filter((s) => s !== sheet);
+      hostRoot.adoptedStyleSheets = hostRoot.adoptedStyleSheets.filter(
+        (candidate) => candidate !== hostSheet,
+      );
     },
   };
 }

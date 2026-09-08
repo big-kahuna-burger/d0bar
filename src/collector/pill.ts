@@ -55,6 +55,8 @@ export interface PillHandle {
    * like the pill is broken.
    */
   setPending(pending: boolean): void;
+  /** Shows that one click will restore a detached panel from this tab's last reload. */
+  setRestorePending(pending: boolean): void;
 }
 
 interface PillNodes {
@@ -66,6 +68,7 @@ interface PillNodes {
   untraced: HTMLElement;
   dropped: HTMLElement;
   droppedText: Text;
+  restore: HTMLElement;
 }
 
 function build(root: ShadowRoot, onActivate: () => void): PillNodes {
@@ -110,7 +113,12 @@ function build(root: ShadowRoot, onActivate: () => void): PillNodes {
   const droppedText = document.createTextNode("");
   dropped.appendChild(droppedText);
 
-  button.append(mark, pulse, count, sep, vitalWrap, untraced, dropped);
+  const restore = document.createElement("span");
+  restore.className = "restore";
+  restore.textContent = "Restore";
+  restore.hidden = true;
+
+  button.append(mark, pulse, count, restore, sep, vitalWrap, untraced, dropped);
   root.appendChild(button);
 
   return {
@@ -122,6 +130,7 @@ function build(root: ShadowRoot, onActivate: () => void): PillNodes {
     untraced,
     dropped,
     droppedText,
+    restore,
   };
 }
 
@@ -173,6 +182,7 @@ export function mountPill(onActivate: () => void): PillHandle {
   let shownCount = -1;
   let shownVital = "";
   let shownDropped = -1;
+  let restorePending = false;
 
   function refresh(): void {
     if (!nodes) return;
@@ -281,6 +291,13 @@ export function mountPill(onActivate: () => void): PillHandle {
     root.adoptedStyleSheets = [styleSheet()];
     nodes = build(root, onActivate);
     button = root.querySelector("button") ?? undefined;
+    if (button && nodes) {
+      button.setAttribute(
+        "aria-label",
+        restorePending ? "Restore detached d0bar panel" : "Open d0bar",
+      );
+      nodes.restore.hidden = !restorePending;
+    }
     document.body.appendChild(host);
     refresh();
     startClock();
@@ -298,6 +315,15 @@ export function mountPill(onActivate: () => void): PillHandle {
          the caller, not by a disabled control the user cannot focus. `aria-busy` says so
          without removing it from the tab order. */
       button.setAttribute("aria-busy", pending ? "true" : "false");
+    },
+    setRestorePending(pending: boolean) {
+      restorePending = pending;
+      if (!button || !nodes) return;
+      button.setAttribute(
+        "aria-label",
+        pending ? "Restore detached d0bar panel" : "Open d0bar",
+      );
+      nodes.restore.hidden = !pending;
     },
     destroy() {
       destroyed = true;

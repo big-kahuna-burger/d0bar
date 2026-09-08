@@ -28,13 +28,13 @@ Add a line when you add a document; delete one when you delete it.
 
 ## Measurement
 
-| Question                                                                      | File                         |
-| ----------------------------------------------------------------------------- | ---------------------------- |
-| What the perturbation suite runs, and how the fixture is built                | `bench/README.md`            |
-| The committed thresholds, each with the measurement and the reason for it     | `bench/budget.json`          |
-| Why a budget row must resolve finer than its own threshold, and the sign test | `bench/quantized-metrics.md` |
-| How per-task main-thread time is attributed to a script by URL                | `tests/perf/attribution.ts`  |
-| The last run's numbers, per arm                                               | `bench/last-budget.json`     |
+| Question                                                                      | File                                       |
+| ----------------------------------------------------------------------------- | ------------------------------------------ |
+| What the perturbation suite runs, and how the fixture is built                | `bench/README.md`                          |
+| The committed thresholds, each with the measurement and the reason for it     | `bench/budget.json`                        |
+| Why a budget row must resolve finer than its own threshold, and the sign test | `bench/quantized-metrics.md`               |
+| How per-task main-thread time is attributed to a script by URL                | `packages/frame-budget/src/attribution.ts` |
+| The last run's numbers, per arm                                               | `bench/last-budget.json`                   |
 
 ## Rules of thumb
 

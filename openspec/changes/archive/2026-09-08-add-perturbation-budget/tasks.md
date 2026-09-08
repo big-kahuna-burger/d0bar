@@ -11,16 +11,19 @@
 
 ## 2. Recorded data fixtures
 - [ ] 2.1 `bench/fixtures/entries.json` — a captured `resource`/vitals entry dump from the host fixture
-- [ ] 2.2 `bench/fixtures/trace-4000.json` — a real OTLP trace, 4000 spans, ~40 services, depth ≥ 12
-- [ ] 2.3 `bench/fixtures/trace-small.json` — the handoff's 7-span mock, for visual parity
-- [ ] 2.4 A loader that replays an entry dump into the ring, so ring/join/layout benchmarks need no browser
+- [x] 2.2 `bench/fixtures/trace-4000.json` — corrected while implementing: a deterministic,
+      synthetic OTLP trace, 4000 spans, 40 services, depth ≥ 12. Capturing a real tenant's trace
+      would commit customer service names, URLs and timings; the generator and fixture document
+      the substitution and preserve the protojson shape the worker measures.
+- [x] 2.3 `bench/fixtures/trace-small.json` — the handoff's 7-span mock, for visual parity
+- [x] 2.4 A loader that replays an entry dump into the ring, so ring/join/layout benchmarks need no browser
 
 ## 3. A/B measurement harness
 - [x] 3.1 `tests/perf/ab.spec.ts` — same fixture, gate off vs. gate on, n ≥ 20 alternating runs
 - [x] 3.2 Collect INP, LCP, CLS, TBT, and long-task count per run via CDP + `PerformanceObserver`
 - [x] 3.3 Compare **p95 deltas**, never means; report the full distribution in CI output
 - [x] 3.4 Fail on: Δp95 INP > 2 ms, Δ CLS > 0.001, Δp95 TBT > 5 ms, any new long task > 50 ms attributable to d0bar
-- [ ] 3.5 Warm-up run discarded; CPU throttling 4× applied identically to both arms
+- [x] 3.5 Warm-up run discarded; CPU throttling 4× applied identically to both arms
 
 ## 4. Non-perturbation assertions
 - [x] 4.1 `fetch` identity: compare against a pristine same-origin iframe's `fetch`, including `Function.prototype.toString`
@@ -32,6 +35,6 @@
 
 ## 5. Budget file and CI
 - [x] 5.1 `bench/budget.json` — one row per metric per change, with the committed threshold and last-measured value
-- [ ] 5.2 CI job on every PR; failure prints which row regressed and by how much
+- [x] 5.2 CI job on every PR; failure prints which row regressed and by how much
 - [x] 5.3 Baseline artifact uploaded per run so drift is reviewable over time
 - [x] 5.4 `bench/README.md` — how to run locally, and how to update a threshold deliberately (requires reviewer sign-off in the PR body)

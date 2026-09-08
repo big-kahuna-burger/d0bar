@@ -2,6 +2,7 @@ import { computed, signal } from "@d0bar/signals/signal";
 import type { Tier2State } from "../collector/sw";
 import { DISCONNECTED, type TokenStatus } from "../shared/broker";
 import type { OtelState } from "../shared/stage2";
+import type { PanelRestoreState } from "../shared/panel-restore";
 
 /**
  * Shell state: five signals, everything else derived. `plan.md` specified XState; a state chart
@@ -129,6 +130,34 @@ export function rememberScroll(which: Tab, offset: number): void {
 
 export function recallScroll(which: Tab): number {
   return scrollByTab.get(which) ?? 0;
+}
+
+export function snapshotShell(path: string, width: number, height: number): PanelRestoreState {
+  return {
+    path,
+    tab: tab.peek(),
+    view: view.peek(),
+    selected: selected.peek(),
+    selectedLog: selectedLog.peek(),
+    selectedSpan: selectedSpan.peek(),
+    scroll: Object.fromEntries(scrollByTab) as PanelRestoreState["scroll"],
+    width,
+    height,
+  };
+}
+
+export function restoreShell(state: PanelRestoreState): void {
+  tab.set(state.tab);
+  view.set(state.view);
+  selected.set(state.selected);
+  selectedLog.set(state.selectedLog);
+  selectedSpan.set(state.selectedSpan);
+  scrollByTab.clear();
+  for (const [which, offset] of Object.entries(state.scroll)) {
+    if (typeof offset === "number" && Number.isFinite(offset)) {
+      scrollByTab.set(which as Tab, offset);
+    }
+  }
 }
 
 /** True when the trace surface is showing, so Escape pops rather than closes. */

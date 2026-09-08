@@ -5,42 +5,42 @@ Mirrors `packages/signals/`'s layout, which is the only extraction precedent in 
 
 ## 1. Package scaffold
 
-- [ ] 1.1 `packages/frame-budget/package.json` — MIT, `type: module`, `sideEffects: false`,
+- [x] 1.1 `packages/frame-budget/package.json` — MIT, `type: module`, `sideEffects: false`,
       `@playwright/test` as a **peer** dependency, `build` / `test` / `prepublishOnly` scripts
       matching `packages/signals/package.json`
-- [ ] 1.2 `packages/frame-budget/tsconfig.json` and `tsconfig.build.json`, extending
+- [x] 1.2 `packages/frame-budget/tsconfig.json` and `tsconfig.build.json`, extending
       `tsconfig.base.json` with `declaration`, `declarationMap`, `outDir: dist`, `rootDir: src`
-- [ ] 1.3 `packages/frame-budget/vitest.config.ts` for the package's own unit tests
-- [ ] 1.4 Add the package to the root `build` script's `pnpm -F` chain, beside `@d0bar/signals`
-- [ ] 1.5 `packages/frame-budget/README.md` — what it measures, what it cannot see, and the
+- [x] 1.3 `packages/frame-budget/vitest.config.ts` for the package's own unit tests
+- [x] 1.4 Add the package to the root `build` script's `pnpm -F` chain, beside `@d0bar/signals`
+- [x] 1.5 `packages/frame-budget/README.md` — what it measures, what it cannot see, and the
       three instruments it exists because of (`long-animation-frame`, `longtask`, in-product
       timing) with the reason each is insufficient
 
 ## 2. Attribution
 
-- [ ] 2.1 `src/attribution.ts` — move `attributedDuring()` from `tests/perf/attribution.ts`
+- [x] 2.1 `src/attribution.ts` — move `attributedDuring()` from `tests/perf/attribution.ts`
       verbatim, then generalise: the script matcher is a caller-supplied predicate, nothing
       names d0bar
-- [ ] 2.2 Export `reduce()` as the pure trace-events → per-task totals function
-- [ ] 2.3 Keep both trace categories, with the comment explaining why `RunTask` needs
+- [x] 2.2 Export `reduce()` as the pure trace-events → per-task totals function
+- [x] 2.3 Keep both trace categories, with the comment explaining why `RunTask` needs
       `disabled-by-default-devtools.timeline` — dropping it flatters the maximum
-- [ ] 2.4 Nested-call dedup: only the outermost entry into a matched script counts
-- [ ] 2.5 Throw when a window attributes nothing to the matcher — an uninstrumented run must
+- [x] 2.4 Nested-call dedup: only the outermost entry into a matched script counts
+- [x] 2.5 Throw when a window attributes nothing to the matcher — an uninstrumented run must
       not read as a perfect score
-- [ ] 2.6 Refuse to run on a non-Chromium browser with a stated reason; never skip silently
-- [ ] 2.7 `tests/reduce.test.ts` — the reduction against fixed event lists, no browser: nesting,
+- [x] 2.6 Refuse to run on a non-Chromium browser with a stated reason; never skip silently
+- [x] 2.7 `tests/reduce.test.ts` — the reduction against fixed event lists, no browser: nesting,
       two separate entries in one task, a call with no enclosing `RunTask`, an empty set
 
 ## 3. Budget rows
 
-- [ ] 3.1 `src/budget.ts` — read a budget file, resolve a row by id, expose `threshold`,
+- [x] 3.1 `src/budget.ts` — read a budget file, resolve a row by id, expose `threshold`,
       `instrument`, `excludes`, `lastMeasured`
-- [ ] 3.2 Row validation: a row missing `instrument` or `excludes` is a malformed row and fails
+- [x] 3.2 Row validation: a row missing `instrument` or `excludes` is a malformed row and fails
       loudly, per the spec's "states its instrument and its blind spots"
 - [ ] 3.3 `expectWithinBudget(rowId, observed, extra)` — asserts against the declared threshold
       and records the observed value as a test annotation, on pass and on fail alike
-- [ ] 3.4 Claiming a row id that the budget file does not declare fails rather than defaulting
-- [ ] 3.5 `tests/budget.test.ts` — resolution, malformed rows, unknown row id
+- [x] 3.4 Claiming a row id that the budget file does not declare fails rather than defaulting
+- [x] 3.5 `tests/budget.test.ts` — resolution, malformed rows, unknown row id
 
 ## 4. The completeness reporter
 
@@ -56,7 +56,7 @@ Mirrors `packages/signals/`'s layout, which is the only extraction precedent in 
 
 - [ ] 5.1 `bench/budget.json` gains the fields the gate requires on the two `requestsView` rows
 - [ ] 5.2 `tests/perf/requests-view.spec.ts` uses the package; `FRAME_BUDGET_MS` is deleted
-- [ ] 5.3 `tests/perf/attribution.ts` deleted — no interval where two copies exist
+- [x] 5.3 `tests/perf/attribution.ts` deleted — no interval where two copies exist
 - [ ] 5.4 `ab.spec.ts`'s `const BUDGET` deleted; its four rows read from the budget file, with
       its `p95` statistics staying in the spec file for now (non-goal)
 - [ ] 5.5 Register the reporter in `playwright.config.ts` beside `list` and `json`

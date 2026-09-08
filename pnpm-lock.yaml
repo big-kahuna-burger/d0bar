@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@d0bar/frame-budget':
+        specifier: workspace:*
+        version: link:packages/frame-budget
       '@d0bar/signals':
         specifier: workspace:*
         version: link:packages/signals
@@ -83,6 +86,16 @@ importers:
       vite:
         specifier: ^7.3.5
         version: 7.3.5(@types/node@26.4.1)(jiti@2.7.0)(terser@5.51.2)
+      vitest:
+        specifier: ^3.2.6
+        version: 3.2.6(@types/node@26.4.1)(jiti@2.7.0)(jsdom@30.0.1)(supports-color@10.2.2)(terser@5.51.2)
+
+  packages/frame-budget:
+    dependencies:
+      '@playwright/test':
+        specifier: '>=1.49.0'
+        version: 1.62.1
+    devDependencies:
       vitest:
         specifier: ^3.2.6
         version: 3.2.6(@types/node@26.4.1)(jiti@2.7.0)(jsdom@30.0.1)(supports-color@10.2.2)(terser@5.51.2)
