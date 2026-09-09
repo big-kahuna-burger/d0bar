@@ -20,5 +20,6 @@ package in npm as a trusted publisher for this GitHub repository and the `publis
 workflow. The GitHub environment named `npm-release` is the approval boundary; protect it with
 the reviewers appropriate for publishing packages.
 
-The release workflow commits the version bump and pushes the tag to `main`, then creates a GitHub
-release after npm accepts every package. Do not start it concurrently with another release.
+The release workflow publishes all packages before it commits the version bump, pushes the tag to
+`main`, and creates a GitHub release. A failed npm publish therefore cannot create a tag or a
+release that names packages npm did not accept. Do not start it concurrently with another release.

@@ -48,6 +48,15 @@ jobs:
           IS_PRERELEASE: ${{ inputs.prerelease }}
         run: node scripts/prepare-release.mjs
 
+      - name: Publish @d0bar/signals
+        run: pnpm --filter @d0bar/signals publish --tag ${{ inputs.prerelease && 'next' || 'latest' }} --provenance --no-git-checks --ignore-scripts
+
+      - name: Publish @d0bar/frame-budget
+        run: pnpm --filter @d0bar/frame-budget publish --tag ${{ inputs.prerelease && 'next' || 'latest' }} --provenance --no-git-checks --ignore-scripts
+
+      - name: Publish d0bar
+        run: pnpm --filter d0bar publish --tag ${{ inputs.prerelease && 'next' || 'latest' }} --provenance --no-git-checks --ignore-scripts
+
       - name: Commit and tag release
         env:
           RELEASE_VERSION: ${{ inputs.version }}
@@ -58,15 +67,6 @@ jobs:
           git commit -m "release: v${RELEASE_VERSION}"
           git tag "v${RELEASE_VERSION}"
           git push origin HEAD:main --follow-tags
-
-      - name: Publish @d0bar/signals
-        run: pnpm --filter @d0bar/signals publish --tag ${{ inputs.prerelease && 'next' || 'latest' }} --provenance --no-git-checks --ignore-scripts
-
-      - name: Publish @d0bar/frame-budget
-        run: pnpm --filter @d0bar/frame-budget publish --tag ${{ inputs.prerelease && 'next' || 'latest' }} --provenance --no-git-checks --ignore-scripts
-
-      - name: Publish d0bar
-        run: pnpm --filter d0bar publish --tag ${{ inputs.prerelease && 'next' || 'latest' }} --provenance --no-git-checks --ignore-scripts
 
       - name: Create GitHub release
         env:
