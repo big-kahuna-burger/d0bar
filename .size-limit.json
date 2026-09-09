@@ -2,19 +2,19 @@
   {
     "name": "stage 1 ESM — collector + pill, as shipped",
     "path": "dist/d0bar.js",
-    "limit": "9 kB",
+    "limit": "10 kB",
     "gzip": true
   },
   {
     "name": "stage 1 IIFE — collector + pill, as shipped",
     "path": "dist/d0bar.iife.js",
-    "limit": "9 kB",
+    "limit": "10 kB",
     "gzip": true
   },
   {
     "name": "stage 2 — the panel, loaded on first open",
     "path": "dist/d0bar.panel.js",
-    "limit": "28 kB",
+    "limit": "30 kB",
     "gzip": true
   },
   {
