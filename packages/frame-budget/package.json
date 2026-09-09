@@ -1,6 +1,6 @@
 {
   "name": "@d0bar/frame-budget",
-  "version": "0.1.0",
+  "version": "0.1.0-preview.0",
   "description": "Chromium main-thread attribution and enforceable browser performance budgets.",
   "license": "MIT",
   "type": "module",

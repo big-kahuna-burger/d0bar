@@ -1,6 +1,6 @@
 {
   "name": "@d0bar/signals",
-  "version": "0.1.0",
+  "version": "0.1.0-preview.0",
   "description": "A ~1 kB synchronous signals core with direct DOM bindings and keyed list reconciliation.",
   "keywords": [
     "signals",

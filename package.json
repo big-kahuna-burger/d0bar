@@ -1,6 +1,6 @@
 {
   "name": "d0bar",
-  "version": "0.1.0",
+  "version": "0.1.0-preview.0",
   "description": "A Dash0-branded observability toolbar for your own web app — that does not distort what it measures.",
   "license": "MIT",
   "type": "module",
